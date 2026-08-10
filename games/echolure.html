@@ -38,7 +38,6 @@
     border-radius:14px;border:1px solid rgba(94,240,224,.22);
     background:rgba(6,18,28,.55);
     color:#9fe9e2;cursor:pointer;
-    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
     transition:background .18s ease,border-color .18s ease,transform .12s ease,opacity .2s ease;
     padding:0;
   }
@@ -57,8 +56,7 @@
     opacity:0;pointer-events:none;
     transition:opacity .45s ease;
     background:
-      radial-gradient(120% 80% at 50% 42%, rgba(10,32,44,.55) 0%, rgba(3,6,12,.90) 62%, rgba(2,4,9,.97) 100%);
-    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+      radial-gradient(120% 80% at 50% 42%, rgba(10,32,44,.62) 0%, rgba(3,6,12,.93) 62%, rgba(2,4,9,.98) 100%);
   }
   .screen.show{opacity:1;pointer-events:auto;}
   .screen h1{
@@ -236,7 +234,7 @@ var WINDUP_T      = 0.30;
 var LUNGE_T       = 0.42;
 var INVULN_T      = 2.0;
 var GROWL_R       = 140;
-var MAX_PARTICLES = 460;
+var MAX_PARTICLES = 380;
 var MAX_FLOATERS  = 14;
 var MAX_PINGS     = 6;
 var FIXED_DT      = 1/120;
@@ -500,13 +498,20 @@ function drawGlow(sprite, x, y, radius, alpha){
    VIEW / RESIZE
    ============================================================ */
 var view = { w:0, h:0, dpr:1, scale:1, ox:0, oy:0 };
-var vignetteGrad = null, hurtGrad = null, growlGrad = null;
+var vignetteCv = null, hurtGrad = null, growlGrad = null;
+var hudK = 1;
+var lightR = LIGHT_R;
 
 function resize(){
   var w = wrap.clientWidth  || window.innerWidth  || 320;
   var h = wrap.clientHeight || window.innerHeight || 480;
   w = Math.max(160, w); h = Math.max(160, h);
-  var dpr = clamp(window.devicePixelRatio || 1, 1, 2.25);
+  // device-pixel budget: keeps fill rate sane on big retina displays
+  var dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+  var MAX_BACKING_PX = 2900000;
+  if(w*h*dpr*dpr > MAX_BACKING_PX) dpr = Math.max(1, Math.sqrt(MAX_BACKING_PX/(w*h)));
+  // mobile URL-bar wobble fires resize constantly; skip the work when nothing changed
+  if(vignetteCv && w===view.w && h===view.h && dpr===view.dpr) return;
   view.w = w; view.h = h; view.dpr = dpr;
   canvas.style.width = w+'px';
   canvas.style.height= h+'px';
@@ -525,10 +530,20 @@ function recomputeFit(){
 function buildScreenGradients(){
   var w=view.w, h=view.h;
   var cx=w/2, cy=h/2, rr=Math.sqrt(w*w+h*h)/2;
-  vignetteGrad = ctx.createRadialGradient(cx,cy,rr*0.34,cx,cy,rr*1.02);
-  vignetteGrad.addColorStop(0,'rgba(0,0,0,0)');
-  vignetteGrad.addColorStop(0.62,'rgba(0,2,6,0.42)');
-  vignetteGrad.addColorStop(1,'rgba(0,1,4,0.90)');
+  hudK = clamp(Math.min(w,h)/780, 0.70, 1.10);
+
+  // the vignette is painted every frame — bake it once per resize
+  if(!vignetteCv) vignetteCv = document.createElement('canvas');
+  var vw = Math.max(1, Math.round(w*0.5)), vh = Math.max(1, Math.round(h*0.5));
+  vignetteCv.width = vw; vignetteCv.height = vh;
+  var vc = vignetteCv.getContext('2d');
+  var vg = vc.createRadialGradient(vw/2, vh/2, (rr*0.34)*0.5, vw/2, vh/2, (rr*1.02)*0.5);
+  vg.addColorStop(0,'rgba(0,0,0,0)');
+  vg.addColorStop(0.62,'rgba(0,2,6,0.42)');
+  vg.addColorStop(1,'rgba(0,1,4,0.90)');
+  vc.clearRect(0,0,vw,vh);
+  vc.fillStyle = vg;
+  vc.fillRect(0,0,vw,vh);
 
   hurtGrad = ctx.createRadialGradient(cx,cy,rr*0.16,cx,cy,rr);
   hurtGrad.addColorStop(0,'rgba(255,40,60,0)');
@@ -569,42 +584,57 @@ function clearAtWorld(x,y){
 function pickWorldDims(){
   var vw = Math.max(160, view.w), vh = Math.max(160, view.h);
   var ar = clamp(vw/vh, 0.50, 2.05);
-  var area = clamp(vw*vh*0.95, 380000, 1080000);
+  var area = clamp(vw*vh*0.95, 450000, 1100000);
   var h = Math.sqrt(area/ar);
   var w = h*ar;
-  // coarse cells are 2 fine cells; keep fine dims even
-  var cols0 = clamp(Math.round(w/(CELL*2)), 7, 34);
-  var rows0 = clamp(Math.round(h/(CELL*2)), 7, 34);
-  return { cols0: cols0, rows0: rows0 };
+  var cols = clamp(Math.round(w/CELL), 16, 70);
+  var rows = clamp(Math.round(h/CELL), 16, 70);
+  return { cols: cols, rows: rows };
 }
 
-/* ---- cellular automata on coarse grid ---- */
-function caCoarse(cols0, rows0, rng, fill){
-  var n = cols0*rows0;
-  var a = new Uint8Array(n), b = new Uint8Array(n);
-  var x,y,i;
-  for(y=0;y<rows0;y++) for(x=0;x<cols0;x++){
-    i=y*cols0+x;
-    a[i] = (x<1||y<1||x>=cols0-1||y>=rows0-1) ? 1 : (rng()<fill ? 1 : 0);
-  }
-  var cur=a, nxt=b;
-  for(var it=0; it<5; it++){
-    for(y=0;y<rows0;y++) for(x=0;x<cols0;x++){
-      i=y*cols0+x;
-      if(x<1||y<1||x>=cols0-1||y>=rows0-1){ nxt[i]=1; continue; }
-      var c=0;
-      for(var dy=-1;dy<=1;dy++) for(var dx=-1;dx<=1;dx++){
-        if(dx===0&&dy===0) continue;
-        if(cur[(y+dy)*cols0+(x+dx)]) c++;
-      }
-      nxt[i] = (c>=5) ? 1 : (c<=3 ? 0 : cur[i]);
+/* ---- chambers + passages, then eroded into organic blobs ---- */
+function carveBrush(g, cols, rows, x, y, r){
+  for(var dy=-r; dy<=r; dy++){
+    var yy=y+dy;
+    if(yy<1||yy>=rows-1) continue;
+    for(var dx=-r; dx<=r; dx++){
+      var xx=x+dx;
+      if(xx<1||xx>=cols-1) continue;
+      g[yy*cols+xx]=0;
     }
-    var t=cur; cur=nxt; nxt=t;
   }
-  return cur;
 }
-
-function smoothFine(g, cols, rows, passes){
+function carveBlob(g, cols, rows, cx, cy, rx, ry, rng){
+  var wob = 0.20 + rng()*0.30;
+  var ph1 = rng()*TAU, ph2 = rng()*TAU;
+  for(var y=Math.floor(cy-ry-1); y<=Math.ceil(cy+ry+1); y++){
+    if(y<1||y>=rows-1) continue;
+    for(var x=Math.floor(cx-rx-1); x<=Math.ceil(cx+rx+1); x++){
+      if(x<1||x>=cols-1) continue;
+      var dx=(x-cx)/rx, dy=(y-cy)/ry;
+      var a=Math.atan2(dy,dx);
+      var edge = 1 + wob*(Math.sin(a*3+ph1)*0.55 + Math.sin(a*2+ph2)*0.45);
+      if(dx*dx+dy*dy <= edge*edge) g[y*cols+x]=0;
+    }
+  }
+}
+/* randomized monotone walk from A to B — organic passage, always connects */
+function carveWalk(g, cols, rows, x1, y1, x2, y2, rng, r){
+  var x=x1, y=y1, guard=0;
+  var limit = (cols+rows)*3 + 40;
+  while((x!==x2 || y!==y2) && guard++ < limit){
+    carveBrush(g, cols, rows, x, y, r);
+    var dx=x2-x, dy=y2-y;
+    var pickX;
+    if(dx===0) pickX=false;
+    else if(dy===0) pickX=true;
+    else pickX = rng() < Math.abs(dx)/(Math.abs(dx)+Math.abs(dy));
+    if(pickX) x += dx>0?1:-1; else y += dy>0?1:-1;
+  }
+  carveBrush(g, cols, rows, x2, y2, r);
+}
+/* gentle CA smoothing: rounds corners, grows pillars from noise */
+function smoothCave(g, cols, rows, passes){
   var n=cols*rows;
   var cur=g, nxt=new Uint8Array(n);
   for(var p=0;p<passes;p++){
@@ -616,27 +646,144 @@ function smoothFine(g, cols, rows, passes){
         if(dx===0&&dy===0) continue;
         if(cur[(y+dy)*cols+(x+dx)]) c++;
       }
-      nxt[i] = (c>=5) ? 1 : (c<=3 ? 0 : cur[i]);
+      nxt[i] = (c>=5) ? 1 : (c<=2 ? 0 : cur[i]);
     }
     var t=cur; cur=nxt; nxt=t;
   }
   return cur;
 }
-
-/* remove 1-cell nubs / pockets to widen corridors */
-function deNub(g, cols, rows, passes){
-  for(var p=0;p<passes;p++){
-    var snap = g.slice(0);
-    for(var y=1;y<rows-1;y++) for(var x=1;x<cols-1;x++){
-      var i=y*cols+x;
-      var n = (snap[i-1]?1:0)+(snap[i+1]?1:0)+(snap[i-cols]?1:0)+(snap[i+cols]?1:0);
-      if(snap[i]===1 && n<=1) g[i]=0;        // wall nub sticking into open space
-      else if(snap[i]===0 && n>=3) g[i]=1;   // 1-cell dead-end pocket
+function fillBlock(g, cols, rows, cx, cy, r){
+  for(var dy=-r; dy<=r; dy++){
+    var yy=cy+dy;
+    if(yy<1||yy>=rows-1) continue;
+    for(var dx=-r; dx<=r; dx++){
+      var xx=cx+dx;
+      if(xx<1||xx>=cols-1) continue;
+      g[yy*cols+xx]=1;
     }
-    for(var k=0;k<cols;k++){ g[k]=1; g[(rows-1)*cols+k]=1; }
-    for(var m=0;m<rows;m++){ g[m*cols]=1; g[m*cols+cols-1]=1; }
+  }
+}
+function buildCave(cols, rows, rng, depth){
+  var n=cols*rows;
+  var g=new Uint8Array(n);
+  g.fill(1);
+
+  // --- chambers on a jittered lattice so they always span the cavern ---
+  var LX = clamp(Math.round(cols/11), 2, 4);
+  var LY = clamp(Math.round(rows/11), 2, 4);
+  var cw = (cols-4)/LX, chh = (rows-4)/LY;
+  if(cw < 5 || chh < 5) return null;
+  var rooms=[];
+  for(var gy=0; gy<LY; gy++) for(var gx=0; gx<LX; gx++){
+    var rx = clamp(cw*0.22 + rng()*cw*0.20, 2.0, 6.5);
+    var ry = clamp(chh*0.22 + rng()*chh*0.20, 2.0, 6.0);
+    var cx = 2 + cw*(gx+0.5) + (rng()-0.5)*cw*0.34;
+    var cy = 2 + chh*(gy+0.5) + (rng()-0.5)*chh*0.34;
+    cx = clamp(cx, 2+rx+1, cols-3-rx-1);
+    cy = clamp(cy, 2+ry+1, rows-3-ry-1);
+    rooms.push({cx:cx, cy:cy, rx:rx, ry:ry});
+  }
+  if(rooms.length < 4) return null;
+  var i;
+  for(i=0;i<rooms.length;i++){
+    carveBlob(g, cols, rows, rooms[i].cx, rooms[i].cy, rooms[i].rx, rooms[i].ry, rng);
+  }
+
+  // --- pillars inside chambers (break sightlines, give cover) ---
+  for(i=0;i<rooms.length;i++){
+    var rm=rooms[i];
+    var np = (rm.rx>3.2 && rm.ry>3.0) ? ((rng()<0.65?1:0) + (rng()<0.28?1:0)) : 0;
+    for(var pz=0; pz<np; pz++){
+      var ang=rng()*TAU, rad=0.30+rng()*0.28;
+      fillBlock(g, cols, rows,
+        Math.round(rm.cx + Math.cos(ang)*rm.rx*rad),
+        Math.round(rm.cy + Math.sin(ang)*rm.ry*rad), 1);
+    }
+  }
+
+  // --- roughen chamber edges (only cells already touching rock) ---
+  var snap = g.slice(0);
+  for(var y=2;y<rows-2;y++) for(var x=2;x<cols-2;x++){
+    var ii=y*cols+x;
+    if(snap[ii]) continue;
+    var c=0;
+    for(var ddy=-1;ddy<=1;ddy++) for(var ddx=-1;ddx<=1;ddx++){
+      if(ddx===0&&ddy===0) continue;
+      if(snap[(y+ddy)*cols+(x+ddx)]) c++;
+    }
+    if(c>=3 && rng()<0.38) g[ii]=1;
+  }
+  g = smoothCave(g, cols, rows, 1);
+
+  // --- passages last, so erosion can never sever them: greedy MST + loops ---
+  var connected=[0], pending=[];
+  for(var k=1;k<rooms.length;k++) pending.push(k);
+  while(pending.length){
+    var bestP=0, bestC=0, bestD=1e9;
+    for(var pi=0;pi<pending.length;pi++){
+      for(var ci=0;ci<connected.length;ci++){
+        var a=rooms[pending[pi]], b=rooms[connected[ci]];
+        var dx2=a.cx-b.cx, dy2=a.cy-b.cy, d2=dx2*dx2+dy2*dy2;
+        if(d2<bestD){ bestD=d2; bestP=pi; bestC=ci; }
+      }
+    }
+    var ra=rooms[pending[bestP]], rb=rooms[connected[bestC]];
+    carveWalk(g, cols, rows, Math.round(ra.cx), Math.round(ra.cy),
+              Math.round(rb.cx), Math.round(rb.cy), rng, 1);
+    connected.push(pending[bestP]);
+    pending.splice(bestP,1);
+  }
+  var loops = 1 + ((depth>=3)?1:0) + ((depth>=6)?1:0);
+  for(var lp=0; lp<loops && rooms.length>3; lp++){
+    var A=(rng()*rooms.length)|0, B=(rng()*rooms.length)|0;
+    if(A===B) continue;
+    carveWalk(g, cols, rows, Math.round(rooms[A].cx), Math.round(rooms[A].cy),
+              Math.round(rooms[B].cx), Math.round(rooms[B].cy), rng, 1);
   }
   return g;
+}
+
+/* morphological opening of the OPEN set with a 2x2 element.
+   Guarantees every passage is at least 2 cells (= 2*CELL px) wide. */
+function morphOpen(g, cols, rows){
+  var n = cols*rows;
+  var er = new Uint8Array(n);
+  var x, y, i;
+  for(y=0;y<rows-1;y++) for(x=0;x<cols-1;x++){
+    i = y*cols+x;
+    er[i] = (!g[i] && !g[i+1] && !g[i+cols] && !g[i+cols+1]) ? 1 : 0;
+  }
+  var out = new Uint8Array(n);
+  out.fill(1);
+  for(y=0;y<rows-1;y++) for(x=0;x<cols-1;x++){
+    i = y*cols+x;
+    if(er[i]){ out[i]=0; out[i+1]=0; out[i+cols]=0; out[i+cols+1]=0; }
+  }
+  // border stays solid regardless
+  for(var k=0;k<cols;k++){ out[k]=1; out[(rows-1)*cols+k]=1; }
+  for(var m=0;m<rows;m++){ out[m*cols]=1; out[m*cols+cols-1]=1; }
+  return out;
+}
+
+/* crop the grid to the open region's bounding box + 1 solid cell of margin */
+function cropGrid(g, cols, rows){
+  var minx=cols, maxx=-1, miny=rows, maxy=-1;
+  for(var y=0;y<rows;y++) for(var x=0;x<cols;x++){
+    if(g[y*cols+x]) continue;
+    if(x<minx) minx=x; if(x>maxx) maxx=x;
+    if(y<miny) miny=y; if(y>maxy) maxy=y;
+  }
+  if(maxx<0) return null;
+  minx=Math.max(0,minx-1); miny=Math.max(0,miny-1);
+  maxx=Math.min(cols-1,maxx+1); maxy=Math.min(rows-1,maxy+1);
+  var nc=maxx-minx+1, nr=maxy-miny+1;
+  if(nc<8 || nr<8) return null;
+  var out=new Uint8Array(nc*nr);
+  for(var yy=0;yy<nr;yy++){
+    var srow=(yy+miny)*cols+minx, drow=yy*nc;
+    for(var xx=0;xx<nc;xx++) out[drow+xx]=g[srow+xx];
+  }
+  return { g:out, cols:nc, rows:nr };
 }
 
 /* keep only the largest open region; returns its cell count */
@@ -770,8 +917,7 @@ var S = {
   invuln:0,
   pingCd:0,
   hintT:0,
-  vignettePulse:0,
-  bestNear:999
+  vignettePulse:0, growlT:0, lock:0
 };
 
 var player = { x:0,y:0,px:0,py:0,vx:0,vy:0,ang:0,bubT:0,blink:0 };
@@ -838,55 +984,54 @@ function lurkerCountFor(depth){
 
 function generateLevel(depth){
   var dims = pickWorldDims();
-  var cols0 = dims.cols0, rows0 = dims.rows0;
-  var cols = cols0*2, rows = rows0*2;
-  var n = cols*rows;
+  var cols = dims.cols, rows = dims.rows;
+  var nMax = cols*rows;
 
-  var q      = new Int32Array(n);
-  var lbl    = new Int32Array(n);
-  var clearA = new Int32Array(n);
-  var dist   = new Int32Array(n);
+  var q      = new Int32Array(nMax);
+  var lbl    = new Int32Array(nMax);
+  var clearA = new Int32Array(nMax);
+  var dist   = new Int32Array(nMax);
 
   var wantPearls  = pearlCountFor(depth);
   var wantLurkers = lurkerCountFor(depth);
 
-  var attempt = 0, MAXTRY = 60;
-  var solid=null, spots=null, startCell=-1, exitCell=-1, pearlCells=null, lurkCells=null;
+  var attempt = 0, MAXTRY = 50;
+  var solid=null, startCell=-1, exitCell=-1, pearlCells=null, lurkCells=null;
+  var fCols=cols, fRows=rows;
 
   while(attempt < MAXTRY){
     attempt++;
-    var rng = makeRng((Date.now()*1103515245 + attempt*7919 + depth*104729) >>> 0);
-    var fill = 0.455 + (rng()-0.5)*0.03;
-    var coarse = caCoarse(cols0, rows0, rng, fill);
+    var rng = makeRng((((Date.now()&0x7fffffff) ^ (attempt*7919)) + depth*104729 + ((Math.random()*1e9)|0)) >>> 0);
 
-    // upsample x2
-    var g = new Uint8Array(n);
-    for(var y=0;y<rows;y++){
-      var sy=(y>>1)*cols0;
-      for(var x=0;x<cols;x++) g[y*cols+x] = coarse[sy + (x>>1)];
-    }
-    g = smoothFine(g, cols, rows, 2);
-    g = deNub(g, cols, rows, 2);
-    // border always solid
-    for(var k=0;k<cols;k++){ g[k]=1; g[(rows-1)*cols+k]=1; }
-    for(var m=0;m<rows;m++){ g[m*cols]=1; g[m*cols+cols-1]=1; }
+    var raw = buildCave(cols, rows, rng, depth);
+    if(!raw) continue;
+    var g = morphOpen(raw, cols, rows);
 
     var openCount = keepLargestRegion(g, cols, rows, q, lbl);
-    if(openCount < n*0.20) continue;
+    if(openCount < nMax*0.13 || openCount < 100) continue;
 
-    computeClearance(g, cols, rows, clearA, q);
+    var cropped = cropGrid(g, cols, rows);
+    if(!cropped) continue;
+    g = cropped.g;
+    var gc = cropped.cols, gr = cropped.rows;
+    var n = gc*gr;
 
-    // candidate spots: clearance >= 2 (roomy enough for player + lurkers)
-    var cand = [];
-    for(var i=0;i<n;i++){ if(!g[i] && clearA[i]>=2) cand.push(i); }
-    var needSpots = wantPearls + wantLurkers + 4;
+    computeClearance(g, gc, gr, clearA, q);
+
+    // candidate spots: prefer roomy cells, fall back to any open cell
+    var cand = [], i;
+    for(i=0;i<n;i++){ if(!g[i] && clearA[i]>=2) cand.push(i); }
+    var needSpots = wantPearls + wantLurkers + 3;
+    if(cand.length < needSpots){
+      cand.length = 0;
+      for(i=0;i<n;i++){ if(!g[i] && clearA[i]>=1) cand.push(i); }
+    }
     if(cand.length < needSpots) continue;
 
     // start: random roomy cell
     var sIdx = cand[(rng()*cand.length)|0];
-    bfsFrom(g, cols, rows, sIdx, dist, q);
+    bfsFrom(g, gc, gr, sIdx, dist, q);
 
-    // verify every candidate reachable (largest-region guarantees, but assert)
     var reachable = [];
     for(var ci=0; ci<cand.length; ci++){ if(dist[cand[ci]] >= 0) reachable.push(cand[ci]); }
     if(reachable.length < needSpots) continue;
@@ -897,98 +1042,92 @@ function generateLevel(depth){
       var d = dist[reachable[ri]];
       if(d > eBest){ eBest = d; eIdx = reachable[ri]; }
     }
-    if(eBest < Math.max(6, Math.floor((cols+rows)*0.28))) continue;
+    if(eIdx < 0) continue;
+    if(eBest < Math.max(8, Math.floor((gc+gr)*0.30))) continue;
 
-    // pearls: farthest-point sampling from {start, exit}
+    // pearls: farthest-point sampling seeded with {start, exit}
     var cell = CELL;
     var chosen = [sIdx, eIdx];
     var pc = [];
-    var minSep = cell*4.2;
     var okPearls = true;
     for(var pi=0; pi<wantPearls; pi++){
       var bestC=-1, bestScore=-1;
       for(var rj=0; rj<reachable.length; rj++){
         var c = reachable[rj];
-        var cx=(c%cols+0.5)*cell, cy=(((c-c%cols)/cols)+0.5)*cell;
+        var ccx=c%gc;
+        var cx=(ccx+0.5)*cell, cy=(((c-ccx)/gc)+0.5)*cell;
         var mind = 1e9;
         for(var cj=0; cj<chosen.length; cj++){
-          var o=chosen[cj];
-          var ox=(o%cols+0.5)*cell, oy=(((o-o%cols)/cols)+0.5)*cell;
-          var dx=cx-ox, dy=cy-oy; var dd=dx*dx+dy*dy;
+          var o=chosen[cj], ocx=o%gc;
+          var ox=(ocx+0.5)*cell, oy=(((o-ocx)/gc)+0.5)*cell;
+          var ddx=cx-ox, ddy=cy-oy; var dd=ddx*ddx+ddy*ddy;
           if(dd<mind) mind=dd;
         }
-        // prefer far-from-others, mildly prefer far from start
-        var sc = mind + dist[c]*cell*cell*0.02;
+        var sc = mind + dist[c]*cell*cell*0.03 + clearA[c]*260;
         if(sc>bestScore){ bestScore=sc; bestC=c; }
       }
       if(bestC<0){ okPearls=false; break; }
-      var bx=(bestC%cols+0.5)*cell, by=(((bestC-bestC%cols)/cols)+0.5)*cell;
-      var tooClose=false;
-      for(var cq=0; cq<chosen.length; cq++){
-        var oo=chosen[cq];
-        var oxx=(oo%cols+0.5)*cell, oyy=(((oo-oo%cols)/cols)+0.5)*cell;
-        var ddx=bx-oxx, ddy=by-oyy;
-        if(ddx*ddx+ddy*ddy < minSep*minSep){ tooClose=true; break; }
-      }
-      if(tooClose && pi>0 && wantPearls>4){ /* accept anyway, world may be tight */ }
       chosen.push(bestC); pc.push(bestC);
     }
     if(!okPearls || pc.length < wantPearls) continue;
 
-    // lurkers: roomy cells reasonably far from start
+    // lurkers: roomy cells reasonably far from the player start
     var lc = [];
     var far = [];
+    var scx0=sIdx%gc;
+    var sx0=(scx0+0.5)*cell, sy0=(((sIdx-scx0)/gc)+0.5)*cell;
     for(var rk=0; rk<reachable.length; rk++){
-      var cc = reachable[rk];
-      var ccx=(cc%cols+0.5)*cell, ccy=(((cc-cc%cols)/cols)+0.5)*cell;
-      var sx0=(sIdx%cols+0.5)*cell, sy0=(((sIdx-sIdx%cols)/cols)+0.5)*cell;
-      var ddx2=ccx-sx0, ddy2=ccy-sy0;
-      if(ddx2*ddx2+ddy2*ddy2 > 250*250) far.push(cc);
+      var cc = reachable[rk], acx=cc%gc;
+      var acx0=(acx+0.5)*cell, acy0=(((cc-acx)/gc)+0.5)*cell;
+      var edx=acx0-sx0, edy=acy0-sy0;
+      if(edx*edx+edy*edy > 240*240) far.push(cc);
     }
     var pool = far.length >= wantLurkers ? far : reachable;
-    var used = {};
+    var used = Object.create(null);
     for(var li=0; li<wantLurkers; li++){
       var tries=0, pick=-1;
-      while(tries<80){
-        var cand2 = pool[(rng()*pool.length)|0];
-        if(!used[cand2]){ used[cand2]=1; pick=cand2; break; }
+      while(tries<120){
+        var cnd = pool[(rng()*pool.length)|0];
+        if(!used[cnd]){ used[cnd]=1; pick=cnd; break; }
         tries++;
       }
       if(pick<0) pick = pool[(rng()*pool.length)|0];
       lc.push(pick);
     }
 
-    solid = g; startCell = sIdx; exitCell = eIdx; pearlCells = pc; lurkCells = lc;
+    solid=g; fCols=gc; fRows=gr;
+    startCell=sIdx; exitCell=eIdx; pearlCells=pc; lurkCells=lc;
     break;
   }
 
   if(!solid){
-    // extremely defensive fallback: open rectangle room
-    solid = new Uint8Array(n);
-    for(var yy=0; yy<rows; yy++) for(var xx=0; xx<cols; xx++){
-      solid[yy*cols+xx] = (xx<1||yy<1||xx>=cols-1||yy>=rows-1) ? 1 : 0;
+    // defensive fallback: a plain open room (should never be reached)
+    fCols = Math.min(cols, 24); fRows = Math.min(rows, 20);
+    solid = new Uint8Array(fCols*fRows);
+    for(var yy=0; yy<fRows; yy++) for(var xx=0; xx<fCols; xx++){
+      solid[yy*fCols+xx] = (xx<1||yy<1||xx>=fCols-1||yy>=fRows-1) ? 1 : 0;
     }
-    computeClearance(solid, cols, rows, clearA, q);
-    startCell = idxAt(cols, 2, 2);
-    exitCell  = idxAt(cols, cols-3, rows-3);
+    startCell = 2*fCols + 2;
+    exitCell  = (fRows-3)*fCols + (fCols-3);
     pearlCells = [];
     for(var pf=0; pf<wantPearls; pf++){
-      pearlCells.push(idxAt(cols, 2+((pf*3)%(cols-4)), 2+((pf*2+2)%(rows-4))));
+      pearlCells.push((3+((pf*2+1)%(fRows-6)))*fCols + (3+((pf*4)%(fCols-6))));
     }
     lurkCells = [];
-    for(var lf=0; lf<wantLurkers; lf++) lurkCells.push(idxAt(cols, cols-4-lf, 3+lf));
-  } else {
-    computeClearance(solid, cols, rows, clearA, q);
+    for(var lf=0; lf<wantLurkers; lf++) lurkCells.push((3+lf)*fCols + (fCols-4-lf));
   }
+  computeClearance(solid, fCols, fRows, clearA, q);
 
-  G.cols=cols; G.rows=rows; G.cell=CELL;
-  G.w=cols*CELL; G.h=rows*CELL;
+  G.cols=fCols; G.rows=fRows; G.cell=CELL;
+  G.w=fCols*CELL; G.h=fRows*CELL;
   G.solid = solid;
-  G.clear = clearA.slice(0);
+  G.clear = clearA.slice(0, fCols*fRows);
+  // the player's own glow scales with the cavern so small worlds stay dark
+  lightR = clamp(Math.sqrt(G.w*G.h)*0.072, 46, 74);
   buildSegments();
   recomputeFit();
 
-  function ctr(c){ var cx=c%cols, cy=(c-cx)/cols; return { x:(cx+0.5)*CELL, y:(cy+0.5)*CELL }; }
+  function ctr(c){ var cx=c%fCols, cy=(c-cx)/fCols; return { x:(cx+0.5)*CELL, y:(cy+0.5)*CELL }; }
 
   var sp = ctr(startCell);
   player.x=sp.x; player.y=sp.y; player.px=sp.x; player.py=sp.y;
@@ -1032,7 +1171,6 @@ function generateLevel(depth){
   floaters.length = 0;
   seedMotes();
 }
-function idxAt(cols, x, y){ return y*cols + x; }
 
 /* ============================================================
    COLLISION — circle vs grid, slides along walls
@@ -1130,10 +1268,10 @@ window.addEventListener('keydown', function(e){
   keys[lk]=true;
 
   if(lk==='m'){ setMuted(!Audio_.isMuted()); return; }
-  if(lk==='r'){ toStartScreen(); return; }
+  if(lk==='r'){ if(S.state!=='over' && S.state!=='win') toStartScreen(); else if(S.lock<=0) toStartScreen(); return; }
 
   if(S.state==='start'){ startRun(); return; }
-  if(S.state==='over' || S.state==='win'){ toStartScreen(); return; }
+  if(S.state==='over' || S.state==='win'){ if(S.lock<=0) toStartScreen(); return; }
   if(lk==='p'){ togglePause(); return; }
   if(S.state==='pause'){ togglePause(); return; }
   if((k===' '||k==='Spacebar') && S.state==='play'){ tryPing(); }
@@ -1155,7 +1293,7 @@ function onPointerDown(e){
   if(canvas.setPointerCapture){ try{ canvas.setPointerCapture(e.pointerId); }catch(err){} }
 
   if(S.state==='start'){ startRun(); return; }
-  if(S.state==='over' || S.state==='win'){ toStartScreen(); return; }
+  if(S.state==='over' || S.state==='win'){ if(S.lock<=0) toStartScreen(); return; }
   if(S.state==='pause'){ togglePause(); return; }
   if(S.state==='play'){ tryPing(); }
 }
@@ -1194,8 +1332,8 @@ document.getElementById('b-again').addEventListener('click', function(e){ e.stop
 document.getElementById('b-replay').addEventListener('click', function(e){ e.stopPropagation(); toStartScreen(); });
 SCREENS.start.addEventListener('click', function(){ firstGesture(); startRun(); });
 SCREENS.pause.addEventListener('click', function(){ togglePause(); });
-SCREENS.over.addEventListener('click', function(){ toStartScreen(); });
-SCREENS.win.addEventListener('click', function(){ toStartScreen(); });
+SCREENS.over.addEventListener('click', function(){ if(S.lock<=0) toStartScreen(); });
+SCREENS.win.addEventListener('click', function(){ if(S.lock<=0) toStartScreen(); });
 
 function setMuted(m){
   Audio_.setMuted(m);
@@ -1238,6 +1376,8 @@ function beginDepth(d){
   S.pingCd=0;
   S.invuln=0;
   S.hintT = (d===1) ? 7.0 : 0;
+  // a free arrival sweep: shows the cavern without waking anything
+  spawnPing(player.x, player.y, false);
 }
 function togglePause(){
   if(S.state==='play' || S.state==='intro'){
@@ -1249,7 +1389,12 @@ function togglePause(){
     lastTime = 0; accumulator = 0;
   }
 }
+function releaseInputs(){
+  for(var k in keys) keys[k]=false;
+  pointer.active=false; pointer.id=-1;
+}
 function autoPause(){
+  releaseInputs();
   if(S.state==='play' || S.state==='intro'){
     S.prevState=S.state; S.state='pause'; showScreen('pause'); Audio_.growl(0,0);
   }
@@ -1260,39 +1405,43 @@ document.addEventListener('visibilitychange', function(){ if(document.hidden) au
 /* ============================================================
    PING
    ============================================================ */
-function tryPing(){
-  if(S.state!=='play') return;
-  if(S.pingCd > 0) return;
-  S.pingCd = PING_CD;
+function spawnPing(x, y, alertThem){
   var maxR = Math.sqrt(G.w*G.w + G.h*G.h) * 1.06;
-  var p = null;
-  for(var i=0;i<pings.length;i++){ if(!pings[i].alive){ p=pings[i]; break; } }
+  var p = null, i;
+  for(i=0;i<pings.length;i++){ if(!pings[i].alive){ p=pings[i]; break; } }
   if(!p){
     if(pings.length >= MAX_PINGS){
-      // recycle oldest
-      p = pings[0];
+      p = pings[0];                                  // recycle the oldest (largest radius)
       for(var j=1;j<pings.length;j++){ if(pings[j].r > p.r) p = pings[j]; }
     } else {
       p = { x:0,y:0,r:0,pr:0,maxR:0,alive:false,age:0 };
       pings.push(p);
     }
   }
-  p.x=player.x; p.y=player.y; p.r=0; p.pr=0; p.maxR=maxR; p.alive=true; p.age=0;
+  p.x=x; p.y=y; p.r=0; p.pr=0; p.maxR=maxR; p.alive=true; p.age=0;
   Audio_.ping();
 
-  // alert every lurker to the ORIGIN
-  for(var l=0;l<lurkers.length;l++){
-    var lk=lurkers[l];
-    if(lk.state==='lunge' || lk.state==='windup') { lk.tx=p.x; lk.ty=p.y; continue; }
-    lk.state='alert'; lk.stateT=ALERT_TIME; lk.tx=p.x; lk.ty=p.y;
+  if(alertThem){
+    // every lurker steers toward the ping ORIGIN, not the player's live position
+    for(var l=0;l<lurkers.length;l++){
+      var lk=lurkers[l];
+      if(lk.state==='lunge' || lk.state==='windup'){ lk.tx=p.x; lk.ty=p.y; continue; }
+      lk.state='alert'; lk.stateT=ALERT_TIME; lk.tx=p.x; lk.ty=p.y;
+    }
+    if(lurkers.length) Audio_.alert();
   }
-  if(lurkers.length) Audio_.alert();
 
-  // visual kick
   for(var b=0;b<8;b++){
     var a=Math.random()*TAU, sp=25+Math.random()*40;
-    spawnP(0, player.x, player.y, Math.cos(a)*sp, Math.sin(a)*sp, 0.8+Math.random()*0.5, 2+Math.random()*3);
+    spawnP(0, x, y, Math.cos(a)*sp, Math.sin(a)*sp, 0.8+Math.random()*0.5, 2+Math.random()*3);
   }
+  return p;
+}
+function tryPing(){
+  if(S.state!=='play') return;
+  if(S.pingCd > 0) return;
+  S.pingCd = PING_CD;
+  spawnPing(player.x, player.y, true);
 }
 
 /* ============================================================
@@ -1706,10 +1855,14 @@ function update(dt){
     }
   }
   var nd = Math.sqrt(nearest);
-  S.bestNear = nd;
   var prox = clamp(1 - nd/GROWL_R, 0, 1);
   S.vignettePulse = prox;
-  Audio_.growl(prox*prox, clamp(agitNear,0,1.5)/1.5);
+  // throttle: the sim runs at 120 Hz, but audio params need nowhere near that
+  S.growlT -= dt;
+  if(S.growlT <= 0){
+    S.growlT = 0.07;
+    Audio_.growl(prox*prox, clamp(agitNear,0,1.5)/1.5);
+  }
 }
 
 function decayFx(dt){
@@ -1746,6 +1899,7 @@ function fmtTime(sec){
 }
 function endRun(){
   S.state='over';
+  S.lock = 1.0;                 // stop a mashed key from skipping the results
   Audio_.growl(0,0);
   document.getElementById('o-score').textContent = Math.round(S.score);
   document.getElementById('o-depth').textContent = S.depth;
@@ -1757,6 +1911,7 @@ function endRun(){
 }
 function winRun(){
   S.state='win';
+  S.lock = 1.2;
   Audio_.growl(0,0);
   Audio_.victory();
   document.getElementById('w-score').textContent = Math.round(S.score);
@@ -1775,7 +1930,7 @@ function render(alpha){
 
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.globalAlpha=1;
-  ctx.fillStyle='#02040a';
+  ctx.fillStyle='#050810';
   ctx.fillRect(0,0,w,h);
 
   if(S.state==='start' || !G.w){
@@ -1799,10 +1954,6 @@ function render(alpha){
   ctx.rect(0,0,G.w,G.h);
   ctx.clip();
 
-  // water body
-  ctx.fillStyle='#050810';
-  ctx.fillRect(0,0,G.w,G.h);
-
   var pxi = lerp(player.px, player.x, alpha);
   var pyi = lerp(player.py, player.y, alpha);
 
@@ -1822,7 +1973,7 @@ function render(alpha){
   // ---- screen-space overlays ----
   ctx.setTransform(dpr,0,0,dpr,0,0);
 
-  if(vignetteGrad){ ctx.fillStyle=vignetteGrad; ctx.fillRect(0,0,w,h); }
+  if(vignetteCv){ ctx.drawImage(vignetteCv, 0, 0, w, h); }
 
   if(S.vignettePulse > 0.01 && S.state==='play' && growlGrad){
     var pulse = S.vignettePulse * (0.55 + 0.45*Math.sin(S.t*7.5));
@@ -1877,7 +2028,7 @@ function drawWalls(px, py){
   if(!n) return;
   var st=G.segT, sa=G.segA, mx=G.segMX, my=G.segMY;
   var x1=G.segX1, y1=G.segY1, x2=G.segX2, y2=G.segY2;
-  var lr = LIGHT_R*1.25, lr2 = lr*lr;
+  var lr = lightR*1.25, lr2 = lr*lr;
   bucketLen.fill(0);
 
   for(var i=0;i<n;i++){
@@ -1900,11 +2051,11 @@ function drawWalls(px, py){
 
   ctx.lineCap='round'; ctx.lineJoin='round';
   for(var pass=0; pass<3; pass++){
-    var lw = pass===0 ? 9.5 : (pass===1 ? 4.2 : 1.7);
-    ctx.lineWidth = lw;
+    ctx.lineWidth = pass===0 ? 9 : (pass===1 ? 4.2 : 1.7);
     for(var b2=BUCKETS-1; b2>=0; b2--){
       var l2=bucketLen[b2];
       if(!l2) continue;
+      if(pass===0 && b2 < 3) continue;   // wide halo only where it reads
       var arr2=bucketArr[b2];
       ctx.beginPath();
       for(var k=0;k<l2;k+=4){
@@ -1927,15 +2078,17 @@ function drawPings(alpha){
     if(r<=1) continue;
     var fade = clamp(1 - r/(p.maxR*0.95), 0, 1);
     fade = fade*fade;
-    if(fade < 0.006) continue;
-    for(var k=0;k<6;k++){
-      var rr = r - k*5.5;
+    if(fade < 0.02) continue;
+    // the soft trail matters while the front is close; thin it out as it expands
+    var layers = r < p.maxR*0.30 ? 5 : (r < p.maxR*0.60 ? 3 : 2);
+    for(var k=0;k<layers;k++){
+      var rr = r - k*5.2;
       if(rr <= 1) break;
-      var a = fade * Math.pow(1 - k/6, 2.2) * (k===0 ? 1 : 0.55);
-      if(a < 0.004) continue;
+      var a = fade * Math.pow(1 - k/layers, 2.2) * (k===0 ? 1 : 0.5);
+      if(a < 0.015) continue;
       ctx.beginPath();
       ctx.arc(p.x, p.y, rr, 0, TAU);
-      ctx.lineWidth = 1.4 + k*2.6;
+      ctx.lineWidth = 1.3 + k*2.0;
       ctx.strokeStyle = (k===0)
         ? 'rgba(220,255,252,'+(a*0.95).toFixed(3)+')'
         : 'rgba(84,222,224,'+(a*0.26).toFixed(3)+')';
@@ -1971,7 +2124,7 @@ function drawEchoes(){
 
 /* ---------- pearls ---------- */
 function drawPearls(px, py){
-  var lr = LIGHT_R*1.1;
+  var lr = lightR*1.1;
   for(var i=0;i<pearls.length;i++){
     var p=pearls[i];
     if(p.got) continue;
@@ -2002,7 +2155,7 @@ function drawExit(px, py){
   var a = revealAlpha(exitObj.revT, exitObj.revA);
   var dx=exitObj.x-px, dy=exitObj.y-py;
   var d=Math.sqrt(dx*dx+dy*dy);
-  var lr=LIGHT_R*1.3;
+  var lr=lightR*1.3;
   if(d < lr){ var prox=smooth(clamp(1-d/lr,0,1)); if(prox>a) a=prox; }
   if(exitObj.open){
     var since = S.t - exitObj.openT;
@@ -2079,7 +2232,7 @@ function drawLurkers(alpha, px, py){
     var a = revealAlpha(l.revT, l.revA);
     var dx=lx-px, dy=ly-py;
     var d=Math.sqrt(dx*dx+dy*dy);
-    var lr=LIGHT_R*1.15;
+    var lr=lightR*1.15;
     if(d < lr){ var prox=smooth(clamp(1-d/lr,0,1))*0.92; if(prox>a) a=prox; }
     if(a>1) a=1;
 
@@ -2182,7 +2335,7 @@ function drawParticles(){
 
 /* ---------- motes ---------- */
 function drawMotes(px, py){
-  var lr = LIGHT_R*1.7, lr2=lr*lr;
+  var lr = lightR*1.7, lr2=lr*lr;
   ctx.fillStyle='rgba(150,230,240,1)';
   for(var i=0;i<MOTES;i++){
     var dx=mote.x[i]-px, dy=mote.y[i]-py;
@@ -2206,7 +2359,7 @@ function drawPlayer(px, py){
   var dim = blinkHide ? 0.30 : 1;
 
   var pulse = 0.92 + Math.sin(S.t*2.3)*0.08;
-  drawGlow(GLOW.player, px, py, LIGHT_R*1.42*pulse, 0.30*dim);
+  drawGlow(GLOW.player, px, py, lightR*1.42*pulse, 0.30*dim);
   drawGlow(GLOW.player, px, py, 22, 0.55*dim);
 
   ctx.save();
@@ -2310,36 +2463,34 @@ function heartPath(x,y,s){
 
 function drawHUD(w,h){
   if(S.state==='over' || S.state==='win') return;
-  var top = 14;
-  var padL = 16;
-  try{
-    var st = getComputedStyle(document.documentElement);
-    void st;
-  }catch(e){}
-
+  var k = hudK;
+  var top = 13*k;
+  var padL = 15*k;
   ctx.textBaseline='middle';
 
   // depth
   ctx.globalAlpha=0.92;
   ctx.textAlign='left';
-  ctx.font='800 12px '+FONT;
+  ctx.font='800 '+(12*k).toFixed(1)+'px '+FONT;
   ctx.fillStyle='rgba(120,215,225,0.75)';
-  ctx.fillText('DEPTH', padL, top+8);
-  ctx.font='800 26px '+FONT;
+  ctx.fillText('DEPTH', padL, top+8*k);
+  ctx.font='800 '+(26*k).toFixed(1)+'px '+FONT;
   ctx.fillStyle='rgba(215,252,250,0.96)';
-  ctx.fillText(String(S.depth), padL+52, top+9);
-  ctx.font='700 10.5px '+FONT;
-  ctx.fillStyle='rgba(105,175,190,0.62)';
-  ctx.fillText(DEPTH_NAMES[S.depth]||'', padL+74, top+10);
+  ctx.fillText(String(S.depth), padL+52*k, top+9*k);
+  if(w > 560){
+    ctx.font='700 '+(10.5*k).toFixed(1)+'px '+FONT;
+    ctx.fillStyle='rgba(105,175,190,0.62)';
+    ctx.fillText(DEPTH_NAMES[S.depth]||'', padL+74*k, top+10*k);
+  }
 
   // hearts
-  var hy = top+34;
+  var hy = top+33*k;
   for(var i=0;i<3;i++){
-    var hx = padL+9 + i*22;
+    var hx = padL+8*k + i*21*k;
     var full = i < S.hearts;
-    heartPath(hx, hy+7, 17);
+    heartPath(hx, hy+7*k, 16*k);
     if(full){
-      ctx.globalAlpha = (S.invuln>0 && i===S.hearts) ? 0.4 : 0.95;
+      ctx.globalAlpha = (S.invuln>0) ? (0.52 + 0.43*Math.sin(S.t*17)) : 0.95;
       ctx.fillStyle='rgba(255,96,118,0.92)';
       ctx.fill();
       ctx.lineWidth=1; ctx.strokeStyle='rgba(255,175,190,0.7)'; ctx.stroke();
@@ -2351,15 +2502,15 @@ function drawHUD(w,h){
   }
 
   // pearls
-  var py2 = hy + 26;
+  var py2 = hy + 25*k;
   ctx.globalAlpha=0.9;
   ctx.textAlign='left';
-  ctx.font='800 11px '+FONT;
+  ctx.font='800 '+(11*k).toFixed(1)+'px '+FONT;
   ctx.fillStyle='rgba(255,217,138,0.72)';
-  ctx.fillText('PEARLS', padL, py2+6);
+  ctx.fillText('PEARLS', padL, py2+6*k);
   for(var p=0;p<S.pearlsTotal;p++){
-    var cxp = padL+56 + p*13;
-    ctx.beginPath(); ctx.arc(cxp, py2+6, 4, 0, TAU);
+    var cxp = padL+(55 + p*12.5)*k;
+    ctx.beginPath(); ctx.arc(cxp, py2+6*k, 4*k, 0, TAU);
     if(p < S.pearlsGot){
       ctx.fillStyle='rgba(255,226,160,0.95)'; ctx.fill();
     } else {
@@ -2368,11 +2519,11 @@ function drawHUD(w,h){
   }
   ctx.globalAlpha=1;
 
-  // score (top center)
+  // score (top centre)
   var pop = 1 + S.scorePop*0.18;
   ctx.save();
-  ctx.translate(w/2, top+16);
-  ctx.scale(pop,pop);
+  ctx.translate(w/2, top+15*k);
+  ctx.scale(pop*k, pop*k);
   ctx.textAlign='center';
   ctx.font='800 24px '+FONT;
   ctx.fillStyle='rgba(232,255,250,0.95)';
@@ -2382,40 +2533,37 @@ function drawHUD(w,h){
   ctx.fillText('SCORE', 0, 17);
   ctx.restore();
 
-  // ping cooldown bar (bottom center)
-  var bw = Math.min(190, w*0.42), bh2=4;
-  var bx = (w-bw)/2, by = h - 26 - safeBottom();
+  // ping cooldown bar (bottom centre)
+  var bw = Math.min(190*k, w*0.44), bh2=4*k;
+  var bx = (w-bw)/2, by = h - 26*k;
   var prog = clamp(1 - S.pingCd/PING_CD, 0, 1);
   ctx.globalAlpha=0.75;
-  roundRect(bx, by, bw, bh2, 2);
+  roundRect(bx, by, bw, bh2, 2*k);
   ctx.fillStyle='rgba(94,240,224,0.13)'; ctx.fill();
-  roundRect(bx, by, bw*prog, bh2, 2);
+  roundRect(bx, by, bw*prog, bh2, 2*k);
   ctx.fillStyle = prog>=1 ? 'rgba(150,255,244,0.85)' : 'rgba(94,240,224,0.5)';
   ctx.fill();
   ctx.globalAlpha=0.6;
   ctx.textAlign='center';
-  ctx.font='700 9px '+FONT;
+  ctx.font='700 '+(9*k).toFixed(1)+'px '+FONT;
   ctx.fillStyle= prog>=1 ? 'rgba(160,255,246,0.8)':'rgba(100,170,185,0.6)';
-  ctx.fillText(prog>=1 ? 'SONAR READY' : 'CHARGING', w/2, by-9);
+  ctx.fillText(prog>=1 ? 'SONAR READY' : 'CHARGING', w/2, by-10*k);
   ctx.globalAlpha=1;
 
-  // depth-1 hint
+  // depth-1 onboarding hint
   if(S.hintT > 0 && S.state==='play'){
     var ha = clamp(S.hintT/1.6, 0, 1) * clamp((7.0-S.hintT)/0.6, 0, 1);
-    ctx.globalAlpha = ha*0.8;
-    ctx.textAlign='center';
-    ctx.font='700 12px '+FONT;
+    ctx.globalAlpha = ha*0.85;
     ctx.fillStyle='rgba(160,235,240,0.9)';
-    drawSpaced('PRESS SPACE OR TAP TO PING', w/2, by-34, 12, 2.2, '700');
-    ctx.globalAlpha = ha*0.55;
-    ctx.font='600 10.5px '+FONT;
+    drawSpaced('PRESS SPACE OR TAP TO PING', w/2, by-52*k, 12*k, 2.2*k, '700');
+    ctx.globalAlpha = ha*0.6;
+    ctx.font='600 '+(10.5*k).toFixed(1)+'px '+FONT;
     ctx.textAlign='center';
     ctx.fillStyle='rgba(255,150,150,0.85)';
-    ctx.fillText('they swim toward the sound', w/2, by-18);
+    ctx.fillText('they swim toward the sound', w/2, by-31*k);
     ctx.globalAlpha=1;
   }
 }
-function safeBottom(){ return 0; }
 
 function roundRect(x,y,w,h,r){
   if(w<=0){ ctx.beginPath(); return; }
@@ -2460,22 +2608,23 @@ function drawDepthCard(w,h,t){
 }
 
 /* ---------- start-screen backdrop ---------- */
-var bgMotes = null;
+var bgMotes = null, bgLastT = 0;
 function drawTitleBackdrop(w,h){
   if(!bgMotes){
     bgMotes = [];
     for(var i=0;i<70;i++){
       bgMotes.push({ x:Math.random(), y:Math.random(), s:0.5+Math.random()*2.1,
-                     vy:-(0.005+Math.random()*0.02), ph:Math.random()*TAU });
+                     vy:-(0.006+Math.random()*0.026), ph:Math.random()*TAU });
     }
+    bgLastT = S.t;
   }
-  ctx.fillStyle='#050810';
-  ctx.fillRect(0,0,w,h);
+  var bdt = clamp(S.t - bgLastT, 0, 0.1);
+  bgLastT = S.t;
   var t=S.t;
   ctx.fillStyle='rgba(140,225,235,1)';
   for(var i=0;i<bgMotes.length;i++){
     var m=bgMotes[i];
-    m.y += m.vy*0.016*60/60;
+    m.y += m.vy*bdt;
     if(m.y<-0.02) m.y=1.02;
     var a=(0.10+0.22*(0.5+0.5*Math.sin(t*1.3+m.ph)))*0.9;
     ctx.globalAlpha=a;
@@ -2495,7 +2644,7 @@ function drawTitleBackdrop(w,h){
     ctx.strokeStyle='rgba(94,240,224,'+a2.toFixed(3)+')';
     ctx.stroke();
   }
-  if(vignetteGrad){ ctx.fillStyle=vignetteGrad; ctx.fillRect(0,0,w,h); }
+  if(vignetteCv){ ctx.drawImage(vignetteCv, 0, 0, w, h); }
 }
 
 /* ============================================================
@@ -2520,6 +2669,7 @@ function frame(ts){
   if(S.state === 'start' || S.state === 'over' || S.state === 'win'){
     S.t += raw;
     accumulator = 0;
+    if(S.lock > 0) S.lock = Math.max(0, S.lock - raw);
     decayFxIdle(raw);
     render(1);
     return;
