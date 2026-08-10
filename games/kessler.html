@@ -1,0 +1,1921 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="KESSLER - an orbital slingshot delivery game where every launch permanently pollutes the sky.">
+<title>KESSLER</title>
+<style>
+  :root{
+    --void:#05060f;
+    --void2:#080a18;
+    --amber:#ffb43c;
+    --amber-dim:#7a5312;
+    --teal:#3fd8c4;
+    --rust:#d8683c;
+    --cyan:#66e6ff;
+    --green:#5dfaa0;
+    --ink:#e8ecff;
+    --dim:#7d85ad;
+    --warn:#ff5f6d;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:var(--void);color:var(--ink);
+    font-family:var(--mono);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:var(--void);}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+
+  /* ---------------- HUD ---------------- */
+  #hud{
+    position:absolute;left:0;right:0;top:0;
+    padding:max(9px,env(safe-area-inset-top)) max(11px,env(safe-area-inset-right)) 0 max(11px,env(safe-area-inset-left));
+    display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+    pointer-events:none;z-index:10;
+    font-size:12px;letter-spacing:.08em;
+    opacity:0;transition:opacity .35s ease;
+  }
+  #hud.on{opacity:1;}
+  .col{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .col.mid{align-items:center;flex:1 1 auto;}
+  .col.right{align-items:flex-end;padding-right:44px;}
+  .lbl{color:var(--dim);font-size:9px;letter-spacing:.2em;text-transform:uppercase;}
+  #score{font-size:21px;color:var(--cyan);font-variant-numeric:tabular-nums;line-height:1;
+    text-shadow:0 0 14px rgba(102,230,255,.35);transition:transform .1s ease-out;transform-origin:0 50%;}
+  #score.pop{transform:scale(1.22);}
+  #best{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums;}
+  #mult{font-size:19px;color:var(--amber);line-height:1;text-shadow:0 0 14px rgba(255,180,60,.4);
+    transition:transform .1s ease-out;}
+  #mult.pop{transform:scale(1.3);}
+  #delv{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums;}
+  #pips{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-start;max-width:128px;}
+  .pip{width:10px;height:10px;border-radius:2px;background:var(--cyan);
+    box-shadow:0 0 8px rgba(102,230,255,.55);transition:opacity .2s ease,transform .2s ease;}
+  .pip.off{background:rgba(255,255,255,.10);box-shadow:none;transform:scale(.7);}
+  #debN{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;}
+  #debBarOuter{width:84px;height:4px;background:rgba(255,255,255,.09);border-radius:2px;overflow:hidden;}
+  #debBar{height:100%;width:0%;background:var(--dim);transition:width .25s ease,background .4s ease;}
+
+  /* ------------- buttons ------------- */
+  .btn{
+    font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink);background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.18);border-radius:9px;
+    padding:13px 22px;cursor:pointer;pointer-events:auto;
+    transition:background .16s ease,border-color .16s ease,transform .09s ease;
+  }
+  .btn:hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.4);}
+  .btn:active{transform:scale(.96);}
+  .btn.primary{
+    background:linear-gradient(180deg,rgba(102,230,255,.22),rgba(102,230,255,.08));
+    border-color:rgba(102,230,255,.6);color:#dffaff;
+    box-shadow:0 0 26px rgba(102,230,255,.16);
+  }
+  .btn.primary:hover{background:linear-gradient(180deg,rgba(102,230,255,.34),rgba(102,230,255,.14));}
+  #mute{
+    position:absolute;z-index:12;
+    top:max(6px,env(safe-area-inset-top));right:max(6px,env(safe-area-inset-right));
+    width:46px;height:46px;padding:0;display:flex;align-items:center;justify-content:center;
+    background:transparent;border:0;cursor:pointer;pointer-events:auto;opacity:.62;
+    transition:opacity .18s ease;
+  }
+  #mute:hover{opacity:1;}
+  #mute svg{width:20px;height:20px;display:block;}
+  #mute .xline{opacity:0;transition:opacity .15s ease;}
+  #mute.off .wave{opacity:.18;}
+  #mute.off .xline{opacity:1;}
+  #abort{
+    position:absolute;z-index:12;
+    bottom:max(14px,env(safe-area-inset-bottom));right:max(12px,env(safe-area-inset-right));
+    display:none;font-size:10.5px;padding:12px 16px;
+    border-color:rgba(255,95,109,.45);color:#ffc4c9;
+  }
+  #abort.on{display:block;}
+
+  /* ------------- overlays ------------- */
+  .screen{
+    position:absolute;inset:0;z-index:20;
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:26px 20px;gap:0;
+    background:radial-gradient(ellipse at 50% 45%,rgba(5,6,15,.62) 0%,rgba(5,6,15,.9) 62%,rgba(5,6,15,.97) 100%);
+    pointer-events:auto;
+    animation:fade .35s ease both;
+  }
+  .screen.on{display:flex;}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  h1{
+    margin:0;font-size:clamp(44px,15vw,104px);line-height:.92;letter-spacing:.16em;
+    font-weight:400;color:#fff;text-indent:.16em;
+    text-shadow:0 0 40px rgba(255,180,60,.30),0 0 90px rgba(102,230,255,.16);
+  }
+  .tag{margin:14px 0 0;font-size:clamp(10px,3vw,12.5px);letter-spacing:.2em;color:var(--amber);text-transform:uppercase;}
+  .prem{margin:20px 0 0;font-size:clamp(11.5px,3.2vw,13.5px);line-height:1.75;color:var(--ink);opacity:.86;max-width:34em;}
+  .how{margin:22px 0 0;font-size:11px;line-height:2.05;color:var(--dim);letter-spacing:.06em;max-width:30em;}
+  .how b{color:var(--ink);font-weight:400;}
+  .k{display:inline-block;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:1px 6px;
+     color:var(--ink);font-size:10px;margin:0 1px;}
+  .acts{margin-top:30px;display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
+  .anykey{margin-top:16px;font-size:10px;letter-spacing:.24em;color:var(--dim);text-transform:uppercase;
+    animation:blink 2.4s ease-in-out infinite;}
+  @keyframes blink{0%,100%{opacity:.32}50%{opacity:.9}}
+
+  #over h2{margin:0;font-size:clamp(22px,7vw,36px);letter-spacing:.18em;font-weight:400;color:var(--warn);text-indent:.18em;}
+  .stats{margin:26px 0 0;display:grid;grid-template-columns:repeat(2,minmax(96px,1fr));gap:14px 30px;max-width:360px;}
+  .stat{display:flex;flex-direction:column;gap:5px;}
+  .stat .v{font-size:24px;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;}
+  .stat .v.hi{color:var(--cyan);}
+  .stat .v.jn{color:var(--rust);}
+  .quip{margin:26px 0 0;font-size:11.5px;line-height:1.8;color:var(--dim);max-width:30em;font-style:italic;}
+
+  #pause .pt{font-size:clamp(20px,6vw,30px);letter-spacing:.3em;color:var(--ink);text-indent:.3em;}
+  #pause .ps{margin-top:14px;font-size:10.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;}
+
+  #hint{
+    position:absolute;left:0;right:0;
+    bottom:calc(max(14px,env(safe-area-inset-bottom)) + 58px);
+    z-index:9;text-align:center;pointer-events:none;
+    font-size:10px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;
+    opacity:0;transition:opacity .5s ease;padding:0 16px;
+  }
+  #hint.on{opacity:.78;}
+  #hint.warn{color:var(--warn);opacity:.95;}
+  @media (max-width:420px){
+    .how{font-size:10.5px;line-height:1.95;}
+    #debBarOuter{width:64px;}
+    #pips{max-width:104px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="col">
+      <div class="lbl">Score</div>
+      <div id="score">0</div>
+      <div id="best">Best 0</div>
+      <div id="pips"></div>
+    </div>
+    <div class="col mid">
+      <div class="lbl">Streak</div>
+      <div id="mult">&times;1</div>
+      <div id="delv">0 delivered</div>
+    </div>
+    <div class="col right">
+      <div class="lbl">Debris</div>
+      <div id="debN">0</div>
+      <div id="debBarOuter"><div id="debBar"></div></div>
+    </div>
+  </div>
+
+  <button id="mute" aria-label="toggle sound">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4z" fill="currentColor" stroke="none"/>
+      <path class="wave" d="M15.4 9.2a4 4 0 0 1 0 5.6"/>
+      <path class="wave" d="M18 6.8a7.4 7.4 0 0 1 0 10.4"/>
+      <path class="xline" d="M15.6 9.6l5 4.8M20.6 9.6l-5 4.8"/>
+    </svg>
+  </button>
+
+  <button id="abort" class="btn">Abort</button>
+
+  <div id="hint"></div>
+
+  <div id="start" class="screen on">
+    <h1>KESSLER</h1>
+    <p class="tag">Orbital delivery &middot; permanent consequences</p>
+    <p class="prem">Sling probes across a gravity well to reach the delivery ring.
+      Every launch sheds a booster stage that stays in orbit <b>forever</b>.
+      Perfect play still fills the sky.</p>
+    <p class="how">
+      <b>Drag anywhere</b> and pull back to aim &mdash; release to launch.<br>
+      Or <span class="k">&larr;</span><span class="k">&rarr;</span> aim,
+      <span class="k">&uarr;</span><span class="k">&darr;</span> power,
+      <span class="k">space</span> launch.<br>
+      Dotted line is your predicted path. Planets and the sun eat anything they touch.
+    </p>
+    <div class="acts"><button id="go" class="btn primary">Launch Program</button></div>
+    <div class="anykey">or press any key</div>
+  </div>
+
+  <div id="over" class="screen">
+    <h2>PROGRAM LOST</h2>
+    <div class="stats">
+      <div class="stat"><div class="lbl">Score</div><div class="v hi" id="oScore">0</div></div>
+      <div class="stat"><div class="lbl">Session best</div><div class="v" id="oBest">0</div></div>
+      <div class="stat"><div class="lbl">Deliveries</div><div class="v" id="oDel">0</div></div>
+      <div class="stat"><div class="lbl">Debris in orbit</div><div class="v jn" id="oDeb">0</div></div>
+    </div>
+    <p class="quip" id="quip"></p>
+    <div class="acts"><button id="again" class="btn primary">Relaunch</button></div>
+    <div class="anykey">or press R</div>
+  </div>
+
+  <div id="pause" class="screen">
+    <div class="pt">PAUSED</div>
+    <div class="ps">click or press P to resume</div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   KESSLER
+   One file, no external requests. World units are independent of pixels;
+   the camera scales the world to fit whatever viewport we are given.
+   ========================================================================= */
+
+var TAU = Math.PI * 2;
+var FIT_R    = 560;          // world radius that must always be visible
+var BOUND_R  = FIT_R * 1.6;  // beyond this, things are "escaped"
+var HSTEP    = 1 / 120;      // fixed physics timestep
+var MAX_DT   = 0.25;         // clamp on frame dt (tab switches)
+var MAX_DEB  = 150;
+var MAX_PART = 420;
+var MAX_TEXT = 14;
+var MIN_SPLIT= 3.6;          // debris smaller than this never splits again
+var PROBE_R  = 5.0;
+var PROBE_TTL= 24;           // seconds before signal loss
+var V_MIN    = 70, V_MAX = 260;
+var DRAG_MAX = 240, DRAG_MIN = 16;   // world units
+var PREVIEW_T= 1.85;         // seconds of predicted flight
+var SEP_T    = 0.95;         // booster separation, seconds after launch
+var SEP_KICK = 8;            // separation impulse on the probe (mirrored by the preview)
+var SHAKE_DECAY = Math.pow(0.0016, 1/120);   // == HSTEP; shake half-life ~0.11s
+var STATION_R= 480, STATION_W = 0.060, STATION_PH = -1.35;
+
+/* ---------- bodies: sun + 2 planets, all analytic on rails ------------- */
+var BODIES = [
+  { R:0,   w:0,     ph:0,   r:46, mu:1.20e7, core:'#fff3d0', mid:'#ffb43c', deep:'#c2600f' },
+  { R:190, w:0.150, ph:1.10, r:19, mu:3.2e5, core:'#8ff2e4', mid:'#3fd8c4', deep:'#12564f' },
+  { R:335, w:0.088, ph:4.05, r:26, mu:4.6e5, core:'#ffb08a', mid:'#d8683c', deep:'#5a2412' }
+];
+for (var bi=0; bi<BODIES.length; bi++){
+  BODIES[bi].soft2 = (BODIES[bi].r * 1.45) * (BODIES[bi].r * 1.45);
+}
+var NB = BODIES.length;
+var BX = new Float64Array(NB), BY = new Float64Array(NB);
+var PBX = new Float64Array(NB), PBY = new Float64Array(NB); // preview scratch
+
+function bodiesAt(t, bx, by){
+  for (var i=0; i<NB; i++){
+    var b = BODIES[i];
+    if (b.R === 0){ bx[i] = 0; by[i] = 0; }
+    else { var a = b.ph + b.w * t; bx[i] = Math.cos(a) * b.R; by[i] = Math.sin(a) * b.R; }
+  }
+}
+
+/* gravity — results in module scalars, zero allocation */
+var AX = 0, AY = 0;
+function accel(x, y, bx, by){
+  var ax = 0, ay = 0;
+  for (var i=0; i<NB; i++){
+    var dx = bx[i] - x, dy = by[i] - y;
+    var d2 = dx*dx + dy*dy;
+    var s = BODIES[i].soft2;
+    if (d2 < s) d2 = s;                 // force clamp near bodies
+    var k = BODIES[i].mu / (d2 * Math.sqrt(d2));
+    ax += dx * k; ay += dy * k;
+  }
+  AX = ax; AY = ay;
+}
+
+/* swept point-vs-circle: fraction of the step at first contact, or -1 */
+function sweep(px, py, dx, dy, cx, cy, R){
+  var fx = px - cx, fy = py - cy;
+  var c = fx*fx + fy*fy - R*R;
+  if (c <= 0) return 0;                       // already overlapping
+  var a = dx*dx + dy*dy;
+  if (a < 1e-12) return -1;
+  var b = 2 * (fx*dx + fy*dy);
+  if (b >= 0) return -1;                      // moving away
+  var disc = b*b - 4*a*c;
+  if (disc < 0) return -1;
+  disc = Math.sqrt(disc);
+  var t = (-b - disc) / (2*a);
+  return (t >= 0 && t <= 1) ? t : -1;
+}
+
+function rnd(a, b){ return a + Math.random() * (b - a); }
+function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+
+/* seeded rng, used only for the starfield so it stays stable across resizes */
+function mulberry(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* =========================== canvas / camera ============================ */
+var wrap = document.getElementById('wrap');
+var cvs  = document.getElementById('game');
+var ctx  = cvs.getContext('2d');
+var cw = 1, ch = 1, dpr = 1, scale = 1, ox = 0, oy = 0;
+var starCvs = document.createElement('canvas');
+var starCtx = starCvs.getContext('2d');
+
+function resize(){
+  var w = Math.max(1, wrap.clientWidth  || window.innerWidth  || 1);
+  var h = Math.max(1, wrap.clientHeight || window.innerHeight || 1);
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  cw = w; ch = h;
+  cvs.width  = Math.max(1, Math.round(w * dpr));
+  cvs.height = Math.max(1, Math.round(h * dpr));
+  cvs.style.width  = w + 'px';
+  cvs.style.height = h + 'px';
+  // keep the play area clear of the HUD band at the top and the hint line at
+  // the bottom, so nothing important ever sits under UI text
+  var padTop = Math.min(84, h * 0.13);
+  var padBot = Math.min(40, h * 0.07);
+  var availH = Math.max(120, h - padTop - padBot);
+  scale = Math.min(w, availH) / (2 * FIT_R);
+  ox = w * 0.5;
+  oy = padTop + availH * 0.5;
+  buildStars();
+}
+function wx2s(x){ return ox + x * scale; }
+function wy2s(y){ return oy + y * scale; }
+function sx2w(x){ return (x - ox) / scale; }
+function sy2w(y){ return (y - oy) / scale; }
+
+function buildStars(){
+  starCvs.width  = cvs.width;
+  starCtx.setTransform(1,0,0,1,0,0);
+  starCvs.height = cvs.height;
+  var W = starCvs.width, H = starCvs.height;
+  var g = starCtx;
+  g.clearRect(0,0,W,H);
+  g.fillStyle = '#05060f';
+  g.fillRect(0,0,W,H);
+
+  var R = mulberry(20260810);
+  // nebulae
+  var neb = [['rgba(48,72,150,0.20)',0.26,0.30,0.62],
+             ['rgba(20,110,110,0.13)',0.76,0.68,0.55],
+             ['rgba(120,50,30,0.10)',0.52,0.86,0.48]];
+  for (var n=0; n<neb.length; n++){
+    var nx = neb[n][1]*W, ny = neb[n][2]*H, nr = neb[n][3]*Math.max(W,H);
+    var rg = g.createRadialGradient(nx,ny,0,nx,ny,nr);
+    rg.addColorStop(0, neb[n][0]);
+    rg.addColorStop(1, 'rgba(5,6,15,0)');
+    g.fillStyle = rg;
+    g.fillRect(0,0,W,H);
+  }
+  // stars
+  var count = Math.round(clamp((W*H) / (dpr*dpr) / 4200, 90, 420));
+  for (var i=0; i<count; i++){
+    var x = R()*W, y = R()*H;
+    var q = R();
+    var rad = (q > 0.972 ? 1.9 : q > 0.85 ? 1.25 : 0.8) * dpr;
+    var al = 0.16 + R()*0.72;
+    var tint = R();
+    g.fillStyle = tint > 0.9 ? 'rgba(200,225,255,' + al.toFixed(3) + ')'
+               : tint > 0.8 ? 'rgba(255,225,190,' + al.toFixed(3) + ')'
+               : 'rgba(232,238,255,' + al.toFixed(3) + ')';
+    g.beginPath(); g.arc(x, y, rad, 0, TAU); g.fill();
+  }
+  // a few brighter cross-flares
+  for (var j=0; j<7; j++){
+    var fx = R()*W, fy = R()*H, fl = (7 + R()*9) * dpr;
+    g.strokeStyle = 'rgba(220,235,255,0.30)';
+    g.lineWidth = 1 * dpr;
+    g.beginPath();
+    g.moveTo(fx-fl,fy); g.lineTo(fx+fl,fy);
+    g.moveTo(fx,fy-fl); g.lineTo(fx,fy+fl);
+    g.stroke();
+  }
+}
+
+/* pre-rendered radial glow sprites (no shadowBlur anywhere) */
+function makeGlow(r, g_, b, inner){
+  var s = 128, c = document.createElement('canvas');
+  c.width = s; c.height = s;
+  var x = c.getContext('2d');
+  var gr = x.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  gr.addColorStop(0,    'rgba(' + r + ',' + g_ + ',' + b + ',' + inner + ')');
+  gr.addColorStop(0.16, 'rgba(' + r + ',' + g_ + ',' + b + ',' + (inner*0.52).toFixed(3) + ')');
+  gr.addColorStop(0.42, 'rgba(' + r + ',' + g_ + ',' + b + ',' + (inner*0.16).toFixed(3) + ')');
+  gr.addColorStop(1,    'rgba(' + r + ',' + g_ + ',' + b + ',0)');
+  x.fillStyle = gr; x.fillRect(0,0,s,s);
+  return c;
+}
+var GLOW_SUN   = makeGlow(255,170,60,0.95);
+var GLOW_TEAL  = makeGlow(63,216,196,0.85);
+var GLOW_RUST  = makeGlow(216,104,60,0.85);
+var GLOW_CYAN  = makeGlow(102,230,255,0.95);
+var GLOW_GREEN = makeGlow(93,250,160,0.9);
+var GLOW_WHITE = makeGlow(255,240,220,0.95);
+var BODY_GLOW  = [GLOW_SUN, GLOW_TEAL, GLOW_RUST];
+
+/* ============================== audio =================================== */
+var actx = null, master = null, droneGain = null, noiseBuf = null, muted = false, audioReady = false;
+
+function initAudio(){
+  if (actx) { if (actx.state === 'suspended' && actx.resume) actx.resume(); return; }
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  try { actx = new AC(); } catch(e){ actx = null; return; }
+  try {
+    master = actx.createGain();
+    master.gain.value = muted ? 0 : 0.5;
+    master.connect(actx.destination);
+
+    var len = Math.floor(actx.sampleRate * 1.4);
+    noiseBuf = actx.createBuffer(1, len, actx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for (var i=0; i<len; i++) d[i] = Math.random()*2 - 1;
+
+    startDrone();
+    audioReady = true;
+  } catch(e){ audioReady = false; }
+  if (actx.state === 'suspended' && actx.resume) actx.resume();
+}
+
+function startDrone(){
+  droneGain = actx.createGain();
+  droneGain.gain.value = 0.0;
+  var lp = actx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 260; lp.Q.value = 0.7;
+  droneGain.connect(lp); lp.connect(master);
+
+  var freqs = [55, 82.5, 110.3];
+  for (var i=0; i<freqs.length; i++){
+    var o = actx.createOscillator();
+    o.type = i === 2 ? 'triangle' : 'sawtooth';
+    o.frequency.value = freqs[i];
+    o.detune.value = (i - 1) * 7;
+    var g = actx.createGain();
+    g.gain.value = i === 2 ? 0.05 : 0.11;
+    o.connect(g); g.connect(droneGain);
+    o.start();
+  }
+  // slow breathing
+  var lfo = actx.createOscillator();
+  lfo.frequency.value = 0.055;
+  var lg = actx.createGain(); lg.gain.value = 90;
+  lfo.connect(lg); lg.connect(lp.frequency);
+  lfo.start();
+
+  // faint hiss bed
+  var ns = actx.createBufferSource();
+  ns.buffer = noiseBuf; ns.loop = true;
+  var bp = actx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 640; bp.Q.value = 0.6;
+  var ng = actx.createGain(); ng.gain.value = 0.018;
+  ns.connect(bp); bp.connect(ng); ng.connect(droneGain);
+  ns.start();
+
+  droneGain.gain.setTargetAtTime(0.30, actx.currentTime, 2.4);
+}
+function droneLevel(v){
+  if (!audioReady || !droneGain) return;
+  try { droneGain.gain.setTargetAtTime(v, actx.currentTime, 0.25); } catch(e){}
+}
+function autoStop(node, when){
+  try {
+    node.stop(when);
+    node.onended = function(){ try{ node.disconnect(); }catch(e){} };
+  } catch(e){}
+}
+function noiseHit(dur, type, f0, f1, peak, q){
+  if (!audioReady || muted) return;
+  var t = actx.currentTime;
+  var s = actx.createBufferSource(); s.buffer = noiseBuf;
+  var f = actx.createBiquadFilter();
+  f.type = type; f.frequency.setValueAtTime(f0, t);
+  f.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
+  f.Q.value = q || 1;
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + Math.min(0.03, dur*0.25));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(master);
+  s.start(t);
+  autoStop(s, t + dur + 0.02);
+  s.onended = function(){ try{ s.disconnect(); f.disconnect(); g.disconnect(); }catch(e){} };
+}
+function tone(freq, freq2, dur, peak, type, delay){
+  if (!audioReady || muted) return;
+  var t = actx.currentTime + (delay || 0);
+  var o = actx.createOscillator();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  if (freq2 && freq2 !== freq) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq2), t + dur);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master);
+  o.start(t);
+  autoStop(o, t + dur + 0.03);
+  o.onended = function(){ try{ o.disconnect(); g.disconnect(); }catch(e){} };
+}
+var sfx = {
+  launch: function(p){
+    noiseHit(0.55, 'bandpass', 260 + p*260, 1900 + p*900, 0.34, 1.4);
+    tone(120 + p*70, 42, 0.42, 0.20, 'sawtooth', 0);
+  },
+  sep: function(){ tone(760, 420, 0.075, 0.16, 'square', 0); noiseHit(0.09,'highpass',1400,700,0.1,0.8); },
+  chime: function(mult){
+    var base = 523.25 * (mult >= 4 ? 1.5 : mult >= 2 ? 1.25 : 1);
+    var seq = [1, 1.25, 1.5, 2];
+    for (var i=0; i<seq.length; i++) tone(base*seq[i], base*seq[i], 0.42 - i*0.05, 0.19, 'sine', i*0.062);
+    tone(base*0.5, base*0.5, 0.5, 0.09, 'triangle', 0);
+  },
+  shatter: function(v){
+    noiseHit(0.30, 'highpass', 2600, 380, 0.30 * v, 0.7);
+    tone(220, 60, 0.18, 0.14 * v, 'square', 0);
+  },
+  burn: function(){
+    tone(140, 28, 0.5, 0.34, 'sine', 0);
+    noiseHit(0.42, 'lowpass', 900, 90, 0.26, 0.9);
+  },
+  fizz: function(){ noiseHit(0.5,'bandpass',1200,180,0.12,1.2); tone(320,110,0.35,0.08,'triangle',0); },
+  over: function(){
+    tone(196, 98, 1.5, 0.22, 'sawtooth', 0);
+    tone(147, 73.5, 1.7, 0.16, 'triangle', 0.08);
+    noiseHit(1.2,'lowpass',700,60,0.16,0.8);
+  },
+  ui: function(){ tone(660, 880, 0.08, 0.10, 'triangle', 0); }
+};
+function setMuted(m){
+  muted = m;
+  muteBtn.classList.toggle('off', muted);
+  if (audioReady && master){
+    try { master.gain.setTargetAtTime(muted ? 0 : 0.5, actx.currentTime, 0.05); } catch(e){}
+  }
+}
+
+/* ============================ game state ================================ */
+var S = null;             // whole mutable world, rebuilt on restart
+var sessionBest = 0;
+var mode = 'start';       // 'start' | 'play' | 'over'
+var userPaused = false, autoPaused = false;
+
+function newState(){
+  return {
+    T: 0,                 // sim clock (drives every orbit + preview)
+    score: 0, deliveries: 0, probes: 6, streak: 0, mult: 1,
+    lost: 0, burned: 0, escaped: 0,
+    probe: null,
+    D: [],                // debris
+    target: null,
+    aimDir: 0, aimPow: 0.55, kbAim: false,
+    drag: null,           // {id, sx,sy, cx,cy} in WORLD coords
+    shake: 0, shx: 0, shy: 0,
+    ddPhase: 0,
+    lastCrunch: -9, lastBoom: -9,
+    flash: 0,
+    hintMode: 0,
+    over: false
+  };
+}
+
+/* particles: preallocated ring buffer, no allocation in the hot path */
+var P = new Array(MAX_PART);
+for (var pi=0; pi<MAX_PART; pi++){
+  P[pi] = { on:false, x:0, y:0, vx:0, vy:0, life:0, max:1, r:1, cr:255, cg:255, cb:255, damp:1, grav:false };
+}
+var pHead = 0;
+function spawnP(x, y, vx, vy, life, r, cr, cg, cb, drag, grav){
+  var p = P[pHead];
+  pHead = (pHead + 1) % MAX_PART;
+  p.on = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+  p.life = life; p.max = life; p.r = r;
+  p.cr = cr; p.cg = cg; p.cb = cb;
+  p.damp = Math.pow(drag === undefined ? 0.85 : drag, HSTEP * 60);
+  p.grav = !!grav;
+  return p;
+}
+function clearParticles(){ for (var i=0; i<MAX_PART; i++) P[i].on = false; }
+
+/* floating score texts */
+var TXT = new Array(MAX_TEXT);
+for (var ti=0; ti<MAX_TEXT; ti++) TXT[ti] = { on:false, x:0, y:0, life:0, max:1, s:'', col:'#fff', size:16 };
+var tHead = 0;
+function spawnT(x, y, s, col, size){
+  var t = TXT[tHead]; tHead = (tHead + 1) % MAX_TEXT;
+  t.on = true; t.x = x; t.y = y; t.life = 1.35; t.max = 1.35; t.s = s; t.col = col; t.size = size || 17;
+}
+function clearTexts(){ for (var i=0; i<MAX_TEXT; i++) TXT[i].on = false; }
+
+/* ---------------------------- burst helpers ---------------------------- */
+function burst(x, y, n, spd, life, r, cr, cg, cb, drag){
+  for (var i=0; i<n; i++){
+    var a = Math.random() * TAU, v = spd * (0.35 + Math.random()*0.9);
+    spawnP(x, y, Math.cos(a)*v, Math.sin(a)*v, life*(0.55+Math.random()*0.7),
+           r*(0.55+Math.random()*0.8), cr, cg, cb, drag);
+  }
+}
+function shakeAdd(v){ S.shake = Math.min(20, S.shake + v); }
+/* cascades can resolve many collisions in one step - gate the audio so it
+   crunches once instead of turning into a wall of noise */
+function crunch(v){
+  if (S.T - S.lastCrunch < 0.055) return;
+  S.lastCrunch = S.T;
+  sfx.shatter(v);
+}
+function boom(){
+  if (S.T - S.lastBoom < 0.09) return;
+  S.lastBoom = S.T;
+  sfx.burn();
+}
+
+/* ============================ world objects ============================= */
+function stationPos(t, out){
+  var a = STATION_PH + STATION_W * t;
+  out.x = Math.cos(a) * STATION_R;
+  out.y = Math.sin(a) * STATION_R;
+  out.a = a;
+}
+var stn = { x:0, y:0, a:0 };
+var tgt = { x:0, y:0 };
+
+function targetPos(tg, t, out){
+  var a = tg.ph + tg.w * t;
+  out.x = Math.cos(a) * tg.R;
+  out.y = Math.sin(a) * tg.R;
+}
+
+function spawnTarget(){
+  stationPos(S.T, stn);
+  var best = null, bestScore = -1;
+  for (var tries=0; tries<64; tries++){
+    var R = rnd(115, 470);
+    // stay off the two planet orbit lanes
+    if (Math.abs(R - BODIES[1].R) < 46) continue;
+    if (Math.abs(R - BODIES[2].R) < 54) continue;
+    var ph = rnd(0, TAU);
+    var w  = (Math.random() < 0.5 ? -1 : 1) * rnd(0.020, 0.055);
+    var x = Math.cos(ph) * R, y = Math.sin(ph) * R;
+    // distance from launch station
+    var dsx = x - stn.x, dsy = y - stn.y;
+    var dst = Math.sqrt(dsx*dsx + dsy*dsy);
+    if (dst < 190) continue;
+    // distance from bodies right now
+    var ok = true, closest = 1e9;
+    bodiesAt(S.T, BX, BY);
+    for (var i=0; i<NB; i++){
+      var dx = x - BX[i], dy = y - BY[i];
+      var d = Math.sqrt(dx*dx + dy*dy) - BODIES[i].r;
+      if (d < 62) { ok = false; break; }
+      if (d < closest) closest = d;
+    }
+    if (!ok) continue;
+    var sc = Math.min(closest, 220) + Math.min(dst, 420) * 0.35;
+    if (sc > bestScore){ bestScore = sc; best = { R:R, ph:ph, w:w }; }
+    if (tries > 12 && best) break;
+  }
+  if (!best) best = { R: 260, ph: rnd(0,TAU), w: 0.03 };
+  best.r = 27;
+  best.born = S.T;
+  best.pulse = 0;
+  S.target = best;
+}
+
+/* ------------------------------- probe --------------------------------- */
+var TRAIL_N = 54;
+function makeProbe(x, y, vx, vy){
+  return {
+    x:x, y:y, vx:vx, vy:vy,
+    age: 0, sepDone: false,
+    tx: new Float32Array(TRAIL_N), ty: new Float32Array(TRAIL_N),
+    tn: 0, thead: 0, tacc: 0
+  };
+}
+function pushTrail(p){
+  p.tx[p.thead] = p.x; p.ty[p.thead] = p.y;
+  p.thead = (p.thead + 1) % TRAIL_N;
+  if (p.tn < TRAIL_N) p.tn++;
+}
+
+/* ------------------------------ debris --------------------------------- */
+function makeDebris(x, y, vx, vy, r, hot){
+  var pts = new Float32Array(10);
+  var np = 5;
+  for (var i=0; i<np; i++){
+    var a = (i / np) * TAU + rnd(-0.22, 0.22);
+    var rr = rnd(0.62, 1.25);
+    pts[i*2]   = Math.cos(a) * rr;
+    pts[i*2+1] = Math.sin(a) * rr;
+  }
+  return {
+    x:x, y:y, vx:vx, vy:vy, r:r,
+    ang: rnd(0, TAU), spin: rnd(-3.4, 3.4),
+    pts: pts, np: np,
+    hot: hot ? 1 : 0,
+    age: 0,
+    dead: false
+  };
+}
+function addDebris(d){
+  if (S.D.length >= MAX_DEB) return false;
+  S.D.push(d);
+  return true;
+}
+function liveCount(){
+  var n = 0;
+  for (var i=0; i<S.D.length; i++) if (!S.D[i].dead) n++;
+  return n;
+}
+
+/* shatter: split into fragments unless too small or at the cap */
+function shatterDebris(d, energy){
+  d.dead = true;
+  var cr = d.hot ? 235 : 190, cg = d.hot ? 150 : 198, cb = d.hot ? 90 : 220;
+  burst(d.x, d.y, 7, 90, 0.5, d.r * 0.5, cr, cg, cb, 0.9);
+  var live = liveCount();
+  if (d.r >= MIN_SPLIT && live < MAX_DEB - 2){
+    var n = d.r > 5.2 ? 4 : 3;
+    var base = Math.atan2(d.vy, d.vx);
+    for (var i=0; i<n; i++){
+      if (liveCount() >= MAX_DEB) break;
+      var a = base + (i / n) * TAU + rnd(-0.4, 0.4);
+      var sp = rnd(16, 54) * (energy || 1);
+      addDebris(makeDebris(
+        d.x + Math.cos(a) * d.r * 0.9,
+        d.y + Math.sin(a) * d.r * 0.9,
+        d.vx + Math.cos(a) * sp,
+        d.vy + Math.sin(a) * sp,
+        Math.max(2.0, d.r * 0.60),
+        d.hot
+      ));
+    }
+  }
+}
+
+function burnUp(x, y, bodyIdx, big){
+  var b = BODIES[bodyIdx];
+  var ang = Math.atan2(y - BY[bodyIdx], x - BX[bodyIdx]);
+  var cr = bodyIdx === 0 ? 255 : 255, cg = bodyIdx === 0 ? 200 : 150, cb = bodyIdx === 0 ? 90 : 80;
+  var n = big ? 22 : 10;
+  for (var i=0; i<n; i++){
+    var a = ang + rnd(-1.0, 1.0);
+    var v = rnd(20, 130);
+    spawnP(x, y, Math.cos(a)*v, Math.sin(a)*v, rnd(0.28, 0.8), rnd(1.6, 4.2), cr, cg, cb, 0.86);
+  }
+  shakeAdd(big ? 9 : 3.5);
+  if (big) { boom(); S.flash = Math.min(1, S.flash + 0.5); }
+  else if (Math.random() < 0.55) crunch(0.45);
+}
+
+/* the twist: every launch permanently sheds hardware into the system */
+function shedStage(p){
+  if (p.sepDone) return;
+  p.sepDone = true;
+  var sp = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+  var ux = sp > 0.001 ? p.vx / sp : 1, uy = sp > 0.001 ? p.vy / sp : 0;
+
+  // main booster: falls behind and slightly off-axis
+  var jit = rnd(-0.32, 0.32);
+  var jx = Math.cos(jit) * ux - Math.sin(jit) * uy;
+  var jy = Math.sin(jit) * ux + Math.cos(jit) * uy;
+  addDebris(makeDebris(p.x - ux * 12, p.y - uy * 12,
+                       p.vx * 0.84 - jx * 18, p.vy * 0.84 - jy * 18, 5.6, true));
+
+  // three fairing panels, thrown wide
+  for (var f=0; f<3; f++){
+    var off = (f - 1) * 1.15;                       // -1.15, 0, +1.15 rad off the axis
+    var lx = Math.cos(off) * -ux - Math.sin(off) * -uy;
+    var ly = Math.sin(off) * -ux + Math.cos(off) * -uy;
+    var kick = rnd(24, 46);
+    addDebris(makeDebris(p.x + lx * 8, p.y + ly * 8,
+                         p.vx * 0.88 + lx * kick,
+                         p.vy * 0.88 + ly * kick,
+                         rnd(2.8, 3.6), false));
+  }
+
+  // separation impulse on the probe itself (the preview mirrors this exactly)
+  p.vx += ux * SEP_KICK; p.vy += uy * SEP_KICK;
+
+  var back = Math.atan2(-uy, -ux);
+  for (var i=0; i<12; i++){
+    var a = back + rnd(-0.85, 0.85), v = rnd(20, 100);
+    spawnP(p.x, p.y, Math.cos(a)*v, Math.sin(a)*v, rnd(0.18, 0.5), rnd(1.2, 2.6), 220, 220, 235, 0.88);
+  }
+  sfx.sep();
+  shakeAdd(1.5);
+}
+
+/* =========================== probe lifecycle ============================ */
+function loseProbe(reason, x, y){
+  S.probe = null;
+  S.probes--;
+  S.streak = 0;
+  S.mult = 1;
+  S.lost++;
+  if (reason === 'burn') S.burned++;
+  if (reason === 'escape') S.escaped++;
+  updateHUD(true);
+  if (S.probes <= 0){
+    gameOver();
+  } else {
+    setHint(reason === 'escape' ? 'PROBE ESCAPED THE SYSTEM'
+          : reason === 'burn'   ? 'PROBE BURNED UP'
+          : reason === 'signal' ? 'SIGNAL LOST'
+          : reason === 'abort'  ? 'PROBE SCUTTLED'
+          : 'PROBE SHATTERED', true, 2.1);
+  }
+}
+
+function launch(){
+  if (mode !== 'play' || S.probe || S.probes <= 0) return;
+  stationPos(S.T, stn);
+  var v = V_MIN + (V_MAX - V_MIN) * clamp(S.aimPow, 0, 1);
+  var dx = Math.cos(S.aimDir), dy = Math.sin(S.aimDir);
+  var px = stn.x + dx * 15, py = stn.y + dy * 15;
+  S.probe = makeProbe(px, py, dx * v, dy * v);
+  pushTrail(S.probe);
+  // launch flare
+  for (var i=0; i<16; i++){
+    var a = S.aimDir + Math.PI + rnd(-0.6, 0.6);
+    var s = rnd(30, 150);
+    spawnP(px, py, Math.cos(a)*s, Math.sin(a)*s, rnd(0.2, 0.6), rnd(1.4, 3.4), 255, 236, 190, 0.86);
+  }
+  shakeAdd(3.4);
+  initAudio();
+  sfx.launch(clamp(S.aimPow, 0, 1));
+  if (S.hintMode === 0){ S.hintMode = 1; setHint('EVERY LAUNCH SHEDS A BOOSTER. IT NEVER COMES DOWN.', false, 4.2); }
+}
+
+function deliver(){
+  var p = S.probe;
+  var t = S.target;
+  targetPos(t, S.T, tgt);
+  // a delivery faster than separation still leaves the stage behind
+  if (p && !p.sepDone) shedStage(p);
+  S.probe = null;
+  S.deliveries++;
+  S.streak++;
+  S.mult = Math.min(5, 1 + Math.floor(S.streak / 2));
+  var elapsed = S.T - t.born;
+  var speedBonus = Math.max(0, Math.round(14 - elapsed));
+  var pts = 10 * S.mult + speedBonus;
+  S.score += pts;
+  if (S.score > sessionBest) sessionBest = S.score;
+  S.probes = Math.min(9, S.probes + 3);
+
+  // confetti
+  for (var i=0; i<34; i++){
+    var a = Math.random()*TAU, v = rnd(40, 200);
+    var c = i % 3;
+    spawnP(tgt.x, tgt.y, Math.cos(a)*v, Math.sin(a)*v, rnd(0.4, 1.1), rnd(1.5, 3.6),
+      c === 0 ? 93 : c === 1 ? 102 : 255, c === 0 ? 250 : c === 1 ? 230 : 255, c === 0 ? 160 : c === 1 ? 255 : 235, 0.88);
+  }
+  spawnT(tgt.x, tgt.y - 34, '+' + pts, '#5dfaa0', 20);
+  if (S.mult > 1) spawnT(tgt.x, tgt.y - 8, '×' + S.mult + ' STREAK', '#ffb43c', 12);
+  shakeAdd(4.5);
+  sfx.chime(S.mult);
+  spawnTarget();
+  updateHUD(true);
+  popEl(scoreEl); if (S.mult > 1) popEl(multEl);
+  if (S.deliveries === 3) setHint('THE SKY IS FILLING UP', false, 3.2);
+}
+
+function gameOver(){
+  if (S.over) return;
+  S.over = true;
+  mode = 'over';
+  S.drag = null;
+  var debN = liveCount();
+  oScore.textContent = String(S.score);
+  oBest.textContent  = String(sessionBest);
+  oDel.textContent   = String(S.deliveries);
+  oDeb.textContent   = String(debN);
+  quipEl.textContent = QUIPS[Math.floor(Math.random() * QUIPS.length)];
+  showScreen(overScreen);
+  hudEl.classList.remove('on');
+  abortBtn.classList.remove('on');
+  setHint('', false, 0);
+  sfx.over();
+  droneLevel(0.14);
+}
+
+var QUIPS = [
+  'The debris you left is now permanent infrastructure.',
+  'Every delivery was clean. The sky still closed.',
+  'Kessler predicted this. He just did not predict you would be this efficient.',
+  'Orbital junk does not decay on any timescale you care about.',
+  'You did not lose to the sun. You lost to your own logistics.',
+  'Nothing launches from this system again.',
+  'Congratulations: the orbit is now a solid.'
+];
+
+/* ============================== simulation ============================== */
+function stepSim(){
+  var t = S.T;
+  bodiesAt(t, BX, BY);
+  stationPos(t, stn);
+  if (S.target) targetPos(S.target, t, tgt);
+
+  /* ---- probe ---- */
+  var p = S.probe;
+  if (p){
+    p.age += HSTEP;
+
+    // booster separation ~1s after launch
+    if (!p.sepDone && p.age >= SEP_T) shedStage(p);
+
+    accel(p.x, p.y, BX, BY);
+    p.vx += AX * HSTEP; p.vy += AY * HSTEP;
+    var dx = p.vx * HSTEP, dy = p.vy * HSTEP;
+
+    // swept tests, earliest event wins
+    var bestT = 2, evt = 0, evtI = -1;
+    for (var i=0; i<NB; i++){
+      var s = sweep(p.x, p.y, dx, dy, BX[i], BY[i], BODIES[i].r + PROBE_R * 0.4);
+      if (s >= 0 && s < bestT){ bestT = s; evt = 1; evtI = i; }
+    }
+    if (S.target){
+      var st = sweep(p.x, p.y, dx, dy, tgt.x, tgt.y, S.target.r + PROBE_R);
+      if (st >= 0 && st < bestT){ bestT = st; evt = 2; evtI = -1; }
+    }
+    for (var di=0; di<S.D.length; di++){
+      var d = S.D[di];
+      if (d.dead || d.age < 0.24) continue;
+      var sd = sweep(p.x, p.y, dx, dy, d.x, d.y, d.r + PROBE_R);
+      if (sd >= 0 && sd < bestT){ bestT = sd; evt = 3; evtI = di; }
+    }
+
+    if (evt === 0){
+      p.x += dx; p.y += dy;
+    } else {
+      p.x += dx * bestT; p.y += dy * bestT;
+    }
+
+    p.tacc += HSTEP;
+    if (p.tacc >= 0.016){ p.tacc = 0; pushTrail(p); }
+
+    if (evt === 1){
+      burnUp(p.x, p.y, evtI, true);
+      loseProbe('burn', p.x, p.y);
+    } else if (evt === 2){
+      deliver();
+    } else if (evt === 3){
+      var d2 = S.D[evtI];
+      crunch(1);
+      shakeAdd(8);
+      // probe becomes fragments too
+      var frag = makeDebris(p.x, p.y, p.vx, p.vy, 4.8, false);
+      shatterDebris(frag, 1.2);
+      shatterDebris(d2, 1.2);
+      burst(p.x, p.y, 14, 130, 0.6, 2.6, 140, 235, 255, 0.9);
+      loseProbe('shatter', p.x, p.y);
+    } else {
+      var rr = p.x*p.x + p.y*p.y;
+      if (rr > BOUND_R*BOUND_R){
+        burst(p.x, p.y, 8, 40, 0.6, 2, 140, 200, 255, 0.9);
+        sfx.fizz();
+        loseProbe('escape', p.x, p.y);
+      } else if (p.age > PROBE_TTL){
+        burst(p.x, p.y, 12, 50, 0.7, 2.2, 160, 190, 230, 0.9);
+        sfx.fizz();
+        loseProbe('signal', p.x, p.y);
+      }
+    }
+  }
+
+  /* ---- debris ---- */
+  var D = S.D;
+  var n = D.length;
+  for (var k=0; k<n; k++){
+    var q = D[k];
+    if (q.dead) continue;
+    q.age += HSTEP;
+    accel(q.x, q.y, BX, BY);
+    q.vx += AX * HSTEP; q.vy += AY * HSTEP;
+    var qdx = q.vx * HSTEP, qdy = q.vy * HSTEP;
+    var hit = -1, ht = 2;
+    for (var bj=0; bj<NB; bj++){
+      var sb = sweep(q.x, q.y, qdx, qdy, BX[bj], BY[bj], BODIES[bj].r + q.r * 0.5);
+      if (sb >= 0 && sb < ht){ ht = sb; hit = bj; }
+    }
+    if (hit >= 0){
+      q.x += qdx * ht; q.y += qdy * ht;
+      q.dead = true;
+      burnUp(q.x, q.y, hit, false);
+    } else {
+      q.x += qdx; q.y += qdy;
+      q.ang += q.spin * HSTEP;
+      if (q.x*q.x + q.y*q.y > BOUND_R*BOUND_R){
+        q.dead = true;
+        S.escaped++;
+      }
+    }
+  }
+
+  /* ---- debris vs debris, every other step ---- */
+  S.ddPhase ^= 1;
+  if (S.ddPhase === 0){
+    for (var a1=0; a1<n; a1++){
+      var A = D[a1];
+      if (A.dead || A.age < 0.35) continue;
+      for (var b1=a1+1; b1<n; b1++){
+        var B = D[b1];
+        if (B.dead || B.age < 0.35) continue;
+        var ddx = B.x - A.x, ddy = B.y - A.y;
+        var rr2 = A.r + B.r;
+        var dd2 = ddx*ddx + ddy*ddy;
+        if (dd2 < rr2*rr2){
+          // only count as a collision if actually converging
+          var rvx = B.vx - A.vx, rvy = B.vy - A.vy;
+          if (rvx*ddx + rvy*ddy < 0){
+            crunch(0.7);
+            shakeAdd(3);
+            shatterDebris(A, 1);
+            shatterDebris(B, 1);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // compact debris in place
+  var w = 0;
+  for (var c=0; c<D.length; c++){
+    if (!D[c].dead){ D[w++] = D[c]; }
+  }
+  D.length = w;
+
+  /* ---- particles ---- */
+  for (var pj=0; pj<MAX_PART; pj++){
+    var pp = P[pj];
+    if (!pp.on) continue;
+    pp.life -= HSTEP;
+    if (pp.life <= 0){ pp.on = false; continue; }
+    if (pp.grav){
+      accel(pp.x, pp.y, BX, BY);
+      pp.vx += AX * HSTEP; pp.vy += AY * HSTEP;
+    }
+    pp.vx *= pp.damp; pp.vy *= pp.damp;
+    pp.x += pp.vx * HSTEP; pp.y += pp.vy * HSTEP;
+  }
+  for (var tj=0; tj<MAX_TEXT; tj++){
+    var tt = TXT[tj];
+    if (!tt.on) continue;
+    tt.life -= HSTEP;
+    if (tt.life <= 0){ tt.on = false; continue; }
+    tt.y -= 26 * HSTEP;
+  }
+
+  /* ---- misc decay ---- */
+  if (S.shake > 0){
+    S.shake *= SHAKE_DECAY;
+    if (S.shake < 0.05) S.shake = 0;
+  }
+  if (S.flash > 0){
+    S.flash -= HSTEP * 2.4;
+    if (S.flash < 0) S.flash = 0;
+  }
+  if (S.target) S.target.pulse += HSTEP;
+  if (hintTime > 0){
+    hintTime -= HSTEP;
+    if (hintTime <= 0) hideHint();
+  }
+
+  S.T += HSTEP;
+}
+
+/* ============================== preview ================================= */
+var PV_MAX = 64;
+var pvX = new Float32Array(PV_MAX), pvY = new Float32Array(PV_MAX);
+var pvN = 0, pvEnd = 0;  // 0 none, 1 body, 2 target
+var pvEX = 0, pvEY = 0;
+
+function computePreview(){
+  stationPos(S.T, stn);
+  var v = V_MIN + (V_MAX - V_MIN) * clamp(S.aimPow, 0, 1);
+  var x = stn.x + Math.cos(S.aimDir) * 15;
+  var y = stn.y + Math.sin(S.aimDir) * 15;
+  var vx = Math.cos(S.aimDir) * v, vy = Math.sin(S.aimDir) * v;
+  var t = S.T;
+  var steps = Math.round(PREVIEW_T / HSTEP);
+  var every = Math.max(1, Math.ceil(steps / (PV_MAX - 1)));
+  pvN = 0; pvEnd = 0;
+  pvX[pvN] = x; pvY[pvN] = y; pvN++;
+
+  var age = 0, sep = false;
+  for (var i=0; i<steps; i++){
+    // mirror stepSim exactly: age, then stage separation impulse, then gravity
+    age += HSTEP;
+    if (!sep && age >= SEP_T){
+      sep = true;
+      var sm = Math.sqrt(vx*vx + vy*vy);
+      if (sm > 0.001){ vx += (vx / sm) * SEP_KICK; vy += (vy / sm) * SEP_KICK; }
+    }
+    bodiesAt(t, PBX, PBY);
+    accel(x, y, PBX, PBY);
+    vx += AX * HSTEP; vy += AY * HSTEP;
+    var dx = vx * HSTEP, dy = vy * HSTEP;
+
+    var bestT = 2, evt = 0, evtI = -1;
+    for (var b=0; b<NB; b++){
+      var s = sweep(x, y, dx, dy, PBX[b], PBY[b], BODIES[b].r + PROBE_R*0.4);
+      if (s >= 0 && s < bestT){ bestT = s; evt = 1; evtI = b; }
+    }
+    if (S.target){
+      var ta = S.target.ph + S.target.w * t;
+      var txp = Math.cos(ta) * S.target.R, typ = Math.sin(ta) * S.target.R;
+      var st = sweep(x, y, dx, dy, txp, typ, S.target.r + PROBE_R);
+      if (st >= 0 && st < bestT){ bestT = st; evt = 2; }
+    }
+    if (evt !== 0){
+      x += dx * bestT; y += dy * bestT;
+      pvEnd = evt; pvEX = x; pvEY = y;
+      if (pvN < PV_MAX){ pvX[pvN] = x; pvY[pvN] = y; pvN++; }
+      break;
+    }
+    x += dx; y += dy;
+    t += HSTEP;
+    if (x*x + y*y > BOUND_R*BOUND_R) { pvEnd = 3; pvEX = x; pvEY = y; break; }
+    if ((i % every) === 0 && pvN < PV_MAX){ pvX[pvN] = x; pvY[pvN] = y; pvN++; }
+  }
+}
+
+/* ============================== rendering =============================== */
+function render(now){
+  var W = cw, H = ch;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // starfield (already includes the base colour)
+  ctx.globalAlpha = 1;
+  ctx.drawImage(starCvs, 0, 0, W, H);
+
+  var shx = 0, shy = 0;
+  if (S.shake > 0){
+    shx = (Math.random()*2 - 1) * S.shake;
+    shy = (Math.random()*2 - 1) * S.shake;
+  }
+  ctx.save();
+  ctx.translate(shx, shy);
+
+  var t = S.T;
+  bodiesAt(t, BX, BY);
+  stationPos(t, stn);
+  if (S.target) targetPos(S.target, t, tgt);
+
+  drawOrbitRings();
+  drawSun();
+  drawPlanets();
+  if (S.target && mode !== 'start') drawTarget();
+  drawDebris();
+  if (mode === 'play' && !S.probe && !S.over) drawAim();
+  drawStation();
+  if (S.probe) drawProbe(S.probe);
+  drawParticles();
+  drawTexts();
+
+  ctx.restore();
+
+  if (S.flash > 0){
+    ctx.globalAlpha = S.flash * 0.20;
+    ctx.fillStyle = '#ffcf8a';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+  // subtle vignette
+  if (!vig || vigW !== W || vigH !== H) buildVignette(W, H);
+  ctx.drawImage(vig, 0, 0, W, H);
+}
+
+var vig = null, vigW = 0, vigH = 0;
+function buildVignette(W, H){
+  vig = document.createElement('canvas');
+  vig.width = Math.max(1, Math.round(W/4)); vig.height = Math.max(1, Math.round(H/4));
+  vigW = W; vigH = H;
+  var g = vig.getContext('2d');
+  var r = Math.max(vig.width, vig.height) * 0.72;
+  var grad = g.createRadialGradient(vig.width/2, vig.height/2, r*0.42, vig.width/2, vig.height/2, r);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.55)');
+  g.fillStyle = grad;
+  g.fillRect(0,0,vig.width,vig.height);
+}
+
+function drawOrbitRings(){
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(120,140,200,0.10)';
+  for (var i=1; i<NB; i++){
+    ctx.beginPath();
+    ctx.arc(ox, oy, BODIES[i].R * scale, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(102,230,255,0.10)';
+  ctx.beginPath();
+  ctx.arc(ox, oy, STATION_R * scale, 0, TAU);
+  ctx.stroke();
+
+  if (S.target && mode !== 'start'){
+    ctx.strokeStyle = 'rgba(93,250,160,0.13)';
+    ctx.setLineDash([5, 9]);
+    ctx.beginPath();
+    ctx.arc(ox, oy, S.target.R * scale, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // system boundary
+  ctx.strokeStyle = 'rgba(255,95,109,0.055)';
+  ctx.setLineDash([3, 12]);
+  ctx.beginPath();
+  ctx.arc(ox, oy, BOUND_R * scale, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawSun(){
+  var b = BODIES[0];
+  var r = b.r * scale;
+  var x = wx2s(0), y = wy2s(0);
+  var pulse = 1 + Math.sin(S.T * 1.7) * 0.02 + Math.sin(S.T * 0.53) * 0.03;
+  var g = r * 9.5 * pulse;
+  ctx.globalAlpha = 0.72;
+  ctx.drawImage(GLOW_SUN, x - g/2, y - g/2, g, g);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = 'rgba(194,96,15,0.55)';
+  ctx.beginPath(); ctx.arc(x, y, r * 1.42, 0, TAU); ctx.fill();
+  ctx.fillStyle = b.mid;
+  ctx.beginPath(); ctx.arc(x, y, r * 1.03 * pulse, 0, TAU); ctx.fill();
+  ctx.fillStyle = b.core;
+  ctx.beginPath(); ctx.arc(x, y, r * 0.66, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(x - r*0.16, y - r*0.18, r * 0.34, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawPlanets(){
+  for (var i=1; i<NB; i++){
+    var b = BODIES[i];
+    var x = wx2s(BX[i]), y = wy2s(BY[i]);
+    var r = b.r * scale;
+    var g = r * 5.2;
+    ctx.globalAlpha = 0.42;
+    ctx.drawImage(BODY_GLOW[i], x - g/2, y - g/2, g, g);
+    ctx.globalAlpha = 1;
+
+    // body with a shaded far side
+    var ang = Math.atan2(-BY[i], -BX[i]);      // direction to the sun
+    var lx = Math.cos(ang), ly = Math.sin(ang);
+    ctx.fillStyle = b.deep;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    ctx.fillStyle = b.mid;
+    ctx.beginPath(); ctx.arc(x + lx*r*0.20, y + ly*r*0.20, r * 0.86, 0, TAU); ctx.fill();
+    ctx.fillStyle = b.core;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.arc(x + lx*r*0.42, y + ly*r*0.42, r * 0.42, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+    // sunlit rim
+    ctx.strokeStyle = 'rgba(255,240,215,0.5)';
+    ctx.lineWidth = Math.max(1, r * 0.09);
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.97, ang - 1.1, ang + 1.1);
+    ctx.stroke();
+  }
+}
+
+function drawTarget(){
+  var tg = S.target;
+  var x = wx2s(tgt.x), y = wy2s(tgt.y);
+  var base = tg.r * scale;
+  var ph = tg.pulse;
+  var g = base * 5.0;
+  ctx.globalAlpha = 0.34 + Math.sin(ph * 3.1) * 0.10;
+  ctx.drawImage(GLOW_GREEN, x - g/2, y - g/2, g, g);
+  ctx.globalAlpha = 1;
+
+  // expanding ping rings
+  for (var i=0; i<2; i++){
+    var f = ((ph * 0.65 + i * 0.5) % 1);
+    var rr = base * (0.85 + f * 1.5);
+    ctx.globalAlpha = (1 - f) * 0.5;
+    ctx.strokeStyle = '#5dfaa0';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#5dfaa0';
+  ctx.lineWidth = Math.max(1.6, base * 0.13);
+  ctx.beginPath(); ctx.arc(x, y, base * (1 + Math.sin(ph*3.1)*0.045), 0, TAU); ctx.stroke();
+
+  // rotating ticks
+  var spin = ph * 0.9;
+  ctx.lineWidth = Math.max(1.2, base * 0.10);
+  ctx.strokeStyle = 'rgba(93,250,160,0.85)';
+  for (var k=0; k<4; k++){
+    var a0 = spin + k * (TAU/4);
+    ctx.beginPath();
+    ctx.arc(x, y, base * 1.32, a0 - 0.20, a0 + 0.20);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(93,250,160,0.9)';
+  ctx.beginPath(); ctx.arc(x, y, Math.max(1.4, base*0.13), 0, TAU); ctx.fill();
+}
+
+function drawStation(){
+  var x = wx2s(stn.x), y = wy2s(stn.y);
+  var r = Math.max(5, 15 * scale);
+  var g = r * 5;
+  ctx.globalAlpha = 0.3;
+  ctx.drawImage(GLOW_CYAN, x - g/2, y - g/2, g, g);
+  ctx.globalAlpha = 1;
+
+  var spin = S.T * 0.6;
+  ctx.strokeStyle = 'rgba(190,240,255,0.92)';
+  ctx.lineWidth = Math.max(1.2, r * 0.16);
+  ctx.beginPath();
+  for (var i=0; i<6; i++){
+    var a = spin + i * (TAU/6);
+    var px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(102,230,255,0.28)';
+  ctx.fill();
+  ctx.fillStyle = '#eafcff';
+  ctx.beginPath(); ctx.arc(x, y, Math.max(1.4, r*0.26), 0, TAU); ctx.fill();
+
+  // probes-remaining bars around the ring
+  if (mode === 'play'){
+    ctx.strokeStyle = 'rgba(102,230,255,0.55)';
+    ctx.lineWidth = Math.max(1, r * 0.13);
+    var nP = Math.min(9, Math.max(0, S.probes));
+    for (var k=0; k<nP; k++){
+      var aa = -Math.PI/2 + k * (TAU/9);
+      ctx.beginPath();
+      ctx.arc(x, y, r * 1.55, aa - 0.14, aa + 0.14);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawAim(){
+  computePreview();
+  var sxp = wx2s(stn.x), syp = wy2s(stn.y);
+  var pw = clamp(S.aimPow, 0, 1);
+  var active = !!S.drag || S.kbAim;
+
+  // dotted predicted path
+  var baseA = active ? 0.95 : 0.5;
+  for (var i=1; i<pvN; i++){
+    var f = i / pvN;
+    var a = baseA * (1 - f * 0.72);
+    var rr = Math.max(1.1, (2.6 - f * 1.5) * Math.min(1.4, scale*2.2));
+    ctx.globalAlpha = a;
+    ctx.fillStyle = pvEnd === 2 ? '#5dfaa0' : '#9fe9ff';
+    ctx.beginPath();
+    ctx.arc(wx2s(pvX[i]), wy2s(pvY[i]), rr, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  if (pvEnd === 1){
+    var ex = wx2s(pvEX), ey = wy2s(pvEY), s = 7;
+    ctx.strokeStyle = 'rgba(255,95,109,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(ex-s, ey-s); ctx.lineTo(ex+s, ey+s);
+    ctx.moveTo(ex+s, ey-s); ctx.lineTo(ex-s, ey+s);
+    ctx.stroke();
+  } else if (pvEnd === 2){
+    var gx = wx2s(pvEX), gy = wy2s(pvEY);
+    ctx.strokeStyle = 'rgba(93,250,160,0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(gx, gy, 10 + Math.sin(S.T*8)*2, 0, TAU); ctx.stroke();
+  }
+
+  // aim arrow
+  var len = (26 + pw * 74) * Math.max(0.5, scale * 1.9);
+  var dx = Math.cos(S.aimDir), dy = Math.sin(S.aimDir);
+  var ax = sxp + dx * len, ay = syp + dy * len;
+  ctx.strokeStyle = active ? 'rgba(255,180,60,0.95)' : 'rgba(255,180,60,0.45)';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.moveTo(sxp + dx*10, syp + dy*10); ctx.lineTo(ax, ay); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(ax + dx*9, ay + dy*9);
+  ctx.lineTo(ax - dy*6.5 - dx*3, ay + dx*6.5 - dy*3);
+  ctx.lineTo(ax + dy*6.5 - dx*3, ay - dx*6.5 - dy*3);
+  ctx.closePath();
+  ctx.fillStyle = active ? 'rgba(255,180,60,0.95)' : 'rgba(255,180,60,0.5)';
+  ctx.fill();
+
+  // power ring around the station
+  var pr = Math.max(13, 34 * scale);
+  ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(sxp, syp, pr, -Math.PI/2, -Math.PI/2 + TAU); ctx.stroke();
+  ctx.strokeStyle = pw > 0.85 ? '#ff9d4d' : '#ffb43c';
+  ctx.beginPath(); ctx.arc(sxp, syp, pr, -Math.PI/2, -Math.PI/2 + TAU * pw); ctx.stroke();
+
+  // drag visual
+  if (S.drag){
+    var dsx = wx2s(S.drag.sx), dsy = wy2s(S.drag.sy);
+    var dcx = wx2s(S.drag.cx), dcy = wy2s(S.drag.cy);
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath(); ctx.moveTo(dsx, dsy); ctx.lineTo(dcx, dcy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(dsx, dsy, 6, 0, TAU); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,180,60,0.8)';
+    ctx.beginPath(); ctx.arc(dcx, dcy, 4.5, 0, TAU); ctx.fill();
+  }
+}
+
+function drawProbe(p){
+  // trail
+  var n = p.tn;
+  if (n > 1){
+    ctx.lineCap = 'round';
+    for (var i=1; i<n; i++){
+      var i0 = (p.thead - n + i - 1 + TRAIL_N*2) % TRAIL_N;
+      var i1 = (p.thead - n + i + TRAIL_N*2) % TRAIL_N;
+      var f = i / n;
+      ctx.globalAlpha = f * 0.62;
+      ctx.lineWidth = 0.6 + f * 3.0;
+      ctx.strokeStyle = f > 0.82 ? '#ffffff' : '#66e6ff';
+      ctx.beginPath();
+      ctx.moveTo(wx2s(p.tx[i0]), wy2s(p.ty[i0]));
+      ctx.lineTo(wx2s(p.tx[i1]), wy2s(p.ty[i1]));
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineCap = 'butt';
+  }
+  var x = wx2s(p.x), y = wy2s(p.y);
+  var fade = p.age > PROBE_TTL - 5 ? (0.45 + 0.55*Math.abs(Math.sin(p.age*9))) : 1;
+
+  // off-screen: park a chevron on the edge so the probe is never simply gone
+  var m = 22;
+  if (x < m || x > cw - m || y < m || y > ch - m){
+    var ix = clamp(x, m, cw - m), iy = clamp(y, m, ch - m);
+    var a = Math.atan2(y - oy, x - ox);
+    var ca = Math.cos(a), sa = Math.sin(a);
+    var gg = 46;
+    ctx.globalAlpha = 0.5 * fade;
+    ctx.drawImage(GLOW_CYAN, ix - gg/2, iy - gg/2, gg, gg);
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = '#bff4ff';
+    ctx.beginPath();
+    ctx.moveTo(ix + ca*9, iy + sa*9);
+    ctx.lineTo(ix - ca*5 - sa*6.5, iy - sa*5 + ca*6.5);
+    ctx.lineTo(ix - ca*5 + sa*6.5, iy - sa*5 - ca*6.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  var g = Math.max(16, PROBE_R * scale * 9);
+  ctx.globalAlpha = 0.85 * fade;
+  ctx.drawImage(GLOW_CYAN, x - g/2, y - g/2, g, g);
+  ctx.globalAlpha = fade;
+  ctx.fillStyle = '#bff4ff';
+  ctx.beginPath(); ctx.arc(x, y, Math.max(2.2, PROBE_R*scale*1.1), 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(x, y, Math.max(1.1, PROBE_R*scale*0.5), 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawDebris(){
+  var D = S.D;
+  for (var i=0; i<D.length; i++){
+    var d = D[i];
+    var x = wx2s(d.x), y = wy2s(d.y);
+    var rr = Math.max(1.7, d.r * scale);   // stay legible on small screens
+    // faint motion trail
+    var tl = 0.055;
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = d.hot ? 'rgba(216,120,60,0.9)' : 'rgba(150,165,200,0.9)';
+    ctx.lineWidth = Math.max(0.6, rr * 0.55);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - d.vx * tl * scale, y - d.vy * tl * scale);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    var c = Math.cos(d.ang) * rr, s = Math.sin(d.ang) * rr;
+    ctx.beginPath();
+    for (var k=0; k<d.np; k++){
+      var px = d.pts[k*2], py = d.pts[k*2+1];
+      var vx = x + px * c - py * s;
+      var vy = y + px * s + py * c;
+      if (k === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
+    }
+    ctx.closePath();
+    ctx.fillStyle = d.hot ? '#a2582c' : '#5f677f';
+    ctx.fill();
+    ctx.strokeStyle = d.hot ? 'rgba(255,168,90,0.85)' : 'rgba(186,198,224,0.7)';
+    ctx.lineWidth = Math.max(0.6, rr * 0.28);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawParticles(){
+  ctx.globalCompositeOperation = 'lighter';
+  for (var i=0; i<MAX_PART; i++){
+    var p = P[i];
+    if (!p.on) continue;
+    var f = p.life / p.max;
+    ctx.globalAlpha = f * 0.9;
+    ctx.fillStyle = 'rgb(' + p.cr + ',' + p.cg + ',' + p.cb + ')';
+    var r = Math.max(0.6, p.r * scale * (0.35 + f * 0.85));
+    ctx.beginPath();
+    ctx.arc(wx2s(p.x), wy2s(p.y), r, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+}
+
+function drawTexts(){
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (var i=0; i<MAX_TEXT; i++){
+    var t = TXT[i];
+    if (!t.on) continue;
+    var f = t.life / t.max;
+    ctx.globalAlpha = Math.min(1, f * 1.8);
+    ctx.fillStyle = t.col;
+    ctx.font = '500 ' + Math.round(t.size * Math.max(0.7, Math.min(1.3, scale*1.9))) + 'px ' +
+      'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.fillText(t.s, wx2s(t.x), wy2s(t.y) - (1 - f) * 12);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+}
+
+/* ================================ HUD =================================== */
+var hudEl   = document.getElementById('hud');
+var scoreEl = document.getElementById('score');
+var bestEl  = document.getElementById('best');
+var multEl  = document.getElementById('mult');
+var delvEl  = document.getElementById('delv');
+var pipsEl  = document.getElementById('pips');
+var debNEl  = document.getElementById('debN');
+var debBar  = document.getElementById('debBar');
+var hintEl  = document.getElementById('hint');
+var muteBtn = document.getElementById('mute');
+var abortBtn= document.getElementById('abort');
+var startScreen = document.getElementById('start');
+var overScreen  = document.getElementById('over');
+var pauseScreen = document.getElementById('pause');
+var oScore = document.getElementById('oScore');
+var oBest  = document.getElementById('oBest');
+var oDel   = document.getElementById('oDel');
+var oDeb   = document.getElementById('oDeb');
+var quipEl = document.getElementById('quip');
+
+var pipEls = [];
+(function buildPips(){
+  for (var i=0; i<9; i++){
+    var d = document.createElement('div');
+    d.className = 'pip off';
+    pipsEl.appendChild(d);
+    pipEls.push(d);
+  }
+})();
+
+var lastHud = { score:-1, best:-1, mult:-1, del:-1, probes:-1, deb:-1 };
+function updateHUD(force){
+  if (force){ lastHud.score = -1; lastHud.deb = -1; }
+  if (S.score !== lastHud.score){ scoreEl.textContent = String(S.score); lastHud.score = S.score; }
+  if (sessionBest !== lastHud.best){ bestEl.textContent = 'Best ' + sessionBest; lastHud.best = sessionBest; }
+  if (S.mult !== lastHud.mult){ multEl.textContent = '×' + S.mult; lastHud.mult = S.mult; }
+  if (S.deliveries !== lastHud.del){
+    delvEl.textContent = S.deliveries + ' delivered';
+    lastHud.del = S.deliveries;
+  }
+  if (S.probes !== lastHud.probes){
+    for (var i=0; i<9; i++) pipEls[i].classList.toggle('off', i >= S.probes);
+    lastHud.probes = S.probes;
+  }
+  var dn = S.D.length;
+  if (dn !== lastHud.deb){
+    debNEl.textContent = String(dn);
+    var f = Math.min(1, dn / MAX_DEB);
+    debBar.style.width = (f * 100).toFixed(1) + '%';
+    debBar.style.background = f > 0.75 ? '#ff5f6d' : f > 0.42 ? '#ffb43c' : '#7d85ad';
+    debNEl.style.color = f > 0.75 ? '#ff5f6d' : f > 0.42 ? '#ffb43c' : '#e8ecff';
+    lastHud.deb = dn;
+  }
+  var showAbort = (mode === 'play' && !!S.probe);
+  if (showAbort !== abortBtn.classList.contains('on')) abortBtn.classList.toggle('on', showAbort);
+}
+function popEl(el){
+  el.classList.remove('pop');
+  // force reflow so the animation restarts
+  void el.offsetWidth;
+  el.classList.add('pop');
+  setTimeout(function(){ el.classList.remove('pop'); }, 120);
+}
+
+var hintTime = 0;
+function setHint(text, warn, dur){
+  if (!text){ hideHint(); return; }
+  hintEl.textContent = text;
+  hintEl.classList.toggle('warn', !!warn);
+  hintEl.classList.add('on');
+  hintTime = dur || 3;
+}
+function hideHint(){ hintEl.classList.remove('on'); hintTime = 0; }
+
+function showScreen(el){
+  startScreen.classList.remove('on');
+  overScreen.classList.remove('on');
+  pauseScreen.classList.remove('on');
+  if (el) el.classList.add('on');
+}
+
+/* ============================== controls ================================ */
+function startGame(){
+  S = newState();
+  clearParticles();
+  clearTexts();
+  mode = 'play';
+  userPaused = false; autoPaused = false;
+  S.T = 0;
+  stationPos(0, stn);
+  S.aimDir = stn.a + Math.PI * 0.5;   // prograde tangent
+  S.aimPow = 0.55;
+  spawnTarget();
+  showScreen(null);
+  hudEl.classList.add('on');
+  lastHud.score = -1; lastHud.best = -1; lastHud.mult = -1;
+  lastHud.del = -1; lastHud.probes = -1; lastHud.deb = -1;
+  updateHUD(true);
+  setHint('DRAG ANYWHERE AND PULL BACK TO AIM', false, 4.5);
+  initAudio();
+  droneLevel(0.30);
+  acc = 0; last = 0;
+}
+
+function abortProbe(){
+  if (mode !== 'play' || !S.probe) return;
+  var p = S.probe;
+  burst(p.x, p.y, 14, 70, 0.6, 2.2, 200, 220, 255, 0.9);
+  sfx.fizz();
+  loseProbe('abort', p.x, p.y);
+}
+
+/* ---- pointer (mouse + touch unified) ---- */
+var activePointer = null;
+
+function localPt(e){
+  var r = cvs.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function onDown(e){
+  if (mode !== 'play' || S.probe || userPaused || autoPaused) return;
+  if (activePointer !== null) return;           // ignore extra fingers
+  activePointer = e.pointerId;
+  var p = localPt(e);
+  var wxp = sx2w(p.x), wyp = sy2w(p.y);
+  S.drag = { sx: wxp, sy: wyp, cx: wxp, cy: wyp };
+  S.kbAim = false;
+  try { cvs.setPointerCapture(e.pointerId); } catch(err){}
+  e.preventDefault();
+  initAudio();
+}
+function onMove(e){
+  if (activePointer === null || e.pointerId !== activePointer || !S.drag) return;
+  var p = localPt(e);
+  S.drag.cx = sx2w(p.x);
+  S.drag.cy = sy2w(p.y);
+  applyDragAim();
+  e.preventDefault();
+}
+function onUp(e){
+  if (activePointer === null || e.pointerId !== activePointer) return;
+  try { cvs.releasePointerCapture(e.pointerId); } catch(err){}
+  activePointer = null;
+  if (!S.drag) return;
+  var d = S.drag;
+  var dx = d.sx - d.cx, dy = d.sy - d.cy;
+  var len = Math.sqrt(dx*dx + dy*dy);
+  S.drag = null;
+  if (e.type === 'pointercancel') return;
+  if (len < DRAG_MIN){ return; }               // tap = no launch
+  applyAimFromVec(dx, dy, len);
+  launch();
+  e.preventDefault();
+}
+function applyDragAim(){
+  var d = S.drag;
+  if (!d) return;
+  var dx = d.sx - d.cx, dy = d.sy - d.cy;
+  var len = Math.sqrt(dx*dx + dy*dy);
+  if (len < 0.0001) return;
+  applyAimFromVec(dx, dy, len);
+}
+function applyAimFromVec(dx, dy, len){
+  S.aimDir = Math.atan2(dy, dx);
+  S.aimPow = clamp((len - DRAG_MIN) / (DRAG_MAX - DRAG_MIN), 0, 1);
+}
+
+cvs.addEventListener('pointerdown', onDown, { passive: false });
+cvs.addEventListener('pointermove', onMove, { passive: false });
+window.addEventListener('pointerup', onUp, { passive: false });
+window.addEventListener('pointercancel', onUp, { passive: false });
+cvs.addEventListener('touchstart', function(e){ e.preventDefault(); }, { passive: false });
+cvs.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+/* ---- keyboard ---- */
+var keys = Object.create(null);
+var DEAD_KEYS = { Shift:1, Control:1, Alt:1, Meta:1, Tab:1, CapsLock:1, ContextMenu:1,
+                  NumLock:1, ScrollLock:1, Insert:1, PrintScreen:1, Pause:1, Unidentified:1 };
+window.addEventListener('keydown', function(e){
+  // never swallow browser/system shortcuts
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  var k = e.key;
+  if (!k || DEAD_KEYS[k] || (k.length > 1 && k.charAt(0) === 'F' && k.length <= 3)) return;
+  var lower = k.toLowerCase();
+
+  if (lower === 'm'){ setMuted(!muted); initAudio(); e.preventDefault(); return; }
+
+  if (mode === 'start'){
+    startGame(); sfx.ui();
+    e.preventDefault();
+    return;
+  }
+  if (mode === 'over'){
+    if (lower === 'r' || k === 'Enter' || k === ' '){ startGame(); sfx.ui(); e.preventDefault(); }
+    return;
+  }
+  if (lower === 'p' || k === 'Escape'){
+    userPaused = !userPaused;
+    syncPause();
+    e.preventDefault();
+    return;
+  }
+  if (userPaused || autoPaused){
+    userPaused = false; autoPaused = false; syncPause();
+    e.preventDefault();
+    return;
+  }
+  if (lower === 'x'){ abortProbe(); e.preventDefault(); return; }
+
+  if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown' ||
+      lower === 'a' || lower === 'd' || lower === 'w' || lower === 's'){
+    keys[normKey(k, lower)] = true;
+    S.kbAim = true;
+    S.drag = null;
+    e.preventDefault();
+    return;
+  }
+  if (k === ' ' || k === 'Enter'){
+    S.kbAim = true;
+    launch();
+    e.preventDefault();
+  }
+});
+window.addEventListener('keyup', function(e){
+  if (!e.key) return;
+  keys[normKey(e.key, e.key.toLowerCase())] = false;
+});
+function normKey(k, lower){
+  if (k === 'ArrowLeft'  || lower === 'a') return 'L';
+  if (k === 'ArrowRight' || lower === 'd') return 'R';
+  if (k === 'ArrowUp'    || lower === 'w') return 'U';
+  if (k === 'ArrowDown'  || lower === 's') return 'D';
+  return k;
+}
+function keyAim(dt){
+  if (mode !== 'play' || S.probe) return;
+  var rot = 1.7 * dt, dp = 0.62 * dt;
+  var moved = false;
+  if (keys['L']){ S.aimDir -= rot; moved = true; }
+  if (keys['R']){ S.aimDir += rot; moved = true; }
+  if (keys['U']){ S.aimPow = clamp(S.aimPow + dp, 0, 1); moved = true; }
+  if (keys['D']){ S.aimPow = clamp(S.aimPow - dp, 0, 1); moved = true; }
+  if (moved) S.kbAim = true;
+}
+
+/* ---- buttons ---- */
+document.getElementById('go').addEventListener('click', function(e){
+  e.stopPropagation();
+  if (mode !== 'start') return;              // keydown may have started it already
+  initAudio(); sfx.ui(); startGame();
+});
+document.getElementById('again').addEventListener('click', function(e){
+  e.stopPropagation();
+  if (mode !== 'over') return;
+  initAudio(); sfx.ui(); startGame();
+});
+muteBtn.addEventListener('click', function(e){
+  e.stopPropagation(); initAudio(); setMuted(!muted);
+});
+abortBtn.addEventListener('click', function(e){ e.stopPropagation(); abortProbe(); });
+startScreen.addEventListener('pointerdown', function(e){
+  if (e.target && e.target.id === 'go') return;
+  initAudio();
+});
+pauseScreen.addEventListener('pointerdown', function(e){
+  e.preventDefault();
+  userPaused = false; autoPaused = false; syncPause();
+});
+
+/* ---- pause / focus ---- */
+function syncPause(){
+  var paused = userPaused || autoPaused;
+  if (paused && mode === 'play'){
+    pauseScreen.classList.add('on');
+    droneLevel(0.08);
+  } else {
+    if (mode === 'play') showScreen(null);
+    else if (mode === 'over') showScreen(overScreen);
+    else showScreen(startScreen);
+    droneLevel(mode === 'over' ? 0.14 : 0.30);
+  }
+  acc = 0; last = 0;
+}
+function blurPause(){
+  if (mode === 'play' && !autoPaused){ autoPaused = true; syncPause(); }
+  for (var k in keys) keys[k] = false;
+  activePointer = null;
+  if (S) S.drag = null;
+}
+window.addEventListener('blur', blurPause);
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) blurPause();
+  else { acc = 0; last = 0; }
+});
+window.addEventListener('focus', function(){
+  acc = 0; last = 0;
+  if (autoPaused && !userPaused){ autoPaused = false; syncPause(); }
+});
+// coalesce resize storms (window dragging, mobile URL bar) into one rebuild per frame
+var resizePending = false;
+function queueResize(){
+  if (resizePending) return;
+  resizePending = true;
+  requestAnimationFrame(function(){ resizePending = false; resize(); });
+}
+window.addEventListener('resize', queueResize);
+window.addEventListener('orientationchange', function(){ setTimeout(queueResize, 120); });
+
+/* ============================== main loop =============================== */
+var acc = 0, last = 0, rafId = 0;
+var MAX_STEPS = 8;
+
+function frame(now){
+  rafId = requestAnimationFrame(frame);
+  if (!last) last = now;
+  var dt = (now - last) / 1000;
+  last = now;
+  if (dt > MAX_DT) dt = MAX_DT;
+  if (dt < 0) dt = 0;
+
+  var paused = (userPaused || autoPaused) && mode === 'play';
+
+  if (!paused){
+    keyAim(dt);
+    acc += dt;
+    var steps = 0;
+    while (acc >= HSTEP && steps < MAX_STEPS){
+      stepSim();
+      acc -= HSTEP;
+      steps++;
+    }
+    if (acc > HSTEP * MAX_STEPS) acc = 0;   // give up rather than spiral
+    if (mode === 'play') updateHUD(false);
+  }
+
+  render(now);
+}
+
+/* ============================== bootstrap =============================== */
+S = newState();
+S.T = 0;
+// idle attract state: planets orbit, no target, no debris
+resize();
+buildVignette(cw, ch);
+showScreen(startScreen);
+setMuted(false);
+// the start screen is live: frame() keeps stepping the sim while mode === 'start',
+// so the planets are already orbiting behind the title.
+rafId = requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
