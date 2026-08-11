@@ -1,0 +1,2555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="description" content="CROSSWIND - a rooftop kite-fighting duel where your string is both weapon and weakness.">
+<title>CROSSWIND</title>
+<style>
+  :root{
+    --ink:#2a1636;
+    --paper:#fff6e8;
+    --marigold:#ffb020;
+    --magenta:#ff4d8d;
+    --teal:#2fd4c8;
+    --crimson:#ef3b3b;
+    --plum:#3a2450;
+    --plum-d:#241435;
+    --hay:#ffe9bd;
+    --ui: ui-rounded, "Avenir Next", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:#12203c;color:var(--paper);
+    font-family:var(--ui);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#12203c;}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+
+  /* ---------------- HUD ---------------- */
+  #hud{
+    position:absolute;left:0;right:0;top:0;z-index:6;pointer-events:none;
+    padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));
+    display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+    opacity:0;transition:opacity .4s ease;
+  }
+  #hud.on{opacity:1;}
+  .hcol{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .hcol.r{align-items:flex-end;text-align:right;}
+  .hcol.c{align-items:center;text-align:center;flex:1 1 auto;}
+  .lbl{
+    font-size:9px;letter-spacing:.22em;text-transform:uppercase;
+    color:rgba(255,246,232,.62);text-shadow:0 1px 3px rgba(30,10,45,.55);
+  }
+  .val{
+    font-size:24px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;
+    color:#fff6e8;text-shadow:0 2px 10px rgba(40,12,60,.55);
+    transition:transform .12s cubic-bezier(.2,1.6,.4,1);transform-origin:0 50%;
+  }
+  .hcol.r .val{transform-origin:100% 50%;font-size:15px;color:rgba(255,246,232,.8);}
+  .hcol.c .val{transform-origin:50% 50%;font-size:15px;letter-spacing:.12em;}
+  .val.pop{transform:scale(1.28);}
+  #lineWrap{
+    display:flex;align-items:center;gap:7px;margin-top:7px;
+  }
+  #lineBar{
+    width:104px;height:7px;border-radius:4px;overflow:hidden;
+    background:rgba(35,12,50,.42);box-shadow:inset 0 0 0 1px rgba(255,246,232,.22);
+  }
+  #lineFill{
+    height:100%;width:100%;border-radius:4px;
+    background:linear-gradient(90deg,#8affe0,#2fd4c8);
+    transition:width .12s linear, background .3s ease;
+    transform-origin:0 50%;
+  }
+  #lineBar.warn #lineFill{background:linear-gradient(90deg,#ffd166,#ff9a3c);}
+  #lineBar.crit{animation:critpulse .55s ease-in-out infinite;}
+  #lineBar.crit #lineFill{background:linear-gradient(90deg,#ff8a6a,#ef3b3b);}
+  @keyframes critpulse{0%,100%{box-shadow:inset 0 0 0 1px rgba(255,120,90,.7),0 0 0 0 rgba(239,59,59,0);}50%{box-shadow:inset 0 0 0 1px rgba(255,160,130,1),0 0 9px 2px rgba(239,59,59,.45);}}
+
+  /* ------------- banner ------------- */
+  #banner{
+    position:absolute;left:0;right:0;top:26%;z-index:7;pointer-events:none;
+    text-align:center;opacity:0;
+  }
+  #banner.show{animation:bannerIn 2.6s cubic-bezier(.16,.9,.3,1) forwards;}
+  @keyframes bannerIn{
+    0%{opacity:0;transform:translateY(16px) scale(.94);}
+    12%{opacity:1;transform:translateY(0) scale(1);}
+    72%{opacity:1;transform:translateY(0) scale(1);}
+    100%{opacity:0;transform:translateY(-14px) scale(1.02);}
+  }
+  #bMain{
+    font-size:clamp(26px,7vw,52px);font-weight:800;letter-spacing:.14em;
+    color:#fff6e8;text-shadow:0 4px 0 rgba(58,20,80,.35),0 10px 34px rgba(30,8,50,.55);
+  }
+  #bSub{
+    margin-top:6px;font-size:clamp(11px,2.6vw,15px);letter-spacing:.2em;text-transform:uppercase;
+    color:var(--marigold);text-shadow:0 2px 12px rgba(60,20,0,.55);
+  }
+
+  /* ------------- screens ------------- */
+  .screen{
+    position:absolute;inset:0;z-index:10;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:22px;gap:0;
+    background:radial-gradient(120% 90% at 50% 42%, rgba(24,8,42,.16) 0%, rgba(24,8,42,.52) 60%, rgba(18,5,34,.74) 100%);
+    opacity:1;transition:opacity .4s ease;
+    -webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px);
+  }
+  .screen.hidden{opacity:0;pointer-events:none;}
+  .card{
+    max-width:min(560px,94vw);
+    display:flex;flex-direction:column;align-items:center;gap:0;
+    animation:cardIn .55s cubic-bezier(.16,.9,.3,1) both;
+  }
+  @keyframes cardIn{from{opacity:0;transform:translateY(18px) scale(.97);}to{opacity:1;transform:none;}}
+  h1{
+    margin:0;font-size:clamp(44px,13vw,96px);font-weight:900;letter-spacing:.1em;line-height:.95;
+    color:#fff6e8;
+    text-shadow:0 3px 0 rgba(255,77,141,.5), 0 6px 0 rgba(255,176,32,.32), 0 16px 46px rgba(20,4,40,.6);
+  }
+  .rule{
+    width:min(320px,72vw);height:2px;margin:14px 0 12px;border-radius:2px;
+    background:linear-gradient(90deg,transparent,var(--marigold),var(--magenta),transparent);
+    opacity:.85;
+  }
+  .prem{
+    margin:0 0 16px;font-size:clamp(13px,3.4vw,17px);line-height:1.5;color:rgba(255,246,232,.9);
+    max-width:34ch;text-shadow:0 2px 10px rgba(20,4,40,.7);
+  }
+  .keys{
+    display:flex;flex-wrap:wrap;gap:7px 9px;justify-content:center;margin-bottom:18px;max-width:min(460px,90vw);
+  }
+  .k{
+    display:flex;align-items:center;gap:6px;
+    font-size:11px;letter-spacing:.04em;color:rgba(255,246,232,.82);
+    background:rgba(38,14,58,.42);border:1px solid rgba(255,246,232,.16);
+    padding:6px 10px;border-radius:999px;white-space:nowrap;
+  }
+  .k b{
+    font-weight:700;color:#241435;background:var(--hay);
+    padding:2px 6px;border-radius:5px;font-size:10px;letter-spacing:.06em;
+    box-shadow:0 1px 0 rgba(0,0,0,.25);
+  }
+  .cta{
+    font-size:12px;letter-spacing:.26em;text-transform:uppercase;font-weight:700;
+    color:var(--hay);
+    padding:13px 26px;border-radius:999px;
+    background:linear-gradient(180deg,rgba(255,77,141,.9),rgba(214,40,110,.9));
+    box-shadow:0 6px 0 rgba(150,20,72,.7),0 14px 32px rgba(60,10,50,.45);
+    animation:bob 2.4s ease-in-out infinite;
+  }
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
+  .stats{
+    display:flex;gap:clamp(14px,5vw,38px);justify-content:center;margin:6px 0 20px;flex-wrap:wrap;
+  }
+  .stat{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .stat .sv{font-size:clamp(24px,7vw,38px);font-weight:800;line-height:1;color:#fff6e8;font-variant-numeric:tabular-nums;
+    text-shadow:0 2px 12px rgba(20,4,40,.6);}
+  .stat .sl{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,246,232,.6);}
+  .best{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--marigold);margin-bottom:14px;min-height:14px;}
+  h2{
+    margin:0 0 4px;font-size:clamp(30px,9vw,58px);font-weight:900;letter-spacing:.1em;line-height:1;
+    color:#fff6e8;text-shadow:0 3px 0 rgba(239,59,59,.45),0 14px 40px rgba(20,4,40,.6);
+  }
+  .sub{font-size:clamp(12px,3vw,15px);color:rgba(255,246,232,.78);margin:0 0 16px;letter-spacing:.04em;}
+  #pauseScreen .card{gap:10px;}
+  .tiny{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,246,232,.5);margin-top:16px;}
+  @media (max-height:430px){
+    h1{font-size:clamp(34px,10vh,58px);}
+    .prem{margin-bottom:10px;}
+    .keys{margin-bottom:12px;}
+    .rule{margin:8px 0 8px;}
+    .cta{padding:10px 20px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="hcol">
+      <div class="lbl">Score</div>
+      <div class="val" id="scoreEl">0</div>
+      <div id="lineWrap">
+        <div class="lbl">Line</div>
+        <div id="lineBar"><div id="lineFill"></div></div>
+      </div>
+    </div>
+    <div class="hcol c">
+      <div class="lbl">Round</div>
+      <div class="val" id="roundEl">1</div>
+    </div>
+    <div class="hcol r">
+      <div class="lbl">Best</div>
+      <div class="val" id="bestEl">0</div>
+      <div class="lbl" style="margin-top:6px">Cuts</div>
+      <div class="val" id="cutsEl" style="font-size:15px">0</div>
+    </div>
+  </div>
+
+  <div id="banner"><div id="bMain"></div><div id="bSub"></div></div>
+
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <h1>CROSSWIND</h1>
+      <div class="rule"></div>
+      <p class="prem">Rooftop kite duel. Your string is the blade &mdash; whip it fast across a rival's line to saw it through. Move slow and you're the one who frays.</p>
+      <div class="keys">
+        <div class="k"><b>MOVE</b> steer toward pointer</div>
+        <div class="k"><b>HOLD</b> tug &mdash; dive &amp; accelerate</div>
+        <div class="k"><b>&larr; &rarr;</b> / <b>A D</b> steer</div>
+        <div class="k"><b>SPACE</b> / <b>&uarr;</b> tug</div>
+      </div>
+      <div class="cta" id="startCta">Tap or press any key</div>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <div class="card">
+      <h2 id="overTitle">LINE CUT</h2>
+      <p class="sub" id="overSub">Your string parted in the crosswind.</p>
+      <div class="stats">
+        <div class="stat"><div class="sv" id="oScore">0</div><div class="sl">Score</div></div>
+        <div class="stat"><div class="sv" id="oRound">1</div><div class="sl">Round</div></div>
+        <div class="stat"><div class="sv" id="oCuts">0</div><div class="sl">Cuts</div></div>
+      </div>
+      <div class="best" id="oBest"></div>
+      <div class="cta" id="overCta">Tap or press to fly again</div>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="pauseScreen">
+    <div class="card">
+      <h2 style="font-size:clamp(24px,7vw,42px);text-shadow:0 3px 0 rgba(47,212,200,.4),0 14px 40px rgba(20,4,40,.6)">PAUSED</h2>
+      <p class="sub">The wind waits.</p>
+      <div class="cta">Tap or press to resume</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   CROSSWIND — rooftop kite fighting
+   ========================================================================= */
+
+var TAU = Math.PI * 2;
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function rnd(a,b){ return a+Math.random()*(b-a); }
+function rndi(a,b){ return (a+Math.random()*(b-a+1))|0; }
+function smoothstep(t){ t=clamp(t,0,1); return t*t*(3-2*t); }
+function angWrap(a){ a=a%TAU; if(a>Math.PI)a-=TAU; if(a<-Math.PI)a+=TAU; return a; }
+function angTo(from,to){ return angWrap(to-from); }
+
+/* ---------------- canvas / viewport ---------------- */
+var cv = document.getElementById('game');
+var ctx = cv.getContext('2d', { alpha:false });
+var W=1, H=1, DPR=1, U=1;
+
+/* ---------------- DOM ---------------- */
+var hudEl      = document.getElementById('hud');
+var scoreEl    = document.getElementById('scoreEl');
+var roundEl    = document.getElementById('roundEl');
+var bestEl     = document.getElementById('bestEl');
+var cutsEl     = document.getElementById('cutsEl');
+var lineBar    = document.getElementById('lineBar');
+var lineFill   = document.getElementById('lineFill');
+var bannerEl   = document.getElementById('banner');
+var bMain      = document.getElementById('bMain');
+var bSub       = document.getElementById('bSub');
+var startScreen= document.getElementById('startScreen');
+var overScreen = document.getElementById('overScreen');
+var pauseScreen= document.getElementById('pauseScreen');
+var oScore=document.getElementById('oScore'), oRound=document.getElementById('oRound'),
+    oCuts=document.getElementById('oCuts'), oBest=document.getElementById('oBest'),
+    overTitle=document.getElementById('overTitle'), overSub=document.getElementById('overSub');
+
+/* =========================================================================
+   AUDIO — synthesized only, created on first gesture
+   ========================================================================= */
+var SND = {
+  ctx:null, master:null, ready:false, muted:false,
+  noiseBuf:null,
+  windSrc:null, windFilt:null, windGain:null,
+  grindGain:null, grindFilt:null, grindOsc:null, grindOscGain:null,
+  creakCool:0, creakOn:false,
+
+  init:function(){
+    if(this.ctx) { if(this.ctx.state==='suspended') this.ctx.resume(); return; }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    try{ this.ctx = new AC(); }catch(e){ return; }
+    var c = this.ctx;
+    this.master = c.createGain();
+    this.master.gain.value = 0.0;
+    this.master.connect(c.destination);
+    this.master.gain.setTargetAtTime(0.85, c.currentTime, 0.6);
+
+    // noise buffer
+    var len = Math.floor(c.sampleRate*2.2);
+    var b = c.createBuffer(1, len, c.sampleRate);
+    var d = b.getChannelData(0);
+    var last=0;
+    for(var i=0;i<len;i++){
+      var wn = Math.random()*2-1;
+      last = last*0.72 + wn*0.28;   // slightly pink
+      d[i] = last*1.3;
+    }
+    // taper loop seam
+    var fadeN = 2000;
+    for(var j=0;j<fadeN;j++){
+      var t=j/fadeN;
+      d[j] = d[j]*t + d[len-fadeN+j]*(1-t);
+    }
+    this.noiseBuf = b;
+
+    // ---- wind bed
+    this.windGain = c.createGain(); this.windGain.gain.value = 0.0;
+    this.windFilt = c.createBiquadFilter();
+    this.windFilt.type='bandpass'; this.windFilt.frequency.value=420; this.windFilt.Q.value=0.55;
+    var lp = c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1400;
+    this.windSrc = c.createBufferSource();
+    this.windSrc.buffer=b; this.windSrc.loop=true;
+    this.windSrc.connect(this.windFilt); this.windFilt.connect(lp);
+    lp.connect(this.windGain); this.windGain.connect(this.master);
+    try{ this.windSrc.start(0); }catch(e){}
+
+    // ---- grind (sawing) voice
+    this.grindGain = c.createGain(); this.grindGain.gain.value = 0.0;
+    this.grindFilt = c.createBiquadFilter();
+    this.grindFilt.type='bandpass'; this.grindFilt.frequency.value=1800; this.grindFilt.Q.value=6;
+    var gsrc = c.createBufferSource(); gsrc.buffer=b; gsrc.loop=true;
+    gsrc.connect(this.grindFilt); this.grindFilt.connect(this.grindGain);
+    this.grindGain.connect(this.master);
+    try{ gsrc.start(0); }catch(e){}
+    this.grindSrc = gsrc;
+
+    // shimmer partial riding the grind
+    this.grindOsc = c.createOscillator(); this.grindOsc.type='triangle'; this.grindOsc.frequency.value=1400;
+    this.grindOscGain = c.createGain(); this.grindOscGain.gain.value=0;
+    this.grindOsc.connect(this.grindOscGain); this.grindOscGain.connect(this.master);
+    try{ this.grindOsc.start(0); }catch(e){}
+
+    this.ready = true;
+  },
+
+  setWind:function(intensity){
+    if(!this.ready) return;
+    var c=this.ctx, t=c.currentTime;
+    var g = 0.028 + 0.10*clamp(intensity,0,1.6);
+    this.windGain.gain.setTargetAtTime(g, t, 0.25);
+    this.windFilt.frequency.setTargetAtTime(320 + 520*clamp(intensity,0,1.6), t, 0.35);
+  },
+
+  setGrind:function(amount, wear){
+    if(!this.ready) return;
+    var c=this.ctx, t=c.currentTime;
+    var a = clamp(amount,0,1);
+    this.grindGain.gain.setTargetAtTime(a*0.11, t, 0.045);
+    this.grindFilt.frequency.setTargetAtTime(1200 + 3400*clamp(wear,0,1), t, 0.09);
+    this.grindOscGain.gain.setTargetAtTime(a*0.022, t, 0.06);
+    this.grindOsc.frequency.setTargetAtTime(900 + 2200*clamp(wear,0,1), t, 0.09);
+  },
+
+  tone:function(freq, dur, type, vol, atk, freq2, delay){
+    if(!this.ready) return;
+    var c=this.ctx, t=c.currentTime+(delay||0);
+    var o=c.createOscillator(), g=c.createGain();
+    o.type=type||'sine'; o.frequency.setValueAtTime(freq,t);
+    if(freq2) o.frequency.exponentialRampToValueAtTime(Math.max(20,freq2), t+dur);
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol||0.14), t+(atk||0.012));
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t+dur+0.05);
+  },
+
+  noiseBurst:function(dur, f0, f1, vol, q, type){
+    if(!this.ready) return;
+    var c=this.ctx, t=c.currentTime;
+    var s=c.createBufferSource(); s.buffer=this.noiseBuf;
+    s.playbackRate.value = 0.8+Math.random()*0.5;
+    var f=c.createBiquadFilter(); f.type=type||'bandpass';
+    f.frequency.setValueAtTime(f0,t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(40,f1), t+dur);
+    f.Q.value = q||3;
+    var g=c.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol||0.2, t+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t); s.stop(t+dur+0.05);
+  },
+
+  snap:function(){
+    if(!this.ready) return;
+    this.noiseBurst(0.26, 5200, 500, 0.34, 2.2);
+    this.tone(880, 0.20, 'triangle', 0.13, 0.004, 180);
+    this.tone(1760, 0.10, 'square', 0.05, 0.003, 900);
+  },
+  creak:function(hard){
+    if(!this.ready) return;
+    this.noiseBurst(0.30, 200+Math.random()*120, 90, hard?0.10:0.055, 8, 'bandpass');
+    this.tone(70+Math.random()*22, 0.26, 'sawtooth', hard?0.045:0.024, 0.05, 52);
+  },
+  lose:function(){
+    if(!this.ready) return;
+    this.noiseBurst(0.5, 900, 90, 0.28, 1.2, 'lowpass');
+    this.tone(300, 1.35, 'sine', 0.16, 0.02, 62);
+    this.tone(151, 1.5, 'triangle', 0.10, 0.03, 40, 0.06);
+  },
+  fanfare:function(){
+    if(!this.ready) return;
+    var n=[523.25, 659.25, 783.99, 1046.5];
+    for(var i=0;i<n.length;i++){
+      this.tone(n[i], 0.42, 'triangle', 0.085, 0.014, n[i], i*0.085);
+      this.tone(n[i]*2, 0.26, 'sine', 0.030, 0.010, n[i]*2, i*0.085);
+    }
+  },
+  pop:function(f){
+    if(!this.ready) return;
+    this.tone(f||880, 0.14, 'triangle', 0.07, 0.006, (f||880)*1.5);
+  },
+  setMasterEnabled:function(on){
+    if(!this.ready) return;
+    this.master.gain.setTargetAtTime(on?0.85:0.0, this.ctx.currentTime, 0.08);
+  }
+};
+
+/* =========================================================================
+   WORLD STATE
+   ========================================================================= */
+var state = 'menu';        // menu | play | clear | dying | over
+var paused = false;
+var score=0, best=0, bestAtRunStart=0, roundN=1, cuts=0;
+var overReady = 0;
+var shake=0, shakeT=0;
+var stateT=0;
+var gameT=0;
+
+/* wind */
+var WIND = {
+  t:0, baseDir:-0.20, dirW:0, gust:0, gustT:4,
+  x:0, y:0, speed:0, strength:1
+};
+
+/* =========================================================================
+   ROPE / KITE
+   ========================================================================= */
+function makeRope(n){
+  var p = new Array(n);
+  for(var i=0;i<n;i++) p[i] = { x:0,y:0, px:0,py:0, ax:0,ay:0, vx:0,vy:0 };
+  return {
+    n:n, p:p,
+    wear: new Float32Array(n-1),
+    restTotal: 100, restTarget:100, segRest:1,
+    anchor:{x:0,y:0},
+    minX:0,minY:0,maxX:0,maxY:0
+  };
+}
+
+function makeKite(nSeg, tailN){
+  var r = makeRope(nSeg);
+  var tail = new Array(tailN);
+  for(var i=0;i<tailN;i++) tail[i]={x:0,y:0,px:0,py:0};
+  return {
+    rope:r, tail:tail, tailN:tailN, tailSeg:8,
+    ang:-Math.PI/2, angV:0, bank:0, wob:0, ph:Math.random()*TAU,
+    x:0,y:0, vx:0,vy:0,
+    tug:0, steer:0, taut:0,
+    alive:true,
+    colA:'#ff4d8d', colB:'#ffb020', lineCol:'#fff2dd',
+    isPlayer:false,
+    // ai
+    type:0, aiT:0, mode:0, aiTug:0, jink:0, orbit:0, aiSteer:0,
+    len:200, speed:0,
+    grindT:0
+  };
+}
+
+var player = makeKite(22, 12);
+player.isPlayer = true;
+player.colA = '#ff4d8d'; player.colB='#ffb020'; player.lineCol='#fff4e2';
+
+var enemies = [];
+var ENEMY_STYLES = [
+  { a:'#2fd4c8', b:'#0d6f7a', line:'#c9fff6', name:'Hunter'   },
+  { a:'#ef3b3b', b:'#ffd9a0', line:'#ffd7d0', name:'Circler'  },
+  { a:'#b06bff', b:'#c8ff5e', line:'#ecd9ff', name:'Darter'   },
+  { a:'#ff9f1c', b:'#8a2be2', line:'#ffe6c0', name:'Veteran'  }
+];
+
+/* debris (severed lines + tumbling kites) */
+var debris = [];
+var DEBRIS_MAX = 6;
+
+/* =========================================================================
+   PARTICLES  (fixed pools, no per-frame allocation)
+   ========================================================================= */
+var SPARK_MAX=280;
+var sparks = new Array(SPARK_MAX);
+for(var si=0;si<SPARK_MAX;si++) sparks[si]={a:0,x:0,y:0,vx:0,vy:0,life:0,max:1,size:1,hue:0};
+var sparkHead=0;
+
+var SCRAP_MAX=90;
+var scraps = new Array(SCRAP_MAX);
+for(var ci=0;ci<SCRAP_MAX;ci++) scraps[ci]={a:0,x:0,y:0,vx:0,vy:0,life:0,max:1,r:0,rv:0,w:4,h:5,col:'#fff'};
+var scrapHead=0;
+
+var MOTE_N=86;
+var motes = new Array(MOTE_N);
+
+var FLOAT_MAX=8;
+var floats = new Array(FLOAT_MAX);
+for(var fi=0;fi<FLOAT_MAX;fi++) floats[fi]={a:0,x:0,y:0,vy:0,life:0,max:1,txt:'',col:'#fff',size:14};
+var floatHead=0;
+
+function spark(x,y,vx,vy,life,size,hue){
+  var s = sparks[sparkHead]; sparkHead=(sparkHead+1)%SPARK_MAX;
+  s.a=1; s.x=x; s.y=y; s.vx=vx; s.vy=vy; s.life=life; s.max=life; s.size=size; s.hue=hue;
+}
+function scrap(x,y,vx,vy,col,sz){
+  var s = scraps[scrapHead]; scrapHead=(scrapHead+1)%SCRAP_MAX;
+  s.a=1; s.x=x; s.y=y; s.vx=vx; s.vy=vy; s.life=rnd(1.6,3.0); s.max=s.life;
+  s.r=rnd(0,TAU); s.rv=rnd(-7,7); s.w=sz*rnd(.6,1.3); s.h=sz*rnd(.5,1.1); s.col=col;
+}
+function floatText(x,y,txt,col,size){
+  var f = floats[floatHead]; floatHead=(floatHead+1)%FLOAT_MAX;
+  f.a=1; f.x=x; f.y=y; f.vy=-46; f.life=1.25; f.max=1.25; f.txt=txt; f.col=col; f.size=size||16;
+}
+
+/* =========================================================================
+   CITY / BACKGROUND
+   ========================================================================= */
+var skyCanvas=null, skyCtx=null;
+var cityCanvas=null, cityCtx=null;
+var groundProf=null, groundStep=6;
+var cloudSprites=[];
+var clouds=[];
+var farKites=[];
+var anchorSlots=[];
+
+function makeCloudSprites(){
+  cloudSprites.length=0;
+  for(var k=0;k<5;k++){
+    var w=300, h=168;
+    var c=document.createElement('canvas'); c.width=w; c.height=h;
+    var g=c.getContext('2d');
+    var baseY = h*0.70;
+    var n = 5 + (k%3);
+    // Overlapping puffs sharing a flat-ish base read as one cumulus mass;
+    // widely spaced soft blobs just look like smears.
+    for(var i=0;i<n;i++){
+      var t = n>1 ? i/(n-1) : 0.5;
+      var hump = Math.sin(Math.PI*t);
+      var r = 34 + 30*hump + ((i*37 + k*11) % 15);
+      var bx = 52 + t*(w-104) + Math.sin(i*2.1+k)*9;
+      var by = baseY - r*0.52 - hump*18;
+      var grd = g.createRadialGradient(bx,by,r*0.20,bx,by,r);
+      grd.addColorStop(0.00,'rgba(255,255,255,0.92)');
+      grd.addColorStop(0.52,'rgba(255,252,247,0.74)');
+      grd.addColorStop(0.82,'rgba(255,246,238,0.24)');
+      grd.addColorStop(1.00,'rgba(255,244,236,0)');
+      g.fillStyle=grd;
+      g.beginPath(); g.arc(bx,by,r,0,TAU); g.fill();
+    }
+    cloudSprites.push(c);
+  }
+}
+
+function buildSky(){
+  if(!skyCanvas){ skyCanvas=document.createElement('canvas'); skyCtx=skyCanvas.getContext('2d'); }
+  skyCanvas.width = Math.max(2,Math.round(W)); skyCanvas.height=Math.max(2,Math.round(H));
+  var g = skyCtx;
+  var grd = g.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0.00,'#0f3a8c');
+  grd.addColorStop(0.24,'#2a63b4');
+  grd.addColorStop(0.44,'#5f9ad8');
+  grd.addColorStop(0.58,'#9ec9e9');
+  grd.addColorStop(0.68,'#e3d6b2');
+  grd.addColorStop(0.77,'#f6bc85');
+  grd.addColorStop(0.88,'#ef8f60');
+  grd.addColorStop(1.00,'#d9694c');
+  g.fillStyle=grd; g.fillRect(0,0,W,H);
+
+  // low sun
+  var sx = W*0.78, sy = H*0.715;
+  var sg = g.createRadialGradient(sx,sy,0,sx,sy,Math.max(W,H)*0.42);
+  sg.addColorStop(0,'rgba(255,246,206,0.95)');
+  sg.addColorStop(0.06,'rgba(255,228,150,0.62)');
+  sg.addColorStop(0.22,'rgba(255,190,120,0.24)');
+  sg.addColorStop(0.55,'rgba(255,160,110,0.06)');
+  sg.addColorStop(1,'rgba(255,160,110,0)');
+  g.fillStyle=sg; g.fillRect(0,0,W,H);
+  g.fillStyle='rgba(255,250,225,0.92)';
+  g.beginPath(); g.arc(sx,sy,Math.max(14,26*U),0,TAU); g.fill();
+
+  // haze band above rooftops
+  var hz = g.createLinearGradient(0,H*0.52,0,H*0.84);
+  hz.addColorStop(0,'rgba(255,222,182,0)');
+  hz.addColorStop(1,'rgba(255,214,170,0.46)');
+  g.fillStyle=hz; g.fillRect(0,H*0.52,W,H*0.34);
+}
+
+function buildCity(){
+  if(!cityCanvas){ cityCanvas=document.createElement('canvas'); cityCtx=cityCanvas.getContext('2d'); }
+  cityCanvas.width=Math.max(2,Math.round(W)); cityCanvas.height=Math.max(2,Math.round(H));
+  var g=cityCtx;
+  g.clearRect(0,0,W,H);
+
+  var layers=[
+    { base:H*0.858, hMin:24*U, hMax:70*U, wMin:34*U, wMax:76*U, col:'#7c6a9c', alpha:0.55, detail:false },
+    { base:H*0.906, hMin:36*U, hMax:104*U, wMin:42*U, wMax:96*U, col:'#4e3b6b', alpha:0.85, detail:true  },
+    { base:H*0.976, hMin:34*U, hMax:110*U, wMin:56*U, wMax:120*U, col:'#2b1c40', alpha:1.0,  detail:true  }
+  ];
+
+  var nearRects=[];
+  for(var L=0;L<layers.length;L++){
+    var ly=layers[L];
+    var x=-rnd(0,60*U);
+    g.globalAlpha=ly.alpha;
+    g.fillStyle=ly.col;
+    while(x < W+40*U){
+      var bw = rnd(ly.wMin, ly.wMax);
+      var bh = rnd(ly.hMin, ly.hMax);
+      var by = ly.base - bh;
+      g.fillRect(x, by, bw, H-by);
+      if(L===2) nearRects.push({x:x,w:bw,y:by});
+      // rooftop details
+      if(ly.detail && Math.random()<0.62){
+        var dw = rnd(8*U,18*U), dh=rnd(7*U,16*U);
+        var dx = x + rnd(4*U, Math.max(5*U,bw-dw-4*U));
+        g.fillRect(dx, by-dh, dw, dh);
+      }
+      if(ly.detail && Math.random()<0.34){
+        // aerial
+        var ax = x + rnd(6*U, Math.max(7*U,bw-6*U));
+        g.fillRect(ax-1*U, by-rnd(14*U,30*U), 2*U, 30*U);
+      }
+      // windows (only near layer, sparse, warm)
+      if(L>=1 && bw>30*U){
+        g.save();
+        g.globalAlpha = ly.alpha*(L===2?0.5:0.34);
+        var cols = Math.max(1,Math.floor(bw/(14*U)));
+        var rows = Math.max(1,Math.floor(bh/(18*U)));
+        for(var r=0;r<rows;r++){
+          for(var cc=0;cc<cols;cc++){
+            if(Math.random()<0.30){
+              g.fillStyle = Math.random()<0.5?'#ffd489':'#ffb45c';
+              g.fillRect(x+6*U+cc*14*U, by+9*U+r*18*U, 5*U, 7*U);
+            }
+          }
+        }
+        g.restore();
+        g.fillStyle=ly.col;
+      }
+      x += bw + rnd(2*U, 12*U);
+    }
+    g.globalAlpha=1;
+  }
+  g.globalAlpha=1;
+
+  // ground profile: the low skyline only — this is the lethal floor
+  var pn = Math.ceil(W/groundStep)+2;
+  groundProf = new Float32Array(pn);
+  for(var i=0;i<pn;i++) groundProf[i]=H*0.976;
+  for(var b=0;b<nearRects.length;b++){
+    var R=nearRects[b];
+    var i0=Math.max(0,Math.floor(R.x/groundStep));
+    var i1=Math.min(pn-1,Math.ceil((R.x+R.w)/groundStep));
+    for(var q=i0;q<=i1;q++) if(R.y<groundProf[q]) groundProf[q]=R.y;
+  }
+
+  // --- kite-flying terraces: tall towers carrying every line anchor. They are
+  //     drawn AFTER the crash profile is taken, so the terraces themselves are
+  //     never lethal — the low skyline below is the only killing floor, which
+  //     leaves the whole upper arc free to fight in.
+  //     Spread the terraces so neighbouring anchors sit roughly one line-length
+  //     apart whatever the aspect ratio — that is the spacing that makes duels
+  //     happen at the edge of both arcs instead of permanently on top of you.
+  var lenGuess = Math.min(H*0.64 - 34*U, Math.min(W,H)*0.78, W*0.56);
+  var hs = clamp(0.78*lenGuess/W, 0.22, 0.40);
+  var towerFracs=[0.50, 0.50-hs, 0.50+hs, 0.50-hs*0.58, 0.50+hs*0.58];
+  var towerHF  =[0.640,0.694,0.672,0.728,0.707];
+  var towerTops=[];
+  for(var ti=0;ti<towerFracs.length;ti++){
+    var tw = rnd(54*U,80*U);
+    var tx2 = clamp(W*towerFracs[ti] - tw*0.5, 3*U, Math.max(3*U, W-tw-3*U));
+    var tcx = tx2 + tw*0.5;
+    var ty2 = H*towerHF[ti] + rnd(-10*U,10*U);
+    g.fillStyle='#2b1c40';
+    g.fillRect(tx2, ty2, tw, H-ty2);
+    // lit windows
+    var wcols=Math.max(1,Math.floor(tw/(15*U)));
+    var wrows=Math.max(1,Math.floor((H-ty2)/(20*U)));
+    for(var wr=0;wr<wrows;wr++) for(var wc=0;wc<wcols;wc++){
+      if(Math.random()<0.26){
+        g.fillStyle = Math.random()<0.5?'rgba(255,212,137,0.5)':'rgba(255,180,92,0.45)';
+        g.fillRect(tx2+5*U+wc*15*U, ty2+11*U+wr*20*U, 5*U, 7*U);
+      }
+    }
+    // parapet + water tank
+    g.fillStyle='#3d2957';
+    g.fillRect(tx2-4*U, ty2-5*U, tw+8*U, 5*U);
+    g.fillStyle='#2b1c40';
+    g.fillRect(tx2+tw*0.62, ty2-16*U, 13*U, 11*U);
+    towerTops.push({x:tcx, y:ty2-5*U});
+  }
+
+  // anchor slots sit on the terrace parapets
+  anchorSlots.length=0;
+  for(var f=0;f<towerTops.length;f++) anchorSlots.push({x:towerTops[f].x, y:towerTops[f].y});
+
+  // decorative far kites
+  farKites.length=0;
+  var nk = 5;
+  for(var d=0;d<nk;d++){
+    farKites.push({
+      ax: W*rnd(0.05,0.95),
+      ay: H*rnd(0.80,0.86),
+      len: rnd(60*U,140*U),
+      ph: rnd(0,TAU),
+      sp: rnd(0.25,0.6),
+      col: ['#ffd166','#7fe3d8','#ff8fb0','#c9a7ff','#ffb4a2'][d%5]
+    });
+  }
+
+  // clouds
+  clouds.length=0;
+  var nc = 11;
+  for(var c2=0;c2<nc;c2++){
+    var layer = c2%3;
+    clouds.push({
+      x: rnd(-0.2,1.2)*W,
+      y: H*(0.04 + layer*0.17) + rnd(-0.055,0.055)*H,
+      s: (0.55 + layer*0.42) * (0.75+Math.random()*0.55) * Math.max(0.6,U),
+      par: 0.16 + layer*0.28,
+      alpha: 0.13 + layer*0.10,
+      spr: (c2*7)%5
+    });
+  }
+
+  // motes
+  for(var m=0;m<MOTE_N;m++){
+    motes[m] = motes[m]||{};
+    var mo=motes[m];
+    mo.x=rnd(0,W); mo.y=rnd(0,H*0.95);
+    mo.z=rnd(0.35,1.15);
+    mo.r=rnd(0,TAU); mo.rv=rnd(-3,3);
+    mo.s=rnd(1.6,4.4)*Math.max(0.6,U);
+    mo.type = Math.random()<0.35?1:0;
+    mo.col = ['#fff3d6','#ffd7a8','#ffc0d0','#e7fff5','#ffe9a8'][rndi(0,4)];
+    mo.ph = rnd(0,TAU);
+  }
+}
+
+function roofYAt(x){
+  if(!groundProf) return H*0.95;
+  var i = Math.round(x/groundStep);
+  if(i<0) i=0; if(i>=groundProf.length) i=groundProf.length-1;
+  return groundProf[i];
+}
+
+/* =========================================================================
+   RESIZE
+   ========================================================================= */
+var lastW=0, lastH=0;
+function resize(){
+  var w = Math.max(1, window.innerWidth  || document.documentElement.clientWidth  || 320);
+  var h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 480);
+  DPR = Math.min(2, window.devicePixelRatio||1);
+  var ow=W, oh=H;
+  W=w; H=h;
+  cv.width = Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  cv.style.width = W+'px'; cv.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  U = clamp(Math.min(W,H)/720, 0.58, 1.7);
+
+  buildSky();
+  buildCity();
+
+  if(lastW>0 && ow>0 && oh>0){
+    var sx = W/ow, sy = H/oh;
+    rescaleKite(player, sx, sy);
+    for(var i=0;i<enemies.length;i++) rescaleKite(enemies[i], sx, sy);
+    for(var d=0;d<debris.length;d++){
+      var db=debris[d];
+      for(var q=0;q<db.p.length;q++){ db.p[q].x*=sx; db.p[q].y*=sy; db.p[q].px*=sx; db.p[q].py*=sy; }
+      db.kx*=sx; db.ky*=sy;
+      if(db.anchored){ db.p[0].x = clamp(db.p[0].x,0,W); }
+    }
+  }
+  lastW=W; lastH=H;
+
+  // re-seat anchors on new rooftops
+  reseatAnchors();
+}
+
+function rescaleKite(k, sx, sy){
+  var r=k.rope;
+  for(var i=0;i<r.n;i++){
+    r.p[i].x*=sx; r.p[i].y*=sy; r.p[i].px*=sx; r.p[i].py*=sy;
+  }
+  for(var t=0;t<k.tailN;t++){ k.tail[t].x*=sx; k.tail[t].y*=sy; k.tail[t].px*=sx; k.tail[t].py*=sy; }
+  k.x*=sx; k.y*=sy;
+}
+
+function reseatAnchors(){
+  if(!anchorSlots.length) return;
+  // player uses slot 0
+  var s0=anchorSlots[0];
+  player.rope.anchor.x = s0.x; player.rope.anchor.y = s0.y - 6*U;
+  player.len = lineLenFor(player.rope.anchor.y, 0.78);
+  setRopeLen(player.rope, player.len);
+  for(var i=0;i<enemies.length;i++){
+    var e=enemies[i];
+    var s = anchorSlots[(e.slot||1) % anchorSlots.length];
+    e.rope.anchor.x=s.x; e.rope.anchor.y=s.y-6*U;
+    e.len = lineLenFor(e.rope.anchor.y, e.lenF);
+    setRopeLen(e.rope, e.len);
+  }
+}
+
+/* the line must never be longer than the sky above its anchor, or the kite
+   parks off the top of the screen at the zenith */
+function lineLenFor(anchorY, f){
+  // capped by the sky above the anchor AND by the width, so a phone in
+  // portrait doesn't end up with every anchor inside everyone else's arc
+  return clamp(Math.min(anchorY - 34*U, Math.min(W,H)*f, W*0.56), 110, 700);
+}
+
+function setRopeLen(r, total){
+  r.restTotal=total; r.restTarget=total; r.segRest = total/(r.n-1);
+}
+
+/* =========================================================================
+   INIT KITES
+   ========================================================================= */
+function placeKite(k, dir, dist){
+  var r=k.rope, a=r.anchor;
+  var kx = a.x + Math.cos(dir)*dist, ky = a.y + Math.sin(dir)*dist;
+  for(var i=0;i<r.n;i++){
+    var t=i/(r.n-1);
+    r.p[i].x = lerp(a.x,kx,t); r.p[i].y = lerp(a.y,ky,t);
+    r.p[i].px=r.p[i].x; r.p[i].py=r.p[i].y;
+    r.p[i].vx=0; r.p[i].vy=0; r.p[i].ax=0; r.p[i].ay=0;
+  }
+  for(var q=0;q<r.wear.length;q++) r.wear[q]=0;
+  k.x=kx; k.y=ky; k.vx=0; k.vy=0;
+  k.ang = dir;
+  k.angV=0; k.bank=0; k.alive=true; k.tug=0; k.steer=0; k.taut=0; k.grindT=0;
+  for(var t2=0;t2<k.tailN;t2++){
+    k.tail[t2].x = kx - Math.cos(dir)*(t2+1)*k.tailSeg*U;
+    k.tail[t2].y = ky - Math.sin(dir)*(t2+1)*k.tailSeg*U;
+    k.tail[t2].px=k.tail[t2].x; k.tail[t2].py=k.tail[t2].y;
+  }
+}
+
+function spawnEnemy(type, slot, styleIdx, skill){
+  var k = makeKite(14, 9);
+  var st = ENEMY_STYLES[styleIdx % ENEMY_STYLES.length];
+  k.colA=st.a; k.colB=st.b; k.lineCol=st.line;
+  k.type=type; k.slot=slot; k.skill=skill;
+  k.lenF = (type===1) ? 0.66 : (type===2 ? 0.60 : 0.70);
+  k.tailSeg=7;
+  var s = anchorSlots[slot % anchorSlots.length];
+  k.rope.anchor.x=s.x; k.rope.anchor.y=s.y-6*U;
+  k.len = lineLenFor(k.rope.anchor.y, k.lenF);
+  setRopeLen(k.rope, k.len);
+  var dir = -Math.PI/2 + (s.x < W*0.5 ? 0.55 : -0.55);
+  placeKite(k, dir, k.len*0.92);
+  k.aiT = rnd(0.6,1.6); k.mode=0; k.orbit=rnd(0,TAU);
+  k.aiTug=0; k.jink=0;
+  enemies.push(k);
+  return k;
+}
+
+/* =========================================================================
+   ROUND MANAGEMENT
+   ========================================================================= */
+function roundConfig(n){
+  // returns array of {type, slot, style}
+  var out=[];
+  var skill = 0.82 + Math.min(0.60, (n-1)*0.09);
+  if(n===1){ out.push({type:0,slot:1,style:0}); }
+  else if(n===2){ out.push({type:0,slot:1,style:0}); out.push({type:1,slot:2,style:1}); }
+  else if(n===3){ out.push({type:0,slot:1,style:0}); out.push({type:1,slot:2,style:1}); out.push({type:2,slot:3,style:2}); }
+  else {
+    var types=[0,1,2];
+    var slots=[1,2,3,4];
+    for(var i=0;i<3;i++) out.push({type:types[(i+n)%3], slot:slots[(i+n)%4], style:(i+n)%4});
+  }
+  for(var j=0;j<out.length;j++) out[j].skill=skill;
+  return out;
+}
+
+function startRound(n){
+  roundN=n;
+  enemies.length=0;
+  var cfg = roundConfig(n);
+  // wind wildness — set before spawning so rivals can be seated downwind,
+  // where an untouched player kite parks. Otherwise round 1 can be a no-show.
+  WIND.strength = 1 + Math.min(0.55,(n-1)*0.085);
+  WIND.baseDir = (Math.random()<0.5) ? -0.18 : (Math.PI+0.18);
+  WIND.gustT = rnd(2.5,5);
+  var dwn = (Math.cos(WIND.baseDir) > 0) ? 2 : 1;
+  var order = (dwn===2) ? [2,1,4,3] : [1,2,3,4];
+  for(var i=0;i<cfg.length;i++){
+    spawnEnemy(cfg[i].type, order[i % order.length], cfg[i].style, cfg[i].skill);
+  }
+  roundEl.textContent = String(n);
+  pop(roundEl);
+  var word = cfg.length===1?'ONE RIVAL':(cfg.length===2?'TWO RIVALS':'THREE RIVALS');
+  showBanner('ROUND '+n, word);
+}
+
+function showBanner(main, sub){
+  bMain.textContent=main; bSub.textContent=sub||'';
+  bannerEl.classList.remove('show');
+  void bannerEl.offsetWidth;
+  bannerEl.classList.add('show');
+}
+
+/* replay a screen's entrance animation (it only runs once on load otherwise) */
+function replayCard(screen){
+  var c = screen.firstElementChild;
+  if(!c) return;
+  c.style.animation='none'; void c.offsetWidth; c.style.animation='';
+}
+
+function pop(el){
+  el.classList.add('pop');
+  if(el._popT) clearTimeout(el._popT);
+  el._popT = setTimeout(function(){ el.classList.remove('pop'); el._popT=0; }, 140);
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+var IN = {
+  px:0, py:0, has:false, down:false,
+  kLeft:false, kRight:false, kTug:false,
+  anyKey:false
+};
+
+function screenPoint(e){
+  var r = cv.getBoundingClientRect();
+  IN.px = e.clientX - r.left;
+  IN.py = e.clientY - r.top;
+  IN.has = true;
+}
+
+function onDown(e){
+  if(e.cancelable) e.preventDefault();
+  screenPoint(e);
+  IN.down = true;
+  handleGesture();
+}
+function onMove(e){
+  if(e.cancelable) e.preventDefault();
+  screenPoint(e);
+}
+function onUp(e){
+  if(e && e.cancelable) e.preventDefault();
+  IN.down=false;
+}
+
+/* NOTE: listeners go on #wrap (not the canvas) because the start / pause /
+   game-over overlays sit above the canvas and would swallow the gesture. */
+var wrapEl = document.getElementById('wrap');
+if(window.PointerEvent){
+  wrapEl.addEventListener('pointerdown', onDown, {passive:false});
+  window.addEventListener('pointermove', onMove, {passive:false});
+  window.addEventListener('pointerup', onUp, {passive:false});
+  window.addEventListener('pointercancel', onUp, {passive:false});
+}else{
+  wrapEl.addEventListener('mousedown', onDown, {passive:false});
+  window.addEventListener('mousemove', onMove, {passive:false});
+  window.addEventListener('mouseup', onUp, {passive:false});
+  wrapEl.addEventListener('touchstart', function(e){
+    if(e.cancelable) e.preventDefault();
+    var t=e.changedTouches[0]; onDown({clientX:t.clientX, clientY:t.clientY, cancelable:false, preventDefault:function(){}});
+  }, {passive:false});
+  window.addEventListener('touchmove', function(e){
+    if(e.cancelable) e.preventDefault();
+    var t=e.changedTouches[0]; onMove({clientX:t.clientX, clientY:t.clientY, cancelable:false, preventDefault:function(){}});
+  }, {passive:false});
+  window.addEventListener('touchend', function(e){ if(e.cancelable) e.preventDefault(); onUp(null); }, {passive:false});
+  window.addEventListener('touchcancel', function(e){ onUp(null); }, {passive:false});
+}
+// stop page scroll/zoom gestures generally
+document.addEventListener('touchmove', function(e){ if(e.cancelable) e.preventDefault(); }, {passive:false});
+document.addEventListener('gesturestart', function(e){ if(e.cancelable) e.preventDefault(); }, {passive:false});
+document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+window.addEventListener('keydown', function(e){
+  var k=e.key;
+  if(k==='Tab') return;
+  if(k==='ArrowLeft'||k==='a'||k==='A'){ IN.kLeft=true; e.preventDefault(); }
+  else if(k==='ArrowRight'||k==='d'||k==='D'){ IN.kRight=true; e.preventDefault(); }
+  else if(k===' '||k==='Spacebar'||k==='ArrowUp'||k==='w'||k==='W'){ IN.kTug=true; e.preventDefault(); }
+  else if(k==='ArrowDown'||k==='s'||k==='S'){ e.preventDefault(); }
+  if(k==='m'||k==='M'){ SND.muted=!SND.muted; SND.setMasterEnabled(!SND.muted); }
+  handleGesture();
+});
+window.addEventListener('keyup', function(e){
+  var k=e.key;
+  if(k==='ArrowLeft'||k==='a'||k==='A') IN.kLeft=false;
+  else if(k==='ArrowRight'||k==='d'||k==='D') IN.kRight=false;
+  else if(k===' '||k==='Spacebar'||k==='ArrowUp'||k==='w'||k==='W') IN.kTug=false;
+});
+
+function handleGesture(){
+  SND.init();
+  if(!SND.muted) SND.setMasterEnabled(true);
+  if(paused){ resumeGame(); return; }
+  if(state==='menu'){ beginGame(); return; }
+  if(state==='over' && overReady<=0){ beginGame(); return; }
+}
+
+/* blur / focus */
+function doPause(){
+  if(paused) return;
+  if(state==='menu'||state==='over') return;
+  paused=true;
+  replayCard(pauseScreen);
+  pauseScreen.classList.remove('hidden');
+  SND.setMasterEnabled(false);
+  SND.setGrind(0,0);
+}
+function resumeGame(){
+  if(!paused) return;
+  paused=false;
+  pauseScreen.classList.add('hidden');
+  acc=0; lastT=performance.now();
+  if(!SND.muted) SND.setMasterEnabled(true);
+}
+window.addEventListener('blur', doPause);
+document.addEventListener('visibilitychange', function(){ if(document.hidden) doPause(); });
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 120); });
+
+/* =========================================================================
+   GAME FLOW
+   ========================================================================= */
+function beginGame(){
+  score=0; cuts=0; roundN=1; overReady=0;
+  lastShownScore=0; bestAtRunStart=best;
+  shake=0; state='play'; stateT=0; paused=false;
+  creakTimer=0; warnTimer=0; audioAcc=0; grindWasOn=false;
+  grindActive=false; grindAmount=0; grindWear=0;
+  debris.length=0;
+  for(var i=0;i<SPARK_MAX;i++) sparks[i].a=0;
+  for(var j=0;j<SCRAP_MAX;j++) scraps[j].a=0;
+  for(var f=0;f<FLOAT_MAX;f++) floats[f].a=0;
+
+  // player setup
+  var s0=anchorSlots[0];
+  player.rope.anchor.x=s0.x; player.rope.anchor.y=s0.y-6*U;
+  player.len = lineLenFor(player.rope.anchor.y, 0.78);
+  setRopeLen(player.rope, player.len);
+  placeKite(player, -Math.PI/2 - 0.55, player.len*0.94);
+  player.alive=true;
+  // forget where the restart was tapped, or the kite dives at the button
+  IN.has=false;
+
+  startScreen.classList.add('hidden');
+  overScreen.classList.add('hidden');
+  pauseScreen.classList.add('hidden');
+  hudEl.classList.add('on');
+  scoreEl.textContent='0'; cutsEl.textContent='0'; bestEl.textContent=String(best);
+  lineFill.style.width='100%'; lineBar.className='';
+
+  startRound(1);
+  acc=0; lastT=performance.now();
+}
+
+function endGame(reason){
+  if(state==='over') return;
+  state='over'; stateT=0; overReady=0.55;
+  SND.setGrind(0,0);
+  var fin = Math.floor(score);
+  var beaten = fin > bestAtRunStart;
+  if(fin>best) best=fin;
+  oScore.textContent=String(fin);
+  oRound.textContent=String(roundN);
+  oCuts.textContent=String(cuts);
+  bestEl.textContent=String(best);
+  if(beaten && fin>0){ oBest.textContent='New best this session'; }
+  else { oBest.textContent='Best this session: '+best; }
+  if(reason==='crash'){ overTitle.textContent='DOWN'; overSub.textContent='Your kite met the rooftops.'; }
+  else { overTitle.textContent='LINE CUT'; overSub.textContent='Your string parted in the crosswind.'; }
+  replayCard(overScreen);
+  overScreen.classList.remove('hidden');
+  hudEl.classList.remove('on');
+}
+
+function startDying(reason){
+  if(state==='dying'||state==='over') return;
+  state='dying'; stateT=0; player.deathReason=reason;
+  SND.lose();
+  shake = Math.max(shake, 16*U);
+}
+
+/* =========================================================================
+   WIND
+   ========================================================================= */
+function updateWind(dt){
+  WIND.t += dt;
+  var t=WIND.t;
+  var wob = Math.sin(t*0.23)*0.55 + Math.sin(t*0.41+1.7)*0.26 + Math.sin(t*0.093+4.2)*0.42;
+  var dirWob = (Math.sin(t*0.17+2.1)*0.24 + Math.sin(t*0.31+0.5)*0.11) * WIND.strength;
+
+  WIND.gustT -= dt;
+  if(WIND.gustT<=0){
+    WIND.gustT = rnd(4.5, 9.5) / WIND.strength;
+    WIND.gust += rnd(0.35, 0.85)*WIND.strength;
+  }
+  WIND.gust *= Math.exp(-dt*0.75);
+
+  var base = 340*U;
+  var sp = base * (1 + 0.18*wob*WIND.strength + WIND.gust*0.45) * (0.90 + 0.12*WIND.strength);
+  sp = clamp(sp, 90*U, 800*U);
+  var dir = WIND.baseDir + dirWob;
+  WIND.speed = sp;
+  WIND.x = Math.cos(dir)*sp;
+  WIND.y = Math.sin(dir)*sp;
+}
+
+/* =========================================================================
+   ROPE PHYSICS
+   ========================================================================= */
+var ROPE_ITER = 7;
+var ENEMY_ITER = 5;
+
+function integrateRope(r, dt, damp, gravity, windDrag){
+  var wx=WIND.x, wy=WIND.y;
+  var dt2=dt*dt, last=r.n-1;
+  for(var i=1;i<r.n;i++){
+    var p=r.p[i];
+    var vx=(p.x-p.px)*damp, vy=(p.y-p.py)*damp;
+    var ax=p.ax, ay=p.ay;
+    if(i!==last){
+      // wind drag + weight on the string itself (the kite node already has
+      // its own full aero/gravity solve — don't double-count it here)
+      var cvx = vx/dt, cvy = vy/dt;
+      ax += (wx-cvx)*windDrag;
+      ay += gravity + (wy-cvy)*windDrag;
+    }
+    p.px=p.x; p.py=p.y;
+    p.x += vx + ax*dt2;
+    p.y += vy + ay*dt2;
+    p.ax=0; p.ay=0;
+  }
+}
+
+function solveRope(r, iters, kiteInvMass){
+  var a=r.anchor;
+  var seg=r.segRest;
+  var n=r.n;
+  var p=r.p;
+  for(var k=0;k<iters;k++){
+    p[0].x=a.x; p[0].y=a.y;
+    for(var i=0;i<n-1;i++){
+      var p0=p[i], p1=p[i+1];
+      var dx=p1.x-p0.x, dy=p1.y-p0.y;
+      var d=Math.sqrt(dx*dx+dy*dy);
+      if(d<1e-6) continue;
+      // A string pulls but never pushes. Solving both ways turns a slack line
+      // into a rigid curled-up chain; one-sided lets it droop into a catenary.
+      // The weak floor below only stops points collapsing onto each other.
+      var diff;
+      if(d > seg)            diff=(d-seg)/d;
+      else if(d < seg*0.55)  diff=(d-seg*0.55)/d*0.25;
+      else continue;
+      var w0 = (i===0)?0:1;
+      var w1 = (i===n-2)?kiteInvMass:1;
+      var ws = w0+w1;
+      if(ws<=0) continue;
+      var cx=dx*diff, cy=dy*diff;
+      p0.x += cx*(w0/ws); p0.y += cy*(w0/ws);
+      p1.x -= cx*(w1/ws); p1.y -= cy*(w1/ws);
+    }
+    p[0].x=a.x; p[0].y=a.y;
+  }
+}
+
+function ropeVelocities(r, dt){
+  var inv=1/dt;
+  for(var i=0;i<r.n;i++){
+    var p=r.p[i];
+    p.vx=(p.x-p.px)*inv; p.vy=(p.y-p.py)*inv;
+  }
+  // bbox for broad phase
+  var mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+  for(var j=0;j<r.n;j++){
+    var q=r.p[j];
+    if(q.x<mnx)mnx=q.x; if(q.x>mxx)mxx=q.x;
+    if(q.y<mny)mny=q.y; if(q.y>mxy)mxy=q.y;
+  }
+  r.minX=mnx; r.minY=mny; r.maxX=mxx; r.maxY=mxy;
+}
+
+/* =========================================================================
+   KITE AERODYNAMICS
+   ========================================================================= */
+/* A fighter kite is not a glider: it flies where its nose points, the wind is
+   its engine, and the line is what stops it leaving. Modelling in-plane
+   aerodynamics gives a dead zone upwind where the sail collapses and half the
+   sky becomes unplayable — so instead the sail's power comes from the wind
+   blowing THROUGH the picture plane (toward the viewer) and the in-plane wind
+   only sets drift, power and where an untouched kite parks. */
+var GRAV     = 620;    // px/s^2 at U=1
+var POW_BASE = 780;    // nose thrust with a slack line
+var POW_TUG  = 2000;   // extra nose thrust at full tug
+var KDRAG    = 0.0042; // quadratic drag along the nose
+var KLAT     = 5.0;    // lateral damping — the sail refuses to slide sideways
+var KDRIFT   = 0.30;   // how strongly the in-plane breeze pushes the kite
+var KSAIL    = 0.0034; // sail pressure vs apparent wind — the gust buck
+var LINDAMP  = 0.25;
+
+function updateKite(k, dt, isPlayer){
+  var r=k.rope;
+  var end=r.p[r.n-1];
+
+  // ---- read current velocity from verlet
+  var vx = (end.x-end.px)/dt;
+  var vy = (end.y-end.py)/dt;
+
+  // ---- line rest length control (tug reels in)
+  var tugT = k.tug;
+  var adx = end.x - r.anchor.x, ady = end.y - r.anchor.y;
+  var dist = Math.sqrt(adx*adx+ady*ady) || 1e-6;
+  // A flier gathers slack as the kite falls toward them and lets it run the
+  // instant it pulls away again. Without the gather a dive leaves a huge loop
+  // of string sagging through the skyline; without the radial-velocity gate
+  // the gather becomes a leash and the kite can never sprint outward.
+  var target = k.len * lerp(1.0, 0.78, tugT);
+  var radialV = (adx*vx + ady*vy)/dist;
+  if(radialV < 45*U){
+    var slackCap = dist*1.10;
+    if(slackCap < target) target = Math.max(slackCap, k.len*0.42);
+  }
+  r.restTotal += (target - r.restTotal) * clamp(dt*(target>r.restTotal ? 14 : 2.0),0,1);
+  r.restTotal = clamp(r.restTotal, k.len*0.40, k.len*1.02);
+  r.segRest = r.restTotal/(r.n-1);
+
+  // ---- tautness / tension (drives the creak and the fray visuals)
+  var ratio = dist / r.restTotal;
+  k.taut = smoothstep((ratio - 0.925)/0.065);
+
+  // ---- steering: the player twists the sail, the kite follows its nose
+  var turn = (3.1 + 3.6*tugT) * (isPlayer?1:(0.78*(k.skill||1)));
+  k.ang += k.steer * turn * dt;
+
+  // ---- passive trim. Left alone a kite climbs to the top of its arc and parks
+  //      a little downwind of the zenith. Steer toward that point; the restore
+  //      fades out as the kite arrives so it settles instead of hunting.
+  var wsp = WIND.speed > 1 ? WIND.speed : 1;
+  // the trim point itself hunts slowly from side to side, so a kite nobody is
+  // touching still swoops across the sky instead of hanging like a sign
+  var zsw = Math.sin(gameT*0.37 + k.ph*0.7)*0.34 + Math.sin(gameT*0.71 + k.ph)*0.15;
+  var zhx = (WIND.x/wsp)*0.48 + zsw, zhy = -1;
+  var zl = Math.sqrt(zhx*zhx + 1);
+  var Zx = r.anchor.x + (zhx/zl)*r.restTotal;
+  var Zy = r.anchor.y + (zhy/zl)*r.restTotal;
+  var dzx = Zx-end.x, dzy = Zy-end.y;
+  var dzl = Math.sqrt(dzx*dzx+dzy*dzy);
+  k.wob = Math.sin(gameT*0.83 + k.ph)*0.27 + Math.sin(gameT*1.97 + k.ph*2.1)*0.13;
+  if(dzl > 1e-3){
+    var restore = (isPlayer? 2.4 : 2.3) * (1 - 0.78*tugT) * smoothstep(dzl/(70*U));
+    k.ang += angTo(k.ang, Math.atan2(dzy,dzx) + k.wob) * clamp(restore*dt,0,0.32);
+  }
+  k.ang = angWrap(k.ang);
+
+  var ca=Math.cos(k.ang), sa=Math.sin(k.ang);
+
+  // ---- nose thrust, powered by the wind and doubled by a hard tug
+  var windPow = clamp(wsp/(340*U), 0.55, 1.75);
+  var pTug = isPlayer ? POW_TUG : (POW_TUG*0.62*(k.skill||1));
+  var th = (POW_BASE + pTug*tugT) * windPow * U;
+  var ax = ca*th, ay = sa*th;
+
+  // ---- drag along the nose, and hard damping across it so the kite carves
+  var vAlong  =  vx*ca + vy*sa;
+  var vAcross = -vx*sa + vy*ca;
+  var dAlong = -KDRAG*vAlong*Math.abs(vAlong)/U;
+  ax += ca*dAlong;            ay += sa*dAlong;
+  ax += -sa*(-KLAT*vAcross);  ay += ca*(-KLAT*vAcross);
+
+  // ---- sail pressure from the apparent wind (global wind minus kite
+  //      velocity), acting along the face normal. Small beside the nose
+  //      thrust, but it is what makes the kite buck, flutter and get shoved
+  //      bodily sideways when a gust arrives.
+  var awx = WIND.x - vx, awy = WIND.y - vy;
+  var wn  = awx*(-sa) + awy*ca;
+  var pf  = KSAIL*wn*Math.abs(wn)/U;
+  ax += -sa*pf; ay += ca*pf;
+
+  // ---- gravity, breeze coupling, residual damping
+  ay += GRAV*U;
+  ax += (awx)*KDRIFT; ay += (awy)*KDRIFT;
+  ax -= vx*LINDAMP;   ay -= vy*LINDAMP;
+
+  // ---- soft screen bounds (keep the kite readable on screen)
+  var m = 34*U;
+  if(end.y < m)          ay += (m-end.y)*22;
+  if(end.x < m)          ax += (m-end.x)*22;
+  if(end.x > W-m)        ax -= (end.x-(W-m))*22;
+
+  // ---- soft repulsion from the hand, so the reel never collapses the line
+  var minR = r.restTotal*0.34;
+  if(dist < minR){
+    var pushF = (minR-dist)/minR * 2600 * U;
+    ax += (adx/dist)*pushF; ay += (ady/dist)*pushF;
+  }
+
+  // ---- rooftop cushion. The attract-loop kite may never crash; rival kites
+  //      get a soft assist so they die to strings, not to clumsy pathing.
+  //      The player gets none — the rooftops are the player's risk.
+  if(state==='menu'){
+    var rf = roofYAt(end.x) - 90*U;
+    if(end.y > rf) ay -= (end.y-rf)*14;
+  } else if(!isPlayer){
+    var rf2 = roofYAt(end.x) - 100*U;
+    if(end.y > rf2) ay -= (end.y-rf2)*16;
+  }
+
+  end.ax += ax; end.ay += ay;
+
+  // ---- bank visual from turn rate
+  var wantBank = clamp(k.steer*(0.55+0.5*tugT), -1, 1);
+  k.bank += (wantBank - k.bank) * clamp(dt*9,0,1);
+}
+
+function postKite(k, dt){
+  var r=k.rope, end=r.p[r.n-1];
+  // hard line limit: never stretch past total rest length
+  var dx=end.x-r.anchor.x, dy=end.y-r.anchor.y;
+  var d=Math.sqrt(dx*dx+dy*dy);
+  var maxD = r.restTotal*1.005;
+  if(d>maxD && d>1e-6){
+    var nx=dx/d, ny=dy/d;
+    var push=(d-maxD);
+    end.x -= nx*push; end.y -= ny*push;
+    // kill outward radial velocity component
+    var vx=(end.x-end.px), vy=(end.y-end.py);
+    var rad = vx*nx+vy*ny;
+    if(rad>0){ end.px += nx*rad*0.85; end.py += ny*rad*0.85; }
+    // pull the string points inward too so it doesn't visually stretch
+    for(var i=1;i<r.n-1;i++){
+      var t=i/(r.n-1);
+      r.p[i].x -= nx*push*t*0.6; r.p[i].y -= ny*push*t*0.6;
+    }
+  }
+  // minimum radius: a kite can't be flown into its own hand. Without this you
+  // can park on the spool where nothing can reach you, and the folded line
+  // renders as a knot at the anchor.
+  var minD = r.restTotal*0.24;
+  if(d < minD && d > 1e-6){
+    var mnx=dx/d, mny=dy/d, out=(minD-d);
+    end.x += mnx*out; end.y += mny*out;
+    var mvx=(end.x-end.px), mvy=(end.y-end.py);
+    var mrad = mvx*mnx+mvy*mny;
+    if(mrad<0){ end.px += mnx*mrad*0.85; end.py += mny*mrad*0.85; }
+  }
+  // rival kites get a hard floor: only a cut string may bring them down, so a
+  // round can never be handed to the player by clumsy AI pathing
+  if(!k.isPlayer){
+    var floorY = roofYAt(end.x) - 26*U;
+    if(end.y > floorY){ end.y = floorY; if(end.py > end.y) end.py = end.y; }
+  }
+  k.x=end.x; k.y=end.y;
+  k.vx=(end.x-end.px)/dt; k.vy=(end.y-end.py)/dt;
+  k.speed=Math.sqrt(k.vx*k.vx+k.vy*k.vy);
+}
+
+function updateTail(k, dt){
+  var seg=k.tailSeg*U;
+  var ca=Math.cos(k.ang), sa=Math.sin(k.ang);
+  var rootX = k.x - ca*16*U, rootY = k.y - sa*16*U;
+  var dt2=dt*dt;
+  for(var i=0;i<k.tailN;i++){
+    var p=k.tail[i];
+    var vx=(p.x-p.px)*0.985, vy=(p.y-p.py)*0.985;
+    var cvx=vx/dt, cvy=vy/dt;
+    p.px=p.x; p.py=p.y;
+    p.x += vx + ((WIND.x-cvx)*3.2)*dt2;
+    p.y += vy + (GRAV*U*0.30 + (WIND.y-cvy)*3.2)*dt2;
+  }
+  for(var k2=0;k2<3;k2++){
+    var prx=rootX, pry=rootY;
+    for(var j=0;j<k.tailN;j++){
+      var q=k.tail[j];
+      var dx=q.x-prx, dy=q.y-pry;
+      var d=Math.sqrt(dx*dx+dy*dy);
+      if(d<1e-6){ q.x=prx+seg; d=seg; dx=seg; dy=0; }
+      var diff=(d-seg)/d;
+      if(j===0){ q.x-=dx*diff; q.y-=dy*diff; }
+      else { q.x-=dx*diff*0.72; q.y-=dy*diff*0.72; }
+      prx=q.x; pry=q.y;
+    }
+  }
+}
+
+/* =========================================================================
+   AI
+   ========================================================================= */
+function nearestPointOnPlayerLine(x,y,out){
+  var r=player.rope;
+  var bd=1e12, bx=r.p[0].x, by=r.p[0].y, bi=0;
+  for(var i=1;i<r.n;i++){
+    var p=r.p[i];
+    var dx=p.x-x, dy=p.y-y;
+    var d=dx*dx+dy*dy;
+    if(d<bd){ bd=d; bx=p.x; by=p.y; bi=i; }
+  }
+  out.x=bx; out.y=by; out.d=Math.sqrt(bd); out.i=bi;
+}
+var _np={x:0,y:0,d:0,i:0};
+
+function updateAI(e, dt){
+  var k=e;
+  k.aiT -= dt;
+  var tx, ty, wantTug=0;
+  var a=k.rope.anchor;
+  var skill = k.skill||1;
+
+  if(k.type===0){
+    /* HUNTER — repeated slashing runs across the player's line */
+    if(k.aiT<=0){
+      k.mode = (k.mode===1)?0:1;
+      k.aiT = (k.mode===1) ? rnd(1.5,2.4)/skill : rnd(0.9,1.7)/skill;
+    }
+    if(k.mode===1){
+      nearestPointOnPlayerLine(k.x,k.y,_np);
+      var dx=_np.x-k.x, dy=_np.y-k.y;
+      var dd=Math.sqrt(dx*dx+dy*dy)||1;
+      tx=_np.x + dx/dd*230*U; ty=_np.y + dy/dd*230*U;
+      wantTug = dd < k.len*1.3 ? 1 : 0.55;
+    }else{
+      var side = (a.x < W*0.5) ? 1 : -1;
+      tx = a.x + side*k.len*0.55; ty = a.y - k.len*0.86;
+      wantTug = 0.12;
+    }
+  }
+  else if(k.type===1){
+    /* CIRCLER — holds altitude, orbits, counterattacks when threatened */
+    nearestPointOnPlayerLine(k.x,k.y,_np);
+    var threat = _np.d < 150*U;
+    if(threat && k.mode!==1 && k.aiT<=0){ k.mode=1; k.aiT=rnd(1.2,1.9); }
+    if(k.aiT<=0){ k.mode=0; k.aiT=rnd(1.0,2.0); }
+    if(k.mode===1){
+      var ddx=_np.x-k.x, ddy=_np.y-k.y, dl=Math.sqrt(ddx*ddx+ddy*ddy)||1;
+      tx=_np.x+ddx/dl*150*U; ty=_np.y+ddy/dl*150*U;
+      wantTug=1;
+    }else{
+      k.orbit += dt*1.05*skill*(a.x<W*0.5?1:-1);
+      var rr=k.len*0.80;
+      tx = a.x + Math.cos(k.orbit)*rr*0.85;
+      ty = a.y - k.len*0.72 + Math.sin(k.orbit)*rr*0.30;
+      wantTug=0.3;
+    }
+  }
+  else{
+    /* DARTER — fast, erratic, harasses near the player's kite */
+    if(k.aiT<=0){ k.jink = rnd(-1,1); k.aiT=rnd(0.35,0.8)/skill; k.mode = Math.random()<0.62?1:0; }
+    if(k.mode===1){
+      var ox=player.x - k.x, oy=player.y - k.y;
+      var ol=Math.sqrt(ox*ox+oy*oy)||1;
+      tx = player.x + ox/ol*140*U + k.jink*130*U;
+      ty = player.y + oy/ol*140*U - 40*U;
+      wantTug=1;
+    }else{
+      nearestPointOnPlayerLine(k.x,k.y,_np);
+      tx=_np.x + k.jink*180*U; ty=_np.y - 60*U;
+      wantTug=0.5;
+    }
+  }
+
+  // rooftop bail-out. Rival kites have a hard floor, so the AI is free to
+  // commit to low attack runs — it only pulls up when genuinely scraping.
+  var roof = roofYAt(k.x);
+  if(k.y > roof - 110*U){
+    ty = Math.min(ty, k.y - 300*U);
+    tx = lerp(tx, a.x + (k.x-a.x)*1.4, 0.45);
+    wantTug = Math.max(wantTug, 0.8);
+  }
+  // don't fly off the top
+  if(k.y < 60*U) ty = Math.max(ty, 140*U);
+
+  var want = Math.atan2(ty-k.y, tx-k.x);
+  var d2 = angTo(k.ang, want);
+  var s = clamp(d2*2.0, -1, 1);
+  k.aiSteer += (s - k.aiSteer)*clamp(dt*9,0,1);
+  k.steer = k.aiSteer;
+  k.tug += (wantTug - k.tug)*clamp(dt*7,0,1);
+}
+
+/* =========================================================================
+   LINE CUTTING
+   ========================================================================= */
+var CUT_MIN_SPEED = 100;     // px/s of relative sliding below which nothing happens
+var CUT_RATE      = 0.0110; // wear per (px/s) per second
+var WEAR_DECAY    = 0.16;
+var DMG_CAP_P     = 3.0;  // max wear/second any one line may take
+var DMG_CAP_E     = 6.0;
+var _ix=0,_iy=0,_it=0,_iu=0;
+
+function segIntersect(ax,ay,bx,by,cx,cy,dx,dy){
+  var r1x=bx-ax, r1y=by-ay, r2x=dx-cx, r2y=dy-cy;
+  var den = r1x*r2y - r1y*r2x;
+  if(den>-1e-9 && den<1e-9) return false;
+  var qpx=cx-ax, qpy=cy-ay;
+  var t = (qpx*r2y - qpy*r2x)/den;
+  if(t<0||t>1) return false;
+  var u = (qpx*r1y - qpy*r1x)/den;
+  if(u<0||u>1) return false;
+  _it=t; _iu=u; _ix=ax+r1x*t; _iy=ay+r1y*t;
+  return true;
+}
+
+function addWear(r, idx, amt){
+  var w=r.wear;
+  w[idx]+=amt;
+  if(idx>0) w[idx-1]+=amt*0.38;
+  if(idx<w.length-1) w[idx+1]+=amt*0.38;
+}
+
+var grindAmount=0, grindWear=0, grindX=0, grindY=0, grindActive=false;
+
+function resolveCuts(dt){
+  grindAmount=0; grindWear=0; grindActive=false;
+  var pr=player.rope;
+  if(!player.alive) return;
+
+  // Damage budgets. Two lines can cross in several places at once, and with
+  // three rivals a single frame could otherwise take a string from pristine to
+  // parted. These put a hard floor on how fast any line can die — about a
+  // fifth of a second of perfect sawing for a rival, twice that for you — so a
+  // snap is always something you had a moment to see coming.
+  var pBudget = DMG_CAP_P*dt;
+  // Round 1 is the teaching round: rival strings bite at little more than half
+  // strength and work up to full by round 4. Your own bite never changes.
+  var pScale = clamp(0.55 + 0.15*(roundN-1), 0, 1);
+
+  for(var e=0;e<enemies.length;e++){
+    var en=enemies[e];
+    if(!en.alive) continue;
+    var er=en.rope;
+    var eBudget = DMG_CAP_E*dt;
+    // broad phase
+    if(pr.maxX < er.minX || er.maxX < pr.minX || pr.maxY < er.minY || er.maxY < pr.minY) continue;
+
+    for(var i=0;i<pr.n-1;i++){
+      var a0=pr.p[i], a1=pr.p[i+1];
+      var amnx = a0.x<a1.x?a0.x:a1.x, amxx = a0.x<a1.x?a1.x:a0.x;
+      var amny = a0.y<a1.y?a0.y:a1.y, amxy = a0.y<a1.y?a1.y:a0.y;
+      if(amxx < er.minX || amnx > er.maxX || amxy < er.minY || amny > er.maxY) continue;
+
+      for(var j=0;j<er.n-1;j++){
+        var b0=er.p[j], b1=er.p[j+1];
+        if(amxx < (b0.x<b1.x?b0.x:b1.x)) continue;
+        if(amnx > (b0.x<b1.x?b1.x:b0.x)) continue;
+        if(amxy < (b0.y<b1.y?b0.y:b1.y)) continue;
+        if(amny > (b0.y<b1.y?b1.y:b0.y)) continue;
+
+        if(!segIntersect(a0.x,a0.y,a1.x,a1.y,b0.x,b0.y,b1.x,b1.y)) continue;
+
+        var t=_it, u=_iu, cx=_ix, cy=_iy;
+        // contact velocities
+        var pvx = a0.vx+(a1.vx-a0.vx)*t, pvy = a0.vy+(a1.vy-a0.vy)*t;
+        var evx = b0.vx+(b1.vx-b0.vx)*u, evy = b0.vy+(b1.vy-b0.vy)*u;
+        var rvx = pvx-evx, rvy = pvy-evy;
+        var rel = Math.sqrt(rvx*rvx+rvy*rvy);
+        var ps = Math.sqrt(pvx*pvx+pvy*pvy);
+        var es = Math.sqrt(evx*evx+evy*evy);
+
+        // crossing angle factor (perpendicular bites harder)
+        var adx=a1.x-a0.x, ady=a1.y-a0.y, al=Math.sqrt(adx*adx+ady*ady)||1;
+        var bdx=b1.x-b0.x, bdy=b1.y-b0.y, bl=Math.sqrt(bdx*bdx+bdy*bdy)||1;
+        var crossF = Math.abs((adx*bdy-ady*bdx)/(al*bl));
+        var angF = 0.42 + 0.58*crossF;
+
+        // normalise by viewport scale: every speed in the sim is proportional
+        // to U, so without this a large window saws through lines 1.5x faster
+        var eff = (rel - CUT_MIN_SPEED*U)/U;
+        if(eff<0) eff=0;
+        var base = eff*CUT_RATE*angF*dt;
+        if(base>0.05) base=0.05;
+
+        var tot = ps+es+1e-3;
+        var toEnemy  = base*(ps/tot)*1.9;
+        var toPlayer = base*(es/tot)*1.55*pScale;
+
+        if(toEnemy  > eBudget) toEnemy  = eBudget;
+        if(toPlayer > pBudget) toPlayer = pBudget;
+        if(toEnemy>0){  addWear(er, j, toEnemy);  eBudget -= toEnemy; }
+        if(toPlayer>0){ addWear(pr, i, toPlayer); pBudget -= toPlayer; }
+
+        var g = clamp(eff/700,0,1);
+        if(g>0.02){
+          grindActive=true;
+          if(g>grindAmount){ grindAmount=g; grindX=cx; grindY=cy; }
+          var wmax = Math.max(er.wear[j], pr.wear[i]);
+          if(wmax>grindWear) grindWear=wmax;
+          // sparks
+          if(Math.random() < g*0.85){
+            var na=Math.random()*TAU;
+            var sp2 = rnd(60,260)*g*U;
+            spark(cx,cy, Math.cos(na)*sp2 + rvx*0.12, Math.sin(na)*sp2 + rvy*0.12,
+                  rnd(0.14,0.42), rnd(1.1,2.6)*U, rnd(0.75,1));
+          }
+        }
+      }
+    }
+  }
+
+  // wear decay
+  for(var q=0;q<pr.wear.length;q++){ pr.wear[q]-=WEAR_DECAY*dt; if(pr.wear[q]<0) pr.wear[q]=0; }
+  for(var e2=0;e2<enemies.length;e2++){
+    var ew=enemies[e2].rope.wear;
+    for(var z=0;z<ew.length;z++){ ew[z]-=WEAR_DECAY*0.28*dt; if(ew[z]<0) ew[z]=0; }
+  }
+
+  // ---- breaks: check enemies first, but resolve player loss with priority
+  var playerBreakIdx=-1;
+  for(var pw=0; pw<pr.wear.length; pw++){ if(pr.wear[pw]>=1){ playerBreakIdx=pw; break; } }
+
+  for(var e3=0;e3<enemies.length;e3++){
+    var en3=enemies[e3];
+    if(!en3.alive) continue;
+    var w3=en3.rope.wear;
+    for(var z3=0;z3<w3.length;z3++){
+      if(w3[z3]>=1){ cutEnemy(en3, z3); break; }
+    }
+  }
+
+  if(playerBreakIdx>=0 && player.alive){
+    cutPlayer(playerBreakIdx);
+  }
+}
+
+function cutEnemy(en, idx){
+  en.alive=false;
+  cuts++;
+  var gain = 100*roundN;
+  var whip = player.speed > 620*U;
+  if(whip) gain += 60*roundN;
+  score += gain;
+  lastShownScore = Math.floor(score);
+  scoreEl.textContent = String(lastShownScore);
+  if(lastShownScore>best){ best=lastShownScore; bestEl.textContent=String(best); }
+  cutsEl.textContent = String(cuts);
+  pop(scoreEl);
+  floatText(en.x, en.y-26*U, whip? ('WHIP! +'+gain) : ('+'+gain), whip?'#ffe27a':'#ffffff', whip?19:16);
+  SND.snap();
+  shake = Math.max(shake, 11*U);
+  burstAt(en.x,en.y,en.colA,en.colB, 1);
+  makeDebris(en, idx);
+}
+
+function cutPlayer(idx){
+  player.alive=false;
+  SND.snap();
+  shake = Math.max(shake, 15*U);
+  burstAt(player.x,player.y,player.colA,player.colB, 1.25);
+  makeDebris(player, idx);
+  startDying('cut');
+}
+
+function burstAt(x,y,cA,cB,scale){
+  var n = Math.floor(26*scale);
+  for(var i=0;i<n;i++){
+    var a=Math.random()*TAU, s=rnd(90,420)*U*scale;
+    spark(x,y,Math.cos(a)*s, Math.sin(a)*s, rnd(0.25,0.7), rnd(1.0,2.6)*U, 1);
+  }
+  var m = Math.floor(14*scale);
+  for(var j=0;j<m;j++){
+    var a2=Math.random()*TAU, s2=rnd(50,240)*U*scale;
+    scrap(x,y,Math.cos(a2)*s2, Math.sin(a2)*s2, (Math.random()<0.5?cA:cB), rnd(4,8)*U);
+  }
+}
+
+/* severed line + tumbling kite */
+function makeDebris(k, idx){
+  if(debris.length>=DEBRIS_MAX) debris.shift();
+  var r=k.rope;
+  // limp string from anchor to cut point
+  var pts=[];
+  for(var i=0;i<=idx;i++){
+    pts.push({x:r.p[i].x, y:r.p[i].y, px:r.p[i].px, py:r.p[i].py});
+  }
+  if(pts.length<2) pts.push({x:r.p[0].x+2, y:r.p[0].y+2, px:r.p[0].x, py:r.p[0].y});
+  // trailing stub attached to the kite
+  var stub=[];
+  var stubN = Math.min(7, r.n-1-idx);
+  for(var s=0;s<stubN;s++){
+    var pi = Math.min(r.n-1, idx+1+s);
+    stub.push({x:r.p[pi].x, y:r.p[pi].y, px:r.p[pi].px, py:r.p[pi].py});
+  }
+  debris.push({
+    p:pts, seg:r.segRest, anchored:true, life:9.5,
+    stub:stub, stubSeg:r.segRest,
+    kx:k.x, ky:k.y, kvx:k.vx*0.6, kvy:k.vy*0.6,
+    ang:k.ang, spin: rnd(-6,6) + (k.steer||0)*4,
+    colA:k.colA, colB:k.colB, lineCol:k.lineCol,
+    tail:k.tail.map(function(t){return {x:t.x,y:t.y,px:t.px,py:t.py};}),
+    tailSeg:k.tailSeg, alphaFade:1, isPlayer:k.isPlayer
+  });
+}
+
+function updateDebris(dt){
+  for(var d=debris.length-1;d>=0;d--){
+    var db=debris[d];
+    db.life-=dt;
+    if(db.life<=0){ debris.splice(d,1); continue; }
+    if(db.life<2.2) db.alphaFade = db.life/2.2;
+
+    // limp string falls
+    var dt2=dt*dt;
+    for(var i=1;i<db.p.length;i++){
+      var p=db.p[i];
+      var vx=(p.x-p.px)*0.99, vy=(p.y-p.py)*0.99;
+      var cvx=vx/dt, cvy=vy/dt;
+      p.px=p.x; p.py=p.y;
+      p.x += vx + ((WIND.x-cvx)*1.1)*dt2;
+      p.y += vy + (GRAV*U*0.42 + (WIND.y-cvy)*1.1)*dt2;
+    }
+    for(var it=0;it<3;it++){
+      for(var j=0;j<db.p.length-1;j++){
+        var a=db.p[j], b=db.p[j+1];
+        var dx=b.x-a.x, dy=b.y-a.y;
+        var dl=Math.sqrt(dx*dx+dy*dy);
+        if(dl<1e-6) continue;
+        var diff=(dl-db.seg)/dl;
+        var w0=(j===0)?0:0.5, w1=0.5;
+        if(j===0){ b.x-=dx*diff; b.y-=dy*diff; }
+        else { a.x+=dx*diff*w0; a.y+=dy*diff*w0; b.x-=dx*diff*w1; b.y-=dy*diff*w1; }
+      }
+    }
+
+    // tumbling kite
+    db.kvx += (WIND.x - db.kvx)*clamp(dt*1.5,0,1);
+    db.kvy += (GRAV*U*0.55)*dt + (WIND.y - db.kvy)*clamp(dt*1.1,0,1)*0.5;
+    db.kvy *= (1 - 0.25*dt);
+    db.kx += db.kvx*dt; db.ky += db.kvy*dt;
+    db.ang += db.spin*dt;
+    db.spin *= (1-0.35*dt);
+
+    // stub follows the kite
+    var sseg=db.stubSeg;
+    for(var s=0;s<db.stub.length;s++){
+      var q=db.stub[s];
+      var qvx=(q.x-q.px)*0.985, qvy=(q.y-q.py)*0.985;
+      var qcvx=qvx/dt, qcvy=qvy/dt;
+      q.px=q.x; q.py=q.y;
+      q.x += qvx + ((WIND.x-qcvx)*1.6)*dt2;
+      q.y += qvy + (GRAV*U*0.42 + (WIND.y-qcvy)*1.6)*dt2;
+    }
+    for(var it2=0;it2<3;it2++){
+      var prx=db.kx, pry=db.ky;
+      for(var s2=0;s2<db.stub.length;s2++){
+        var q2=db.stub[s2];
+        var dx2=q2.x-prx, dy2=q2.y-pry;
+        var d2=Math.sqrt(dx2*dx2+dy2*dy2);
+        if(d2<1e-6){ q2.x=prx+sseg; d2=sseg; dx2=sseg; dy2=0; }
+        var df=(d2-sseg)/d2;
+        q2.x-=dx2*df; q2.y-=dy2*df;
+        prx=q2.x; pry=q2.y;
+      }
+    }
+
+    // tail follows
+    var tseg=db.tailSeg*U;
+    var tca=Math.cos(db.ang), tsa=Math.sin(db.ang);
+    var rx=db.kx - tca*16*U, ry=db.ky - tsa*16*U;
+    for(var t=0;t<db.tail.length;t++){
+      var tp=db.tail[t];
+      var tvx=(tp.x-tp.px)*0.985, tvy=(tp.y-tp.py)*0.985;
+      tp.px=tp.x; tp.py=tp.y;
+      tp.x += tvx + (WIND.x*0.8)*dt2*2;
+      tp.y += tvy + (GRAV*U*0.45)*dt2;
+    }
+    for(var it3=0;it3<2;it3++){
+      var px2=rx, py2=ry;
+      for(var t2=0;t2<db.tail.length;t2++){
+        var tq=db.tail[t2];
+        var tdx=tq.x-px2, tdy=tq.y-py2;
+        var td=Math.sqrt(tdx*tdx+tdy*tdy);
+        if(td<1e-6){ tq.x=px2+tseg; td=tseg; tdx=tseg; tdy=0; }
+        var tdf=(td-tseg)/td;
+        tq.x-=tdx*tdf; tq.y-=tdy*tdf;
+        px2=tq.x; py2=tq.y;
+      }
+    }
+  }
+}
+
+/* =========================================================================
+   PLAYER INPUT -> STEER
+   ========================================================================= */
+function updatePlayerControl(dt){
+  var wantSteer=0, wantTug=0;
+
+  // keyboard
+  if(IN.kLeft)  wantSteer -= 1;
+  if(IN.kRight) wantSteer += 1;
+  if(IN.kTug)   wantTug = 1;
+
+  // pointer: steer toward the pointer
+  if(IN.has && wantSteer===0){
+    var dx = IN.px - player.x, dy = IN.py - player.y;
+    var d = Math.sqrt(dx*dx+dy*dy);
+    if(d > 26*U){
+      var want = Math.atan2(dy,dx);
+      var da = angTo(player.ang, want);
+      var gain = IN.down ? 2.35 : 1.5;
+      wantSteer = clamp(da*gain, -1, 1);
+      // ease near alignment so it doesn't buzz
+      var mag=Math.abs(wantSteer);
+      if(mag<0.10) wantSteer *= mag/0.10;
+    }
+  }
+  if(IN.down) wantTug = 1;
+
+  var kSteer = clamp(wantSteer,-1,1);
+  player.steer += (kSteer - player.steer) * clamp(dt*22,0,1);
+  player.tug   += (wantTug - player.tug) * clamp(dt*(wantTug>player.tug?15:9),0,1);
+}
+
+/* =========================================================================
+   MENU AUTOPILOT
+   ========================================================================= */
+var menuT=0;
+/* The attract loop flies the kite properly: it sweeps the upper arc so the
+   title screen shows the game doing the thing the game is about. */
+function menuAutopilot(dt){
+  menuT+=dt;
+  var a = player.rope.anchor;
+  var ang = -Math.PI*0.5 + Math.sin(menuT*0.31)*0.95 + Math.sin(menuT*0.13+2.0)*0.25;
+  var R = player.len*0.95;
+  var tx = a.x + Math.cos(ang)*R, ty = a.y + Math.sin(ang)*R;
+  var da = angTo(player.ang, Math.atan2(ty-player.y, tx-player.x));
+  var want = clamp(da*2.0, -1, 1);
+  player.steer += (want - player.steer)*clamp(dt*8,0,1);
+  var tg = (Math.abs(da) > 0.30) ? 0.9 : 0.12;
+  player.tug += (tg-player.tug)*clamp(dt*4,0,1);
+}
+
+/* =========================================================================
+   STEP
+   ========================================================================= */
+var FIXED = 1/120;
+var MAXSTEPS = 5;
+var acc=0, lastT=0, rafId=0;
+var creakTimer=0, warnTimer=0;
+
+function step(dt){
+  gameT+=dt; stateT+=dt;
+  updateWind(dt);
+
+  // ---------- player
+  if(state==='menu'){
+    menuAutopilot(dt);
+  } else if(state==='play'||state==='clear'){
+    if(player.alive) updatePlayerControl(dt);
+  } else if(state==='dying'||state==='over'){
+    player.steer *= (1-dt*3);
+    player.tug *= (1-dt*3);
+  }
+
+  if(player.alive){
+    updateKite(player, dt, true);
+    integrateRope(player.rope, dt, 0.997, GRAV*U*0.035, 0.30);
+    solveRope(player.rope, ROPE_ITER, 0.22);
+    postKite(player, dt);
+    ropeVelocities(player.rope, dt);
+    updateTail(player, dt);
+  }
+
+  // ---------- enemies
+  for(var i=0;i<enemies.length;i++){
+    var e=enemies[i];
+    if(!e.alive) continue;
+    if(state==='play') updateAI(e, dt);
+    else { e.steer*=(1-dt*2); e.tug*=(1-dt*2); }
+    updateKite(e, dt, false);
+    integrateRope(e.rope, dt, 0.997, GRAV*U*0.035, 0.30);
+    solveRope(e.rope, ENEMY_ITER, 0.25);
+    postKite(e, dt);
+    ropeVelocities(e.rope, dt);
+    updateTail(e, dt);
+  }
+
+  // ---------- cutting
+  if(state==='play' && player.alive) resolveCuts(dt);
+  else { grindActive=false; grindAmount=0; }
+
+  // ---------- ground collisions
+  if(state==='play'){
+    if(player.alive){
+      var roof = roofYAt(player.x);
+      if(player.y > roof - 2*U){
+        player.y = roof-2*U;
+        burstAt(player.x, roof-8*U, player.colA, player.colB, 0.9);
+        player.alive=false;
+        makeDebris(player, Math.max(1, player.rope.n-3));
+        startDying('crash');
+      }
+    }
+  }
+
+  // ---------- survival trickle
+  if(state==='play' && player.alive){
+    score += 2.4*roundN*dt;
+    var isc = Math.floor(score);
+    if(isc !== lastShownScore){
+      lastShownScore=isc;
+      scoreEl.textContent=String(isc);
+      if(isc>best){ best=isc; bestEl.textContent=String(best); }
+    }
+  }
+
+  // ---------- round clear
+  if(state==='play' && player.alive){
+    var anyAlive=false;
+    for(var q=0;q<enemies.length;q++) if(enemies[q].alive){ anyAlive=true; break; }
+    if(!anyAlive){
+      state='clear'; stateT=0;
+      SND.fanfare();
+      showBanner('SKY CLEARED', 'ROUND '+roundN+' COMPLETE');
+      score += 150*roundN;
+      lastShownScore=Math.floor(score);
+      scoreEl.textContent=String(lastShownScore);
+      if(lastShownScore>best){ best=lastShownScore; bestEl.textContent=String(best); }
+      pop(scoreEl);
+    }
+  }
+  if(state==='clear' && stateT>2.7){
+    startRound(roundN+1);
+    state='play'; stateT=0;
+  }
+
+  // ---------- dying beat
+  if(state==='dying' && stateT>1.5){ endGame(player.deathReason||'cut'); }
+  if(state==='over') overReady = Math.max(0, overReady-dt);
+
+  // ---------- particles
+  updateParticles(dt);
+  updateDebris(dt);
+
+  // ---------- audio ties
+  audioTick(dt);
+
+  // ---------- shake decay
+  shake *= Math.exp(-dt*6.5);
+  if(shake<0.05) shake=0;
+}
+var lastShownScore=0;
+
+var audioAcc=0, grindWasOn=false;
+function audioTick(dt){
+  if(!SND.ready) return;
+
+  // throttle web-audio automation to ~20 Hz (step() runs at 120 Hz)
+  audioAcc += dt;
+  var grindOn = grindActive && state==='play';
+  if(audioAcc >= 0.05 || grindOn !== grindWasOn){
+    audioAcc = 0; grindWasOn = grindOn;
+    SND.setWind(WIND.speed/(300*U) - 0.55);
+    if(grindOn) SND.setGrind(grindAmount, grindWear);
+    else        SND.setGrind(0, 0);
+  }
+  // creak under high tension
+  creakTimer-=dt;
+  if(state==='play' && player.alive && player.tug>0.6 && player.taut>0.85 && creakTimer<=0){
+    SND.creak(player.speed>560*U);
+    creakTimer = rnd(0.5,1.0);
+  }
+  // warning creak when line badly worn
+  warnTimer-=dt;
+  if(state==='play' && player.alive){
+    var mw=maxWear(player.rope);
+    if(mw>0.62 && warnTimer<=0){
+      SND.creak(true); SND.tone(150,0.5,'sawtooth',0.035,0.06,88);
+      warnTimer = lerp(1.4,0.45,(mw-0.62)/0.38);
+    }
+  }
+}
+
+function maxWear(r){
+  var m=0; for(var i=0;i<r.wear.length;i++) if(r.wear[i]>m) m=r.wear[i];
+  return m;
+}
+
+function updateParticles(dt){
+  for(var i=0;i<SPARK_MAX;i++){
+    var s=sparks[i];
+    if(!s.a) continue;
+    s.life-=dt;
+    if(s.life<=0){ s.a=0; continue; }
+    s.vy += 620*U*dt;
+    s.vx += (WIND.x-s.vx)*dt*1.2;
+    s.x += s.vx*dt; s.y += s.vy*dt;
+  }
+  for(var j=0;j<SCRAP_MAX;j++){
+    var c=scraps[j];
+    if(!c.a) continue;
+    c.life-=dt;
+    if(c.life<=0){ c.a=0; continue; }
+    c.vy += 280*U*dt;
+    c.vx += (WIND.x*0.9-c.vx)*dt*1.5;
+    c.vy += (WIND.y*0.5-c.vy)*dt*0.9;
+    c.x += c.vx*dt; c.y += c.vy*dt;
+    c.r += c.rv*dt;
+  }
+  for(var f=0;f<FLOAT_MAX;f++){
+    var ft=floats[f];
+    if(!ft.a) continue;
+    ft.life-=dt;
+    if(ft.life<=0){ ft.a=0; continue; }
+    ft.y += ft.vy*dt; ft.vy *= (1-dt*1.6);
+  }
+  // motes
+  for(var m=0;m<MOTE_N;m++){
+    var mo=motes[m];
+    if(!mo) continue;
+    mo.x += WIND.x*mo.z*0.42*dt;
+    mo.y += (WIND.y*mo.z*0.42 + Math.sin(gameT*1.4+mo.ph)*16*U)*dt;
+    mo.r += mo.rv*dt;
+    if(mo.x < -30) mo.x = W+20;
+    if(mo.x > W+30) mo.x = -20;
+    if(mo.y < -30) mo.y = H*0.9;
+    if(mo.y > H*0.97) mo.y = -20;
+  }
+  // clouds
+  for(var cl=0;cl<clouds.length;cl++){
+    var C=clouds[cl];
+    C.x += WIND.x*C.par*0.16*dt;
+    var wdt = 300*C.s;
+    if(WIND.x>0 && C.x > W+wdt) C.x = -wdt;
+    if(WIND.x<0 && C.x < -wdt)  C.x = W+wdt;
+  }
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+function render(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  var sx=0, sy=0;
+  if(shake>0.05){
+    sx = (Math.random()*2-1)*shake;
+    sy = (Math.random()*2-1)*shake;
+    ctx.translate(sx,sy);
+  }
+
+  // sky + city are drawn with overscan equal to the shake offset, so a snap
+  // never exposes bare page behind the edges of the frame
+  var ox = Math.abs(sx)+2, oy = Math.abs(sy)+2;
+  if(skyCanvas) ctx.drawImage(skyCanvas,-ox,-oy,W+ox*2,H+oy*2);
+  else { ctx.fillStyle='#4a86c8'; ctx.fillRect(-ox,-oy,W+ox*2,H+oy*2); }
+
+  // clouds
+  ctx.save();
+  for(var i=0;i<clouds.length;i++){
+    var C=clouds[i];
+    var spr=cloudSprites[C.spr];
+    if(!spr) continue;
+    ctx.globalAlpha=C.alpha;
+    var w=300*C.s, h=168*C.s;
+    ctx.drawImage(spr, C.x-w*0.5, C.y-h*0.5, w, h);
+    // wrap copy
+    if(C.x-w*0.5 < 0) ctx.drawImage(spr, C.x-w*0.5+W+w, C.y-h*0.5, w, h);
+    if(C.x+w*0.5 > W) ctx.drawImage(spr, C.x-w*0.5-W-w, C.y-h*0.5, w, h);
+  }
+  ctx.restore();
+
+  // far decorative kites
+  drawFarKites();
+
+  // motes
+  drawMotes();
+
+  // city
+  if(cityCanvas) ctx.drawImage(cityCanvas, -ox, -oy*0.35, W+ox*2, H+oy*1.35);
+
+  // rooftop anchors
+  drawAnchors();
+
+  // debris (behind live kites)
+  drawDebris();
+
+  // enemies
+  for(var e=0;e<enemies.length;e++){
+    var en=enemies[e];
+    if(!en.alive) continue;
+    drawLine(en, false);
+    drawTail(en);
+    drawKite(en);
+  }
+
+  // player
+  if(player.alive){
+    drawLine(player, true);
+    drawTail(player);
+    drawKite(player);
+  }
+
+  // particles
+  drawScraps();
+  drawSparks();
+  drawFloats();
+
+  // grind highlight
+  if(grindActive && grindAmount>0.05){
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    var rr = (8+grindAmount*16)*U;
+    var g=ctx.createRadialGradient(grindX,grindY,0,grindX,grindY,rr);
+    g.addColorStop(0,'rgba(255,250,220,'+(0.55*grindAmount).toFixed(3)+')');
+    g.addColorStop(0.4,'rgba(255,190,90,'+(0.28*grindAmount).toFixed(3)+')');
+    g.addColorStop(1,'rgba(255,120,40,0)');
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(grindX,grindY,rr,0,TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  // danger vignette
+  var mw = player.alive ? maxWear(player.rope) : 1;
+  if(mw>0.45 && (state==='play'||state==='clear')){
+    var v=(mw-0.45)/0.55;
+    ctx.save();
+    var vg=ctx.createRadialGradient(W*0.5,H*0.5,Math.min(W,H)*0.28,W*0.5,H*0.5,Math.max(W,H)*0.72);
+    vg.addColorStop(0,'rgba(220,40,30,0)');
+    vg.addColorStop(1,'rgba(220,40,30,'+(0.30*v*(0.72+0.28*Math.sin(gameT*7))).toFixed(3)+')');
+    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+
+  if(shake>0.05) ctx.setTransform(DPR,0,0,DPR,0,0);
+
+  // HUD line bar
+  if(state==='play'||state==='clear'||state==='dying'){
+    var hp = clamp(1-mw,0,1);
+    lineFill.style.width = (hp*100).toFixed(1)+'%';
+    var cls = hp<0.28 ? 'crit' : (hp<0.6 ? 'warn' : '');
+    if(lineBar.className!==cls) lineBar.className=cls;
+  }
+}
+
+function drawFarKites(){
+  ctx.save();
+  for(var i=0;i<farKites.length;i++){
+    var f=farKites[i];
+    var t = gameT*f.sp + f.ph;
+    var ang = -Math.PI/2 + Math.sin(t)*0.7;
+    var kx = f.ax + Math.cos(ang)*f.len;
+    var ky = f.ay + Math.sin(ang)*f.len;
+    ctx.globalAlpha=0.32;
+    ctx.strokeStyle='rgba(255,250,235,0.55)';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(f.ax,f.ay);
+    ctx.quadraticCurveTo((f.ax+kx)/2, (f.ay+ky)/2 + 14*U, kx,ky);
+    ctx.stroke();
+    ctx.globalAlpha=0.5;
+    ctx.fillStyle=f.col;
+    var s=4.2*U;
+    ctx.save();
+    ctx.translate(kx,ky); ctx.rotate(ang+Math.PI/2 + Math.sin(t*2)*0.3);
+    ctx.beginPath();
+    ctx.moveTo(0,-s*1.4); ctx.lineTo(s,0); ctx.lineTo(0,s*1.1); ctx.lineTo(-s,0);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawMotes(){
+  ctx.save();
+  for(var i=0;i<MOTE_N;i++){
+    var m=motes[i];
+    if(!m) continue;
+    ctx.globalAlpha = 0.16 + m.z*0.32;
+    ctx.fillStyle=m.col;
+    if(m.type===0){
+      ctx.beginPath(); ctx.arc(m.x,m.y,m.s*0.42,0,TAU); ctx.fill();
+    }else{
+      ctx.save();
+      ctx.translate(m.x,m.y); ctx.rotate(m.r);
+      var w=m.s, h=m.s*0.55*Math.abs(Math.cos(m.r*1.4));
+      ctx.beginPath();
+      ctx.ellipse(0,0,w,Math.max(0.4,h),0,0,TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function drawAnchors(){
+  ctx.save();
+  for(var i=0;i<anchorSlots.length;i++){
+    var s=anchorSlots[i];
+    var used = (i===0);
+    for(var e=0;e<enemies.length;e++) if(enemies[e].slot===i) used=true;
+    if(!used) continue;
+    var col = (i===0) ? '#ffb020' : '#7a5f96';
+    // spool post
+    ctx.fillStyle='#1c1029';
+    ctx.fillRect(s.x-2*U, s.y-16*U, 4*U, 16*U);
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(s.x, s.y-17*U, 3.6*U, 0, TAU); ctx.fill();
+    // pennant fluttering with wind
+    var fl = Math.sin(gameT*4 + i)*3*U;
+    var dirS = WIND.x>0?1:-1;
+    ctx.globalAlpha=0.9;
+    ctx.fillStyle=col;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y-16*U);
+    ctx.lineTo(s.x+dirS*13*U, s.y-13*U+fl);
+    ctx.lineTo(s.x, s.y-9*U);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+}
+
+function drawLine(k, isPlayer){
+  var r=k.rope, i, u;
+  ctx.save();
+  ctx.lineCap='round'; ctx.lineJoin='round';
+
+  // dark under-stroke so a hair-thin string still reads against a bright sky
+  var base = (isPlayer ? 2.0 : 1.5)*Math.max(0.75,U);
+  ctx.beginPath();
+  ctx.moveTo(r.p[0].x, r.p[0].y);
+  for(u=1;u<r.n;u++) ctx.lineTo(r.p[u].x, r.p[u].y);
+  ctx.strokeStyle = isPlayer ? 'rgba(46,20,58,0.42)' : 'rgba(46,20,58,0.28)';
+  ctx.lineWidth = base + 1.7*Math.max(0.75,U);
+  ctx.stroke();
+
+  // the whole string in one pass...
+  if(!k._lc) k._lc = hexA(k.lineCol, 0.72);
+  ctx.strokeStyle = isPlayer ? 'rgba(255,246,232,0.92)' : k._lc;
+  ctx.lineWidth = base;
+  ctx.stroke();
+
+  // ...then only the worn stretches are redrawn, hot and swollen
+  for(i=0;i<r.n-1;i++){
+    var w = r.wear[i];
+    if(w < 0.05) continue;
+    var t=clamp(w,0,1);
+    ctx.strokeStyle='rgba(255,'+Math.round(246-160*t)+','+Math.round(232-174*t)+','+(0.9+0.1*t).toFixed(2)+')';
+    ctx.lineWidth = base*(1+t*0.75);
+    ctx.beginPath();
+    ctx.moveTo(r.p[i].x, r.p[i].y); ctx.lineTo(r.p[i+1].x, r.p[i+1].y);
+    ctx.stroke();
+  }
+
+  // fray fibers at heavily worn spots
+  for(var j=0;j<r.n-1;j++){
+    var wr=r.wear[j];
+    if(wr<0.28) continue;
+    var p0=r.p[j], p1=r.p[j+1];
+    var mx=(p0.x+p1.x)*0.5, my=(p0.y+p1.y)*0.5;
+    var dx=p1.x-p0.x, dy=p1.y-p0.y;
+    var dl=Math.sqrt(dx*dx+dy*dy)||1;
+    var nx=-dy/dl, ny=dx/dl;
+    var nf = 2 + Math.floor(wr*4);
+    ctx.strokeStyle='rgba(255,'+Math.round(150-90*wr)+',80,'+(0.5+0.4*wr).toFixed(2)+')';
+    ctx.lineWidth=1*Math.max(0.7,U);
+    for(var f=0;f<nf;f++){
+      var ph = gameT*9 + j*2.7 + f*1.9;
+      var side = (f%2)?1:-1;
+      var ln = (2.5+wr*6.5)*U*(0.6+0.4*Math.abs(Math.sin(ph)));
+      var off = (f/nf-0.5)*dl*0.8;
+      var bx=mx+dx/dl*off, by=my+dy/dl*off;
+      ctx.beginPath();
+      ctx.moveTo(bx,by);
+      ctx.lineTo(bx+nx*ln*side + dx/dl*ln*0.4, by+ny*ln*side + dy/dl*ln*0.4);
+      ctx.stroke();
+    }
+    // hot glow at the worst point
+    if(wr>0.6){
+      ctx.save();
+      ctx.globalCompositeOperation='lighter';
+      var gr=ctx.createRadialGradient(mx,my,0,mx,my,10*U*wr);
+      gr.addColorStop(0,'rgba(255,120,60,'+(0.35*wr).toFixed(2)+')');
+      gr.addColorStop(1,'rgba(255,80,40,0)');
+      ctx.fillStyle=gr;
+      ctx.beginPath(); ctx.arc(mx,my,10*U*wr,0,TAU); ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function hexA(hex, a){
+  var h=hex.replace('#','');
+  if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var n=parseInt(h,16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
+}
+
+function drawTail(k){
+  drawRibbon(k.tail, k.x, k.y, k.ang, k.colA, k.colB, 1);
+}
+
+function drawRibbon(tail, kx, ky, ang, colA, colB, alpha){
+  if(!tail.length) return;
+  var ca=Math.cos(ang), sa=Math.sin(ang);
+  var rx=kx-ca*16*U, ry=ky-sa*16*U;
+  ctx.save();
+  ctx.globalAlpha=alpha;
+  var prevX=rx, prevY=ry;
+  for(var i=0;i<tail.length;i++){
+    var p=tail[i];
+    var t=i/tail.length;
+    var wdt = (4.6 - t*3.2)*U;
+    ctx.strokeStyle = (i%2===0)? colA : colB;
+    ctx.globalAlpha = alpha*(0.92 - t*0.45);
+    ctx.lineWidth = Math.max(0.8, wdt);
+    ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(prevX,prevY); ctx.lineTo(p.x,p.y); ctx.stroke();
+    prevX=p.x; prevY=p.y;
+  }
+  ctx.restore();
+}
+
+function drawKite(k){
+  drawKiteAt(k.x,k.y,k.ang,k.bank,k.colA,k.colB,1, k.isPlayer, k.tug);
+}
+
+function drawKiteAt(x,y,ang,bank,colA,colB,alpha,isPlayer,tug){
+  // a fighter kite (patang) is a little wider across the bow than it is long
+  // along the spine; it flies nose-first so the spine runs with the heading
+  var L = 21*U, Lb = 17*U, Wd = 20*U;
+  var bs = Math.sqrt(1 - Math.min(0.86, bank*bank*0.86));
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(ang);
+  ctx.globalAlpha=alpha;
+
+  // player halo for readability
+  if(isPlayer){
+    ctx.save();
+    ctx.globalCompositeOperation='lighter';
+    var hg=ctx.createRadialGradient(0,0,0,0,0,44*U);
+    hg.addColorStop(0,'rgba(255,220,160,0.20)');
+    hg.addColorStop(1,'rgba(255,180,120,0)');
+    ctx.fillStyle=hg;
+    ctx.beginPath(); ctx.arc(0,0,44*U,0,TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.scale(1, bs);
+
+  // shadow / underside
+  ctx.globalAlpha = alpha*0.28;
+  ctx.fillStyle='#2a1636';
+  ctx.beginPath();
+  ctx.moveTo(L+1.5*U,0.5*U); ctx.lineTo(0.5*U,-Wd); ctx.lineTo(-Lb+1.5*U,0.5*U); ctx.lineTo(0.5*U,Wd);
+  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha=alpha;
+
+  // upper half
+  ctx.fillStyle=colA;
+  ctx.beginPath();
+  ctx.moveTo(L,0); ctx.lineTo(0,-Wd); ctx.lineTo(-Lb,0);
+  ctx.closePath(); ctx.fill();
+  // lower half
+  ctx.fillStyle=colB;
+  ctx.beginPath();
+  ctx.moveTo(L,0); ctx.lineTo(0,Wd); ctx.lineTo(-Lb,0);
+  ctx.closePath(); ctx.fill();
+
+  // paper sheen
+  var sh=ctx.createLinearGradient(-Lb,-Wd,L,Wd);
+  sh.addColorStop(0,'rgba(255,255,255,0.30)');
+  sh.addColorStop(0.45,'rgba(255,255,255,0.04)');
+  sh.addColorStop(1,'rgba(30,10,45,0.20)');
+  ctx.fillStyle=sh;
+  ctx.beginPath();
+  ctx.moveTo(L,0); ctx.lineTo(0,-Wd); ctx.lineTo(-Lb,0); ctx.lineTo(0,Wd);
+  ctx.closePath(); ctx.fill();
+
+  // spars
+  ctx.strokeStyle='rgba(60,26,20,0.55)';
+  ctx.lineWidth=Math.max(0.8,1.3*U);
+  ctx.beginPath(); ctx.moveTo(L,0); ctx.lineTo(-Lb,0); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0,-Wd); ctx.quadraticCurveTo(4*U,0, 0,Wd);
+  ctx.stroke();
+
+  // edge
+  ctx.strokeStyle='rgba(40,16,38,0.55)';
+  ctx.lineWidth=Math.max(0.7,1.1*U);
+  ctx.beginPath();
+  ctx.moveTo(L,0); ctx.lineTo(0,-Wd); ctx.lineTo(-Lb,0); ctx.lineTo(0,Wd);
+  ctx.closePath(); ctx.stroke();
+
+  // pale paper band along the bow, the way festival patangs are pasted up
+  ctx.fillStyle='rgba(255,248,232,0.42)';
+  ctx.beginPath();
+  ctx.moveTo(3.5*U,-Wd*0.82); ctx.lineTo(-2.5*U,-Wd*0.86);
+  ctx.lineTo(-2.5*U, Wd*0.86); ctx.lineTo(3.5*U, Wd*0.82);
+  ctx.closePath(); ctx.fill();
+
+  // nose tip highlight
+  ctx.fillStyle='rgba(255,250,235,0.8)';
+  ctx.beginPath(); ctx.arc(L-1.5*U,0,1.7*U,0,TAU); ctx.fill();
+
+  ctx.restore();
+
+  // tug flare behind the kite
+  if(tug>0.55){
+    ctx.save();
+    ctx.translate(x,y); ctx.rotate(ang);
+    ctx.globalCompositeOperation='lighter';
+    ctx.globalAlpha = (tug-0.55)/0.45*0.4*alpha;
+    var fg=ctx.createLinearGradient(-Lb,0,-Lb-40*U,0);
+    fg.addColorStop(0,'rgba(255,220,150,0.5)');
+    fg.addColorStop(1,'rgba(255,160,80,0)');
+    ctx.fillStyle=fg;
+    ctx.beginPath();
+    ctx.moveTo(-Lb,-6*U); ctx.lineTo(-Lb-40*U,0); ctx.lineTo(-Lb,6*U);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawDebris(){
+  for(var d=0;d<debris.length;d++){
+    var db=debris[d];
+    var a=clamp(db.alphaFade,0,1);
+    ctx.save();
+    ctx.globalAlpha=a*0.7;
+    ctx.strokeStyle=hexA(db.lineCol,0.7);
+    ctx.lineWidth=Math.max(0.8,1.4*U);
+    ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(db.p[0].x,db.p[0].y);
+    for(var i=1;i<db.p.length;i++) ctx.lineTo(db.p[i].x,db.p[i].y);
+    ctx.stroke();
+    // stub
+    if(db.stub.length){
+      ctx.beginPath();
+      ctx.moveTo(db.kx,db.ky);
+      for(var s=0;s<db.stub.length;s++) ctx.lineTo(db.stub[s].x,db.stub[s].y);
+      ctx.stroke();
+    }
+    ctx.restore();
+    drawRibbon(db.tail, db.kx, db.ky, db.ang, db.colA, db.colB, a*0.85);
+    drawKiteAt(db.kx, db.ky, db.ang, Math.sin(db.ang*2)*0.6, db.colA, db.colB, a, false, 0);
+  }
+}
+
+function drawSparks(){
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  for(var i=0;i<SPARK_MAX;i++){
+    var s=sparks[i];
+    if(!s.a) continue;
+    var t=s.life/s.max;
+    var al=clamp(t,0,1);
+    var r=Math.round(255), g=Math.round(lerp(96,226,t*s.hue)), b=Math.round(lerp(24,132,t*t*t));
+    ctx.fillStyle='rgba('+r+','+g+','+b+','+(al*0.95).toFixed(3)+')';
+    var sz=s.size*(0.35+0.65*t);
+    ctx.beginPath(); ctx.arc(s.x,s.y,sz,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawScraps(){
+  ctx.save();
+  for(var i=0;i<SCRAP_MAX;i++){
+    var c=scraps[i];
+    if(!c.a) continue;
+    var t=c.life/c.max;
+    ctx.globalAlpha=clamp(t*1.4,0,1)*0.92;
+    ctx.save();
+    ctx.translate(c.x,c.y); ctx.rotate(c.r);
+    ctx.fillStyle=c.col;
+    var hh=c.h*Math.abs(Math.cos(c.r*1.7));
+    ctx.fillRect(-c.w*0.5,-hh*0.5,c.w,Math.max(0.6,hh));
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+var FONT_STACK = 'ui-rounded, "Avenir Next", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
+function drawFloats(){
+  ctx.save();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(var i=0;i<FLOAT_MAX;i++){
+    var f=floats[i];
+    if(!f.a) continue;
+    var t=f.life/f.max;
+    ctx.globalAlpha=clamp(t*1.6,0,1);
+    var sz=f.size*U*(1+ (1-t)*0.12);
+    ctx.font='800 '+sz.toFixed(1)+'px '+FONT_STACK;
+    ctx.lineWidth=Math.max(2,3*U);
+    ctx.strokeStyle='rgba(40,12,60,0.55)';
+    ctx.strokeText(f.txt,f.x,f.y);
+    ctx.fillStyle=f.col;
+    ctx.fillText(f.txt,f.x,f.y);
+  }
+  ctx.restore();
+}
+
+/* =========================================================================
+   MAIN LOOP  (single rAF, started once)
+   ========================================================================= */
+function frame(now){
+  rafId = requestAnimationFrame(frame);
+  var dt = (now - lastT)/1000;
+  lastT = now;
+  if(!(dt>0)) dt=0;
+  if(dt>0.25) dt=0.25;
+
+  if(!paused){
+    acc += dt;
+    var steps=0;
+    while(acc>=FIXED && steps<MAXSTEPS){ step(FIXED); acc-=FIXED; steps++; }
+    if(acc>FIXED*MAXSTEPS) acc=0;
+  }
+  render();
+}
+
+/* =========================================================================
+   BOOT
+   ========================================================================= */
+function boot(){
+  makeCloudSprites();
+  resize();
+  // menu idle kite
+  var s0=anchorSlots[0];
+  player.rope.anchor.x=s0.x; player.rope.anchor.y=s0.y-6*U;
+  player.len = lineLenFor(player.rope.anchor.y, 0.78);
+  setRopeLen(player.rope, player.len);
+  placeKite(player, -Math.PI/2 - 0.55, player.len*0.9);
+  WIND.baseDir=-0.20; WIND.strength=1;
+  bestEl.textContent='0';
+  lastT = performance.now();
+  rafId = requestAnimationFrame(frame);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>
