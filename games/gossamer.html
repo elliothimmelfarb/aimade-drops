@@ -1,0 +1,3543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="GOSSAMER — an orb-weaver spider builds a real physics web in a dusk garden. Spin silk, catch prey, survive three nights to dawn.">
+<title>GOSSAMER</title>
+<style>
+  :root{
+    --ink:#f2ecff;
+    --dim:#a394c4;
+    --silk:#e8f0ff;
+    --amber:#ffc98a;
+    --plum:#2a1a3e;
+    --deep:#0c0818;
+    --rose:#ff8fa8;
+    --moss:#9fd6a0;
+    --ui: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    --ease: cubic-bezier(.22,.85,.3,1);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:#0c0818;color:var(--ink);
+    font-family:var(--ui);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#0c0818;}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+  #vig{position:absolute;inset:0;z-index:3;pointer-events:none;
+    background:radial-gradient(125% 95% at 50% 44%,rgba(0,0,0,0) 40%,rgba(4,2,12,.55) 100%);}
+
+  /* ================= HUD ================= */
+  #hud{
+    position:absolute;left:0;right:0;top:0;z-index:6;
+    padding:max(9px,env(safe-area-inset-top)) max(11px,env(safe-area-inset-right)) 0 max(11px,env(safe-area-inset-left));
+    display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+    pointer-events:none;opacity:0;transform:translateY(-10px);
+    transition:opacity .55s var(--ease),transform .55s var(--ease);
+  }
+  #hud.on{opacity:1;transform:none;}
+  .hc{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .hc.mid{flex:1 1 auto;align-items:center;}
+  .hc.right{align-items:flex-end;}
+  .lbl{font-size:8.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--dim);white-space:nowrap;}
+  #nightv{font-size:15px;font-weight:700;letter-spacing:.05em;color:#e6dcff;line-height:1.05;}
+  #phasev{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--amber);opacity:.85;transition:color .8s linear;}
+  #scorev{font-size:27px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:#fff;
+    text-shadow:0 2px 20px rgba(255,190,120,.3);transition:transform .13s cubic-bezier(.2,1.7,.4,1);}
+  #scorev.pop{transform:scale(1.14);}
+  /* always-available controls: they sit above the overlay so mute never
+     becomes unreachable behind a panel */
+  #btns{
+    position:absolute;z-index:11;display:flex;gap:6px;pointer-events:auto;
+    top:max(9px,env(safe-area-inset-top));right:max(11px,env(safe-area-inset-right));
+  }
+  .btn{
+    width:31px;height:31px;border-radius:10px;border:1px solid rgba(210,190,255,.19);
+    background:rgba(28,18,46,.5);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    display:grid;place-items:center;cursor:pointer;color:#d8ccf5;
+    transition:transform .16s var(--ease),background .2s,border-color .2s,opacity .2s;
+  }
+  .btn:hover{background:rgba(48,32,74,.66);border-color:rgba(210,190,255,.34);}
+  .btn:active{transform:scale(.9);}
+  .btn svg{width:15px;height:15px;display:block;}
+  .btn.off{opacity:.42;}
+
+  /* ================ gauges ================ */
+  #gauges{
+    position:absolute;z-index:6;left:max(11px,env(safe-area-inset-left));
+    bottom:max(11px,env(safe-area-inset-bottom));
+    display:flex;flex-direction:column;gap:7px;pointer-events:none;
+    opacity:0;transform:translateY(12px);transition:opacity .55s var(--ease),transform .55s var(--ease);
+  }
+  #gauges.on{opacity:1;transform:none;}
+  .g{display:flex;align-items:center;gap:7px;}
+  .gi{width:16px;height:16px;flex:0 0 auto;display:grid;place-items:center;}
+  .gbar{width:min(38vw,168px);height:7px;border-radius:6px;background:rgba(12,8,26,.62);
+    border:1px solid rgba(200,180,240,.16);overflow:hidden;position:relative;}
+  .gfill{position:absolute;left:0;top:0;bottom:0;width:100%;border-radius:6px;
+    transition:width .16s linear,background .4s linear;}
+  #silkfill{background:linear-gradient(90deg,#8fb6e8,#e8f2ff);box-shadow:0 0 10px rgba(190,220,255,.5);}
+  #hungfill{background:linear-gradient(90deg,#c9743f,#ffc98a);box-shadow:0 0 10px rgba(255,180,110,.4);}
+  .gbar.low .gfill{animation:pulseg .8s ease-in-out infinite;}
+  @keyframes pulseg{0%,100%{opacity:1}50%{opacity:.42}}
+  .gtx{font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);min-width:30px;}
+
+  /* ================ toasts ================ */
+  #toasts{
+    position:absolute;z-index:7;left:50%;transform:translateX(-50%);
+    bottom:calc(max(11px,env(safe-area-inset-bottom)) + 46px);
+    display:flex;flex-direction:column;align-items:center;gap:7px;pointer-events:none;width:min(92vw,470px);
+  }
+  .toast{
+    font-size:12.5px;line-height:1.4;letter-spacing:.012em;color:#f0e8ff;text-align:center;
+    background:rgba(20,12,38,.74);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
+    border:1px solid rgba(200,180,255,.17);border-radius:12px;padding:7px 14px;
+    box-shadow:0 8px 26px rgba(0,0,0,.42);
+    opacity:0;transform:translateY(10px) scale(.96);
+    animation:toastIn .42s var(--ease) forwards;
+  }
+  .toast.out{animation:toastOut .38s var(--ease) forwards;}
+  .toast b{color:var(--amber);font-weight:700;}
+  @keyframes toastIn{to{opacity:1;transform:none}}
+  @keyframes toastOut{to{opacity:0;transform:translateY(-8px) scale(.97)}}
+
+  /* ================ overlays ================ */
+  #ov{
+    position:absolute;inset:0;z-index:9;display:grid;place-items:center;
+    padding:18px;pointer-events:none;
+  }
+  .panel{
+    position:absolute;width:min(94vw,560px);max-height:94vh;overflow-y:auto;overscroll-behavior:contain;
+    background:linear-gradient(170deg,rgba(28,17,50,.9),rgba(13,8,26,.94));
+    border:1px solid rgba(190,168,246,.2);border-radius:20px;
+    padding:clamp(18px,4.2vw,30px);
+    box-shadow:0 24px 70px rgba(0,0,0,.62),inset 0 1px 0 rgba(255,255,255,.06);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    text-align:center;pointer-events:auto;
+    opacity:0;transform:translateY(16px) scale(.97);
+    transition:opacity .42s var(--ease),transform .42s var(--ease);
+    display:none;
+  }
+  .panel.show{display:block;opacity:1;transform:none;}
+  .panel h1{
+    font-family:var(--serif);font-weight:400;font-size:clamp(34px,9.5vw,58px);
+    letter-spacing:.24em;margin:0 0 3px;color:#fff;text-indent:.24em;
+    text-shadow:0 0 34px rgba(190,170,255,.4),0 2px 0 rgba(0,0,0,.3);
+  }
+  .panel h2{
+    font-family:var(--serif);font-weight:400;font-size:clamp(24px,6.4vw,36px);
+    letter-spacing:.1em;margin:0 0 8px;color:#fff;
+  }
+  .sub{font-size:9.5px;letter-spacing:.42em;text-transform:uppercase;color:var(--dim);margin-bottom:15px;}
+  .prem{font-size:13.5px;line-height:1.62;color:#d9cdf2;margin:0 auto 15px;max-width:44ch;}
+  .verbs{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin:0 0 14px;text-align:left;}
+  .verb{background:rgba(255,255,255,.045);border:1px solid rgba(200,180,255,.13);border-radius:11px;padding:8px 10px;}
+  .verb .k{font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:2px;}
+  .verb .d{font-size:11.5px;line-height:1.42;color:#cdc0e8;}
+  .hint{font-size:10.5px;line-height:1.6;color:#9d8fbd;margin:0 0 15px;}
+  .hint kbd{
+    display:inline-block;font-family:inherit;font-size:9.5px;padding:1px 5px;border-radius:5px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(200,180,255,.18);color:#ded2f8;margin:0 1px;
+  }
+  .big{
+    display:inline-block;border:none;cursor:pointer;font-family:inherit;
+    font-size:15px;font-weight:700;letter-spacing:.17em;text-transform:uppercase;
+    color:#20122e;background:linear-gradient(180deg,#ffe0b0,#ffb673);
+    padding:13px 40px;border-radius:14px;
+    box-shadow:0 10px 28px rgba(255,160,90,.26),inset 0 1px 0 rgba(255,255,255,.55);
+    transition:transform .17s var(--ease),box-shadow .17s var(--ease),filter .2s;
+  }
+  .big:hover{transform:translateY(-2px);box-shadow:0 15px 34px rgba(255,160,90,.34),inset 0 1px 0 rgba(255,255,255,.55);}
+  .big:active{transform:translateY(0) scale(.97);}
+  .big.ghost{
+    background:rgba(255,255,255,.06);color:#e3d8fb;border:1px solid rgba(200,180,255,.22);
+    box-shadow:none;font-size:12px;padding:10px 24px;
+  }
+  .big.ghost:hover{background:rgba(255,255,255,.11);transform:translateY(-2px);box-shadow:none;}
+  .row{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;align-items:center;margin-top:4px;}
+  .tally{
+    display:grid;grid-template-columns:1fr auto;gap:5px 14px;max-width:290px;margin:0 auto 16px;
+    font-size:12.5px;text-align:left;
+  }
+  .tally .tk{color:#a99cc8;}
+  .tally .tv{color:#fff;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;}
+  .tally .tot{border-top:1px solid rgba(200,180,255,.16);padding-top:6px;margin-top:2px;}
+  .tally .tot.tk{color:var(--amber);}
+  .tally .tot.tv{color:var(--amber);font-size:16px;}
+  .fin{font-size:12.5px;line-height:1.6;color:#c3b5e2;margin:0 auto 15px;max-width:40ch;font-style:italic;}
+  #pausePanel .prem{margin-bottom:18px;}
+  .credit{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#6d6188;margin-top:14px;}
+
+  @media (max-height:430px){
+    .panel{padding:12px 14px;border-radius:15px;}
+    .panel h2{font-size:21px;margin-bottom:4px;}
+    .fin{font-size:11px;line-height:1.45;margin-bottom:9px;}
+    .tally{font-size:11px;gap:2px 12px;margin-bottom:9px;}
+    .tally .tot.tv{font-size:14px;}
+    .prem{font-size:11px;line-height:1.45;margin-bottom:8px;}
+    .verb .d{font-size:10.5px;line-height:1.35;}
+    .verbs{grid-template-columns:1fr 1fr;gap:5px;}
+    .big{padding:9px 24px;font-size:12px;}
+    .big.ghost{padding:8px 18px;font-size:11px;}
+    .hint{font-size:9.5px;margin-bottom:8px;}
+    .credit{display:none;}
+  }
+  @media (max-height:520px){
+    .panel h1{font-size:clamp(26px,7vw,40px);margin-bottom:1px;}
+    .prem{font-size:12px;margin-bottom:10px;line-height:1.5;}
+    .sub{margin-bottom:9px;}
+    .verbs{margin-bottom:9px;gap:6px;}
+    .hint{margin-bottom:10px;}
+    .big{padding:10px 30px;font-size:13px;}
+    .panel{padding:15px 16px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+  <div id="vig"></div>
+
+  <div id="hud">
+    <div class="hc">
+      <div class="lbl">Garden</div>
+      <div id="nightv">Night 1 / 3</div>
+      <div id="phasev">Dusk</div>
+    </div>
+    <div class="hc mid">
+      <div class="lbl">Score</div>
+      <div id="scorev">0</div>
+    </div>
+    <div class="hc right"><div style="width:70px"></div></div>
+  </div>
+
+  <div id="btns">
+    <div class="btn" id="pauseBtn" role="button" tabindex="0" aria-label="Pause">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.4" height="16" rx="1.6"/><rect x="13.6" y="4" width="4.4" height="16" rx="1.6"/></svg>
+    </div>
+    <div class="btn" id="muteBtn" role="button" tabindex="0" aria-label="Mute">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9.5h3.6L12.6 5v14L7.6 14.5H4z"/><path id="wave1" d="M15.6 9.2a4 4 0 0 1 0 5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path id="wave2" d="M18.1 6.8a7.4 7.4 0 0 1 0 10.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path id="xmark" d="M16.2 9.6l5 4.8M21.2 9.6l-5 4.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none" style="display:none"/></svg>
+    </div>
+  </div>
+
+  <div id="gauges">
+    <div class="g">
+      <div class="gi"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#cfe2ff" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v7"/><path d="M12 10c-3 0-5 2-5 4.6C7 17.6 9.2 20 12 20s5-2.4 5-5.4C17 12 15 10 12 10z"/><path d="M9.4 14.6h5.2"/></svg></div>
+      <div class="gbar" id="silkbar"><div class="gfill" id="silkfill"></div></div>
+      <div class="gtx">Silk</div>
+    </div>
+    <div class="g">
+      <div class="gi"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#ffc98a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20c3.6 0 6.4-2.7 6.4-6.2 0-4.4-4-6.6-5.2-10.3-1.6 2.4-3 3.1-3 5.2 0 1.6.9 2.3.9 3.4 0 1-.8 1.7-1.7 1.7-1.1 0-1.9-.9-2.1-2.2-.9 1.2-1.7 2.4-1.7 4.2C5.6 17.3 8.4 20 12 20z"/></svg></div>
+      <div class="gbar" id="hungbar"><div class="gfill" id="hungfill"></div></div>
+      <div class="gtx">Hunger</div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <div id="ov">
+    <!-- START -->
+    <div class="panel" id="startPanel">
+      <h1>GOSSAMER</h1>
+      <div class="sub">An orb-weaver at dusk</div>
+      <p class="prem">The garden is going dark and your web is only an idea. Draw silk between the branches — every thread you spin is a real, sagging, humming rope, and every thread you cross makes a knot the whole web can feel. Flies drift in. Beetles blunder through. Wasps come looking for a fight. Eat, or the night eats you. Three nights until dawn.</p>
+      <div class="verbs">
+        <div class="verb"><div class="k">Drag</div><div class="d">Spin a strand between two anchors, or onto silk you've already spun</div></div>
+        <div class="verb"><div class="k">Click / Tap</div><div class="d">Send the spider walking there — along silk only</div></div>
+        <div class="verb"><div class="k">Double-click</div><div class="d">Cut a strand at that point. Refunds a little silk</div></div>
+        <div class="verb"><div class="k">Eat</div><div class="d">Reach stuck prey to feed. Hunger never stops draining</div></div>
+      </div>
+      <p class="hint">
+        <kbd>WASD</kbd>/<kbd>arrows</kbd> nudge &nbsp;·&nbsp; <kbd>Space</kbd> pause &nbsp;·&nbsp; <kbd>M</kbd> mute &nbsp;·&nbsp; <kbd>R</kbd> restart<br>
+        Touch: drag to spin, tap to walk, double-tap to cut.
+      </p>
+      <button class="big" id="playBtn">Spin</button>
+      <div class="credit">Headphones recommended — the web is an instrument</div>
+    </div>
+
+    <!-- PAUSE -->
+    <div class="panel" id="pausePanel">
+      <h2>Paused</h2>
+      <p class="prem" id="pauseTxt">The garden holds its breath.</p>
+      <div class="row">
+        <button class="big" id="resumeBtn">Resume</button>
+        <button class="big ghost" id="restartBtn2">Restart</button>
+      </div>
+      <p class="hint" style="margin:15px 0 0"><kbd>Space</kbd> resume &nbsp;·&nbsp; <kbd>M</kbd> mute</p>
+    </div>
+
+    <!-- LOSE -->
+    <div class="panel" id="overPanel">
+      <h2 id="overTitle">Dark</h2>
+      <p class="fin" id="overTxt"></p>
+      <div class="tally" id="overTally"></div>
+      <div class="row">
+        <button class="big" id="againBtn">Again</button>
+      </div>
+      <p class="hint" style="margin:15px 0 0"><kbd>R</kbd> to restart</p>
+    </div>
+
+    <!-- WIN -->
+    <div class="panel" id="winPanel">
+      <h2>Dawn</h2>
+      <p class="fin">Light comes up through the dew and every thread you spun is suddenly visible, holding still, holding on. Three nights. You are still here.</p>
+      <div class="tally" id="winTally"></div>
+      <div class="row">
+        <button class="big" id="endlessBtn">Endless Dawn</button>
+        <button class="big ghost" id="restartBtn3">Restart</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+/* =====================================================================
+   GOSSAMER
+   One file. Canvas art, WebAudio sound, verlet-rope web physics.
+   ===================================================================== */
+
+/* ------------------------------ utils ------------------------------ */
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = t => t * t * (3 - 2 * t);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const rndi = (a, b) => (a + Math.random() * (b - a + 1)) | 0;
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const dist2 = (ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay; return dx * dx + dy * dy; };
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/* color helpers: colors are [r,g,b] arrays */
+const C = (r, g, b) => [r, g, b];
+function mixc(a, b, t, out) {
+  out = out || [0, 0, 0];
+  out[0] = a[0] + (b[0] - a[0]) * t;
+  out[1] = a[1] + (b[1] - a[1]) * t;
+  out[2] = a[2] + (b[2] - a[2]) * t;
+  return out;
+}
+function rgb(c) { return 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')'; }
+function rgba(c, a) { return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + a + ')'; }
+
+/* closest point on segment ab to p; returns t in [0,1] */
+function segT(ax, ay, bx, by, px, py) {
+  const dx = bx - ax, dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  if (l2 < 1e-9) return 0;
+  return clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1);
+}
+
+/* ------------------------------ audio ------------------------------ */
+const A = {
+  ctx: null, master: null, comp: null, noiseBuf: null,
+  muted: false, ready: false, slots: [], duck: 1,
+  amb: null, ambGain: null, buzzes: new Set(), lastPluck: 0, pluckBudget: 0
+};
+
+function audioInit() {
+  if (A.ctx || A.failed) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) { A.failed = true; return; }
+  try { A.ctx = new AC(); } catch (e) { A.failed = true; return; }
+  const ctx = A.ctx;
+  A.comp = ctx.createDynamicsCompressor();
+  try {
+    A.comp.threshold.value = -16; A.comp.knee.value = 22;
+    A.comp.ratio.value = 8; A.comp.attack.value = 0.004; A.comp.release.value = 0.22;
+  } catch (e) { }
+  A.master = ctx.createGain();
+  A.master.gain.value = A.muted ? 0 : 1;
+  A.master.connect(A.comp); A.comp.connect(ctx.destination);
+
+  /* noise buffer (2s, mono) */
+  const n = Math.floor(ctx.sampleRate * 2);
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < n; i++) {
+    const w = Math.random() * 2 - 1;
+    last = (last + 0.028 * w) / 1.028;         // gently brown-tinted
+    d[i] = w * 0.72 + last * 3.2;
+  }
+  A.noiseBuf = buf;
+
+  /* ambience: filtered noise bed */
+  try {
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 340; lp.Q.value = 0.5;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 90;
+    const g = ctx.createGain(); g.gain.value = 0.0;
+    src.connect(lp); lp.connect(hp); hp.connect(g); g.connect(A.master);
+    src.start(0);
+    A.amb = src; A.ambGain = g;
+    g.gain.setTargetAtTime(0.055, ctx.currentTime, 2.2);
+  } catch (e) { }
+  A.ready = true;
+}
+function audioResume() {
+  if (!A.ctx) return;
+  if (A.ctx.state === 'suspended') { try { A.ctx.resume(); } catch (e) { } }
+}
+function setMute(m) {
+  A.muted = m;
+  if (A.master) {
+    const t = A.ctx.currentTime;
+    A.master.gain.cancelScheduledValues(t);
+    A.master.gain.setTargetAtTime(m ? 0 : A.duck, t, 0.05);
+  }
+  const btn = document.getElementById('muteBtn');
+  btn.classList.toggle('off', m);
+  document.getElementById('wave1').style.display = m ? 'none' : '';
+  document.getElementById('wave2').style.display = m ? 'none' : '';
+  document.getElementById('xmark').style.display = m ? '' : 'none';
+}
+function setDuck(v) {
+  A.duck = v;
+  if (A.master && !A.muted) {
+    const t = A.ctx.currentTime;
+    A.master.gain.cancelScheduledValues(t);
+    A.master.gain.setTargetAtTime(v, t, 0.08);
+  }
+}
+/* Voice budget by scheduled end-time rather than 'onended' callbacks: a
+   suspended or throttled context can swallow those events, and a stuck
+   counter would silence the game for good. */
+function canVoice() {
+  if (!A.ready || !A.ctx || A.muted) return false;
+  const now = A.ctx.currentTime;
+  const s = A.slots;
+  let n = 0;
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (s[i] <= now) s.splice(i, 1); else n++;
+  }
+  return n < 24;
+}
+function voiceUp(dur) {
+  A.slots.push(A.ctx.currentTime + (dur || 0.3));
+  if (A.slots.length > 64) A.slots.splice(0, A.slots.length - 64);
+}
+
+/* plucked string — the web is a harp */
+function sfxPluck(freq, amp, dur) {
+  if (!canVoice()) return;
+  const ctx = A.ctx, t = ctx.currentTime;
+  freq = clamp(freq, 55, 1400);
+  dur = dur || clamp(1.15 - freq / 1600, 0.22, 1.05);
+  const g = ctx.createGain();
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(Math.min(9000, freq * 8), t);
+  lp.frequency.exponentialRampToValueAtTime(Math.max(220, freq * 1.5), t + dur * 0.7);
+  lp.Q.value = 1.1;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, amp), t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  lp.connect(g); g.connect(A.master);
+
+  const o1 = ctx.createOscillator();
+  o1.type = 'triangle';
+  o1.frequency.setValueAtTime(freq * 1.008, t);
+  o1.frequency.exponentialRampToValueAtTime(freq * 0.985, t + dur);
+  o1.connect(lp);
+  const o2 = ctx.createOscillator();
+  o2.type = 'sawtooth';
+  o2.frequency.setValueAtTime(freq * 2.004, t);
+  const g2 = ctx.createGain(); g2.gain.value = 0.22;
+  o2.connect(g2); g2.connect(lp);
+
+  /* pick transient */
+  const ns = ctx.createBufferSource(); ns.buffer = A.noiseBuf;
+  ns.playbackRate.value = 1.6;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(amp * 0.5, t);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+  bp.frequency.value = clamp(freq * 4, 300, 6000); bp.Q.value = 0.9;
+  ns.connect(bp); bp.connect(ng); ng.connect(A.master);
+  ns.start(t + Math.random() * 0.004); ns.stop(t + 0.06);
+
+  o1.start(t); o2.start(t);
+  o1.stop(t + dur + 0.03); o2.stop(t + dur + 0.03);
+  voiceUp(dur + 0.03);
+}
+
+function sfxNoise(dur, type, f0, f1, amp, q, rate) {
+  if (!canVoice()) return;
+  const ctx = A.ctx, t = ctx.currentTime;
+  const s = ctx.createBufferSource();
+  s.buffer = A.noiseBuf;
+  s.playbackRate.value = rate || 1;
+  const f = ctx.createBiquadFilter();
+  f.type = type || 'bandpass';
+  f.frequency.setValueAtTime(f0, t);
+  f.frequency.exponentialRampToValueAtTime(Math.max(40, f1), t + dur);
+  f.Q.value = q == null ? 1 : q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, amp), t + Math.min(0.02, dur * 0.2));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(A.master);
+  s.start(t + Math.random() * 0.01); s.stop(t + dur + 0.04);
+  voiceUp(dur + 0.04);
+}
+
+function sfxTone(freq, dur, amp, type, glide) {
+  if (!canVoice()) return;
+  const ctx = A.ctx, t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  if (glide) o.frequency.exponentialRampToValueAtTime(Math.max(30, glide), t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, amp), t + Math.min(0.02, dur * 0.25));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(A.master);
+  o.start(t); o.stop(t + dur + 0.02);
+  voiceUp(dur + 0.02);
+}
+
+/* prey hits the web */
+function sfxThap(size) {
+  sfxNoise(0.13, 'lowpass', 1500 * (size || 1), 220, 0.16, 0.7, 0.85);
+  sfxTone(150 / (size || 1), 0.1, 0.055, 'sine', 80);
+}
+/* wrapping prey */
+function sfxWrap() {
+  sfxNoise(0.42, 'bandpass', 2600, 1100, 0.075, 0.9, 1.25);
+  sfxNoise(0.3, 'highpass', 3400, 2200, 0.035, 0.5, 1.6);
+}
+/* eat burst */
+function sfxEat(big) {
+  const f = big ? 320 : 430;
+  sfxTone(f, 0.16, 0.1, 'sine', f * 1.7);
+  sfxTone(f * 1.5, 0.22, 0.05, 'triangle', f * 2.3);
+  sfxNoise(0.16, 'lowpass', 900, 300, 0.09, 0.7, 0.8);
+}
+/* strand snapping */
+function sfxSnap(len) {
+  sfxNoise(0.09, 'highpass', 2600, 900, 0.2, 0.6, 1.5);
+  sfxPluck(clamp(60000 / Math.max(40, len), 80, 900), 0.2, 0.28);
+  sfxTone(62, 0.3, 0.2, 'sine', 34);
+}
+/* silk cut */
+function sfxCut() {
+  sfxNoise(0.075, 'bandpass', 4200, 1800, 0.11, 1.6, 1.7);
+  sfxTone(700, 0.06, 0.03, 'triangle', 380);
+}
+/* not enough silk / not connected */
+function sfxDull() {
+  sfxTone(96, 0.14, 0.075, 'sine', 68);
+  sfxNoise(0.08, 'lowpass', 420, 180, 0.05, 0.7, 0.6);
+}
+function sfxDeny() {
+  sfxTone(210, 0.09, 0.05, 'triangle', 165);
+  setTimeout(() => sfxTone(165, 0.11, 0.045, 'triangle', 125), 75);
+}
+/* beetle impact */
+function sfxThud() {
+  sfxTone(48, 0.42, 0.3, 'sine', 26);
+  sfxNoise(0.2, 'lowpass', 400, 90, 0.16, 0.6, 0.55);
+}
+/* cricket blip */
+function sfxCricket() {
+  if (!canVoice()) return;
+  const ctx = A.ctx;
+  const base = 4200 + Math.random() * 1400;
+  const n = 3 + ((Math.random() * 3) | 0);
+  const amp = 0.012 + Math.random() * 0.01;
+  for (let i = 0; i < n; i++) {
+    const t = ctx.currentTime + i * 0.055;
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(base, t);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(amp, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.032);
+    o.connect(g); g.connect(A.master);
+    o.start(t); o.stop(t + 0.05);
+    if (i === 0) voiceUp(0.05 + n * 0.055);
+  }
+}
+/* night chime / transitions */
+function sfxChime(root, up) {
+  const seq = up ? [0, 4, 7, 12] : [0, 3, 7];
+  seq.forEach((s, i) => {
+    setTimeout(() => sfxPluck(root * Math.pow(2, s / 12), 0.1, 1.2), i * 105);
+  });
+}
+function sfxSad() {
+  const seq = [0, -2, -5, -9];
+  seq.forEach((s, i) => setTimeout(() => sfxPluck(220 * Math.pow(2, s / 12), 0.11, 1.5), i * 240));
+}
+function sfxDeath() {
+  sfxNoise(0.5, 'lowpass', 1800, 120, 0.26, 0.8, 0.7);
+  sfxTone(140, 0.6, 0.2, 'sawtooth', 42);
+  sfxTone(70, 0.9, 0.16, 'sine', 30);
+}
+
+/* persistent wasp buzz */
+function buzzStart() {
+  if (!A.ready || !A.ctx) return null;
+  const ctx = A.ctx, t = ctx.currentTime;
+  try {
+    const g = ctx.createGain(); g.gain.value = 0;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 3.5;
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 132;
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 139;
+    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 21;
+    const lfoG = ctx.createGain(); lfoG.gain.value = 340;
+    lfo.connect(lfoG); lfoG.connect(lp.frequency);
+    o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(A.master);
+    o1.start(t); o2.start(t); lfo.start(t);
+    const h = { g, o1, o2, lfo, lp, lfoG, stopped: false };
+    A.buzzes.add(h);
+    return h;
+  } catch (e) { return null; }
+}
+function buzzSet(h, amp, freq, rate) {
+  if (!h || h.stopped || !A.ctx) return;
+  const t = A.ctx.currentTime;
+  try {
+    h.g.gain.setTargetAtTime(amp, t, 0.07);
+    h.o1.frequency.setTargetAtTime(freq, t, 0.08);
+    h.o2.frequency.setTargetAtTime(freq * 1.055, t, 0.08);
+    h.lfo.frequency.setTargetAtTime(rate, t, 0.1);
+  } catch (e) { }
+}
+function buzzStop(h) {
+  if (!h || h.stopped || !A.ctx) return;
+  h.stopped = true;
+  const t = A.ctx.currentTime;
+  try {
+    h.g.gain.cancelScheduledValues(t);
+    h.g.gain.setTargetAtTime(0, t, 0.05);
+    h.o1.stop(t + 0.3); h.o2.stop(t + 0.3); h.lfo.stop(t + 0.3);
+  } catch (e) { }
+  A.buzzes.delete(h);
+}
+function buzzStopAll() { for (const h of Array.from(A.buzzes)) buzzStop(h); }
+
+/* --------------------------- canvas setup --------------------------- */
+const cvs = document.getElementById('game');
+const ctx = cvs.getContext('2d', { alpha: false });
+let W = 800, H = 600, DPR = 1;
+const $ = id => document.getElementById(id);
+
+/* =====================================================================
+   PHYSICS + WEB GRAPH
+   A strand is a verlet chain between exactly two graph NODES.
+   Nodes are anchors (pinned) or junctions (shared particle between 3+
+   strands). Attaching silk mid-strand SPLITS that strand in two, and the
+   shared particle object makes them physically coupled. Branches are
+   just strands with every particle pinned, so anchors + silk form one
+   graph the spider can walk.
+   ===================================================================== */
+const PH = {
+  DT: 1 / 120,
+  GRAV: 700,
+  DAMP: 0.9955,
+  ITER: 5,
+  STIFF: 0.88,
+  SAG: 1.045,          // rest length is a touch longer than straight => sag
+  SEGLEN: 27,
+  MINP: 8, MAXP: 14,
+  TEAR_RATIO: 1.55,    // per-segment stretch that starts straining
+  TEAR_TIME: 0.5,      // seconds of strain before it snaps
+  SPIDER_W: 3400
+};
+const SILK_MAX = 120, SILK_COST = 0.05, SILK_REGEN = 1.15, CUT_REFUND = 0.25;
+/* everything alive is drawn relative to the field so a phone and a desktop
+   read the same, and so hit radii stay proportional */
+function artScale() { return clamp(Math.min(W, H) / 560, 0.85, 1.8); }
+const MIN_SPAN = 46;   // shortest strand you may spin
+
+let G = null;          // the whole mutable game state; rebuilt on restart
+let stampCounter = 1;
+
+function makeParticle(x, y, pin) {
+  return { x: x, y: y, px: x, py: y, fx: 0, fy: 0, pin: !!pin, stamp: 0 };
+}
+function makeNode(p, kind) {
+  const n = { id: G.nextId++, p: p, strands: [], kind: kind || 'junction', mark: 0, dist: 0, via: null, prev: null };
+  G.nodes.push(n);
+  return n;
+}
+function rawStrand(kind, pts, rest, nodeA, nodeB) {
+  const S = {
+    id: G.nextId++, kind: kind, pts: pts, rest: rest,
+    nodeA: nodeA, nodeB: nodeB, alive: true,
+    vib: 0, strain: 0, born: G.time, dew: null, bw: 11,
+    x0: 0, y0: 0, x1: 0, y1: 0, restLen: 0, note: 220
+  };
+  let rl = 0; for (let i = 0; i < rest.length; i++) rl += rest[i];
+  S.restLen = rl;
+  S.note = clamp(58000 / Math.max(50, rl), 82, 940);
+  updateBBox(S);
+  if (kind === 'silk') makeDew(S);
+  G.strands.push(S);
+  return S;
+}
+function makeDew(S) {
+  const n = S.rest.length;
+  const d = [];
+  const count = clamp(Math.round(S.restLen / 90), 1, 4);
+  for (let i = 0; i < count; i++) d.push({ u: rnd(0.35, n - 0.35), ph: rnd(0, TAU) });
+  S.dew = d;
+}
+function updateBBox(S) {
+  const pts = S.pts;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y;
+  }
+  S.x0 = x0; S.y0 = y0; S.x1 = x1; S.y1 = y1;
+}
+
+/* --- particle registry: rebuilt whenever the web's topology changes --- */
+function rebuildParticles() {
+  const list = G.particles;
+  list.length = 0;
+  const stamp = ++stampCounter;
+  for (let i = 0; i < G.strands.length; i++) {
+    const pts = G.strands[i].pts;
+    for (let j = 0; j < pts.length; j++) {
+      const p = pts[j];
+      if (p.stamp !== stamp) { p.stamp = stamp; list.push(p); }
+    }
+  }
+}
+
+/* ------------------------------ creation ------------------------------ */
+function buildChain(ax, ay, bx, by, pin, bow) {
+  const L = Math.hypot(bx - ax, by - ay);
+  const n = clamp(Math.round(L / PH.SEGLEN) + 1, PH.MINP, PH.MAXP);
+  const pts = new Array(n);
+  const nx = -(by - ay) / (L || 1), ny = (bx - ax) / (L || 1);
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const b = bow ? Math.sin(t * Math.PI) * bow : 0;
+    pts[i] = makeParticle(lerp(ax, bx, t) + nx * b, lerp(ay, by, t) + ny * b, pin);
+  }
+  return pts;
+}
+function restFromPts(pts, scale) {
+  const rest = new Array(pts.length - 1);
+  for (let i = 0; i < pts.length - 1; i++) {
+    rest[i] = Math.max(2, Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y) * scale);
+  }
+  return rest;
+}
+/* silk between two existing graph nodes */
+function spinStrand(nA, nB) {
+  const a = nA.p, b = nB.p;
+  const pts = buildChain(a.x, a.y, b.x, b.y, false, 0);
+  pts[0] = a; pts[pts.length - 1] = b;
+  const rest = restFromPts(pts, PH.SAG);
+  const S = rawStrand('silk', pts, rest, nA, nB);
+  nA.strands.push(S); nB.strands.push(S);
+  rebuildParticles();
+  return S;
+}
+function addAnchorStrand(nA, nB, bow, bw) {
+  const a = nA.p, b = nB.p;
+  const L = Math.hypot(b.x - a.x, b.y - a.y);
+  const n = clamp(Math.round(L / 34) + 1, 5, 20);
+  const pts = new Array(n);
+  const nx = -(b.y - a.y) / (L || 1), ny = (b.x - a.x) / (L || 1);
+  /* wood is never straight: two out-of-phase waves give a believable bend */
+  const ph1 = rnd(0, TAU), ph2 = rnd(0, TAU);
+  const w1 = L * 0.022, w2 = L * 0.009;
+  const W0 = bw || 11;
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const env = Math.sin(t * Math.PI);
+    const bwv = Math.sin(t * Math.PI) * (bow || 0)
+      + env * (Math.sin(t * 5.3 + ph1) * w1 + Math.sin(t * 11.7 + ph2) * w2);
+    pts[i] = makeParticle(lerp(a.x, b.x, t) + nx * bwv, lerp(a.y, b.y, t) + ny * bwv, true);
+    /* per-particle thickness survives splitting, so joins never step */
+    pts[i].bwv = W0 * (0.62 + 0.38 * Math.sin(t * Math.PI) + 0.13 * Math.sin(t * 7.1 + ph2));
+  }
+  pts[0] = a; pts[n - 1] = b;
+  if (a.bwv == null) a.bwv = W0 * 0.72;
+  if (b.bwv == null) b.bwv = W0 * 0.72;
+  const rest = restFromPts(pts, 1);
+  const S = rawStrand('anchor', pts, rest, nA, nB);
+  S.bw = bw || 11;
+  nA.strands.push(S); nB.strands.push(S);
+  return S;
+}
+
+/* --------------------------- position helpers --------------------------- */
+const _pt = { x: 0, y: 0 };
+function posOnStrand(S, u, out) {
+  out = out || _pt;
+  const pts = S.pts, n = pts.length;
+  u = clamp(u, 0, n - 1);
+  let i = u | 0; if (i > n - 2) i = n - 2; if (i < 0) i = 0;
+  const f = clamp(u - i, 0, 1);
+  const a = pts[i], b = pts[i + 1];
+  out.x = a.x + (b.x - a.x) * f;
+  out.y = a.y + (b.y - a.y) * f;
+  return out;
+}
+function tangentOnStrand(S, u, out) {
+  out = out || { x: 1, y: 0 };
+  const pts = S.pts, n = pts.length;
+  let i = clamp(u | 0, 0, n - 2);
+  const a = pts[i], b = pts[i + 1];
+  let dx = b.x - a.x, dy = b.y - a.y;
+  const d = Math.hypot(dx, dy) || 1;
+  out.x = dx / d; out.y = dy / d;
+  return out;
+}
+function segLenAt(S, i) {
+  const a = S.pts[i], b = S.pts[i + 1];
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+/* current length between two u positions on the same strand */
+function lenAlong(S, u0, u1) {
+  if (u0 > u1) { const t = u0; u0 = u1; u1 = t; }
+  const n = S.pts.length;
+  u0 = clamp(u0, 0, n - 1); u1 = clamp(u1, 0, n - 1);
+  let total = 0;
+  let i = u0 | 0; if (i > n - 2) i = n - 2;
+  const jEnd = Math.min((u1 | 0), n - 2);
+  if (i === jEnd) return segLenAt(S, i) * (u1 - u0);
+  total += segLenAt(S, i) * (1 - (u0 - i));
+  for (let k = i + 1; k < jEnd; k++) total += segLenAt(S, k);
+  total += segLenAt(S, jEnd) * (u1 - jEnd);
+  return total;
+}
+function strandLen(S) { return lenAlong(S, 0, S.pts.length - 1); }
+/* move `d` px along a strand from u toward `dir` (+1/-1). returns new u */
+function advanceU(S, u, d, dir) {
+  const n = S.pts.length;
+  let left = d;
+  if (dir > 0) {
+    let i = clamp(u | 0, 0, n - 2);
+    let f = u - i;
+    while (left > 0 && i < n - 1) {
+      const sl = segLenAt(S, i) || 1;
+      const rem = (1 - f) * sl;
+      if (rem > left) { f += left / sl; left = 0; }
+      else { left -= rem; i++; f = 0; }
+    }
+    return clamp(i + f, 0, n - 1);
+  } else {
+    let i = clamp(u | 0, 0, n - 2);
+    let f = u - i;
+    while (left > 0 && (i > 0 || f > 0)) {
+      const sl = segLenAt(S, i) || 1;
+      const rem = f * sl;
+      if (rem > left) { f -= left / sl; left = 0; }
+      else { left -= rem; i--; if (i < 0) { i = 0; f = 0; break; } f = 1; }
+    }
+    return clamp(i + f, 0, n - 1);
+  }
+}
+function otherNode(S, n) { return S.nodeA === n ? S.nodeB : S.nodeA; }
+function uOfNode(S, n) { return S.nodeA === n ? 0 : S.pts.length - 1; }
+
+/* ------------------------------ picking ------------------------------ */
+function pickStrand(x, y, r, silkOnly) {
+  let bd = r * r, bS = null, bSeg = 0, bT = 0, bx = 0, by = 0;
+  const strands = G.strands;
+  for (let s = 0; s < strands.length; s++) {
+    const S = strands[s];
+    if (!S.alive) continue;
+    if (silkOnly && S.kind !== 'silk') continue;
+    if (x < S.x0 - r || x > S.x1 + r || y < S.y0 - r || y > S.y1 + r) continue;
+    const pts = S.pts;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const t = segT(a.x, a.y, b.x, b.y, x, y);
+      const cx = a.x + (b.x - a.x) * t, cy = a.y + (b.y - a.y) * t;
+      const d = dist2(cx, cy, x, y);
+      if (d < bd) { bd = d; bS = S; bSeg = i; bT = t; bx = cx; by = cy; }
+    }
+  }
+  if (!bS) return null;
+  return { S: bS, seg: bSeg, t: bT, x: bx, y: by, d: Math.sqrt(bd), u: bSeg + bT };
+}
+function pickFrac(S, frac) {
+  const total = strandLen(S);
+  let want = total * frac, acc = 0;
+  for (let i = 0; i < S.pts.length - 1; i++) {
+    const l = segLenAt(S, i);
+    if (acc + l >= want || i === S.pts.length - 2) {
+      const t = clamp(l > 0 ? (want - acc) / l : 0.5, 0, 1);
+      const a = S.pts[i], b = S.pts[i + 1];
+      return { S: S, seg: i, t: t, x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, u: i + t };
+    }
+    acc += l;
+  }
+  return { S: S, seg: 0, t: 0, x: S.pts[0].x, y: S.pts[0].y, u: 0 };
+}
+
+/* --------------------- topology: insert / split / kill --------------------- */
+/* Remap anything that references (strand, u) after an insertion at index `at`
+   splitting segment (at-1) with parameter t. */
+function remapInsert(S, at, t) {
+  const seg = at - 1;
+  const f = u => {
+    if (u <= seg) return u;
+    if (u >= seg + 1) return u + 1;
+    const local = u - seg;
+    return local <= t
+      ? seg + (t > 1e-6 ? local / t : 0)
+      : seg + 1 + (1 - t > 1e-6 ? (local - t) / (1 - t) : 0);
+  };
+  for (let i = 0; i < G.prey.length; i++) {
+    const q = G.prey[i];
+    if (q.strand === S) q.u = f(q.u);
+  }
+  const sp = G.spider;
+  if (sp) {
+    if (sp.strand === S) sp.u = f(sp.u);
+    if (sp.route) for (let i = 0; i < sp.route.length; i++) {
+      const st = sp.route[i];
+      if (st.s === S) { st.from = f(st.from); st.to = f(st.to); }
+    }
+    if (sp.target && sp.target.S === S) sp.target.u = f(sp.target.u);
+  }
+}
+/* Remap references from S onto its two halves after a split at index i */
+function remapSplit(S, i, s1, s2) {
+  const conv = u => (u <= i ? { s: s1, u: u } : { s: s2, u: u - i });
+  for (let k = 0; k < G.prey.length; k++) {
+    const q = G.prey[k];
+    if (q.strand === S) { const c = conv(q.u); q.strand = c.s; q.u = c.u; }
+  }
+  const sp = G.spider;
+  if (!sp) return;
+  if (sp.strand === S) { const c = conv(sp.u); sp.strand = c.s; sp.u = c.u; }
+  if (sp.target && sp.target.S === S) { const c = conv(sp.target.u); sp.target.S = c.s; sp.target.u = c.u; }
+  if (sp.route) {
+    const out = [];
+    for (let k = 0; k < sp.route.length; k++) {
+      const st = sp.route[k];
+      if (st.s !== S) { out.push(st); continue; }
+      const a = st.from, b = st.to;
+      if (a <= i && b <= i) out.push({ s: s1, from: a, to: b });
+      else if (a >= i && b >= i) out.push({ s: s2, from: a - i, to: b - i });
+      else if (a < i) { out.push({ s: s1, from: a, to: i }); out.push({ s: s2, from: 0, to: b - i }); }
+      else { out.push({ s: s2, from: a - i, to: 0 }); out.push({ s: s1, from: i, to: b }); }
+    }
+    sp.route = out;
+  }
+}
+function replaceInNode(node, oldS, newS) {
+  const arr = node.strands;
+  for (let i = 0; i < arr.length; i++) if (arr[i] === oldS) { arr[i] = newS; return; }
+  arr.push(newS);
+}
+function dropStrandFromList(S) {
+  const i = G.strands.indexOf(S);
+  if (i >= 0) G.strands.splice(i, 1);
+}
+function splitStrand(S, i) {
+  const n = S.pts.length;
+  if (i <= 0) return S.nodeA;
+  if (i >= n - 1) return S.nodeB;
+  const node = makeNode(S.pts[i], 'junction');
+  const s1 = rawStrand(S.kind, S.pts.slice(0, i + 1), S.rest.slice(0, i), S.nodeA, node);
+  const s2 = rawStrand(S.kind, S.pts.slice(i), S.rest.slice(i), node, S.nodeB);
+  s1.vib = s2.vib = S.vib;
+  s1.born = s2.born = S.born;
+  s1.bw = s2.bw = S.bw;
+  replaceInNode(S.nodeA, S, s1);
+  replaceInNode(S.nodeB, S, s2);
+  node.strands.push(s1, s2);
+  S.alive = false;
+  dropStrandFromList(S);
+  remapSplit(S, i, s1, s2);
+  return node;
+}
+/* Turn a picked point on a strand into a real graph node (splitting if needed) */
+function nodeAtPick(pk) {
+  const S = pk.S;
+  if (!S.alive) return null;
+  const n = S.pts.length;
+  const sl = segLenAt(S, pk.seg);
+  let idx = -1;
+  if (pk.t * sl < 8) idx = pk.seg;
+  else if ((1 - pk.t) * sl < 8) idx = pk.seg + 1;
+  if (idx === 0) return S.nodeA;
+  if (idx === n - 1) return S.nodeB;
+  if (idx > 0) return splitStrand(S, idx);
+  /* insert a fresh particle mid-segment */
+  const a = S.pts[pk.seg], b = S.pts[pk.seg + 1], t = pk.t;
+  const p = makeParticle(lerp(a.x, b.x, t), lerp(a.y, b.y, t), S.kind === 'anchor');
+  p.px = lerp(a.px, b.px, t); p.py = lerp(a.py, b.py, t);
+  if (a.bwv != null || b.bwv != null) p.bwv = lerp(a.bwv || 10, b.bwv || 10, t);
+  const at = pk.seg + 1;
+  S.pts.splice(at, 0, p);
+  const oldRest = S.rest[pk.seg];
+  S.rest.splice(pk.seg, 1, Math.max(2, oldRest * t), Math.max(2, oldRest * (1 - t)));
+  remapInsert(S, at, t);
+  return splitStrand(S, at);
+}
+/* Remove a strand from the world entirely */
+function killStrand(S, silent) {
+  if (!S || !S.alive || S.kind === 'anchor') return false;
+  S.alive = false;
+  dropStrandFromList(S);
+  const ia = S.nodeA.strands.indexOf(S); if (ia >= 0) S.nodeA.strands.splice(ia, 1);
+  const ib = S.nodeB.strands.indexOf(S); if (ib >= 0) S.nodeB.strands.splice(ib, 1);
+  /* prey riding this strand come loose */
+  for (let i = 0; i < G.prey.length; i++) {
+    const q = G.prey[i];
+    if (q.strand === S) freePrey(q, true);
+  }
+  pruneNodes();
+  rebuildParticles();
+  if (G.spider) spiderStrandLost(S);
+  if (!silent) burstSilk(S);
+  return true;
+}
+/* Cutting can orphan a piece of web from every anchor; it then falls for
+   ever. Sweep anything that has dropped clean out of the garden. */
+function pruneFallen() {
+  const R = G.rect, lim = R.y + R.h + 240;
+  for (let i = G.strands.length - 1; i >= 0; i--) {
+    const S = G.strands[i];
+    if (S.kind !== 'silk') continue;
+    if (S.y0 > lim || S.x1 < -400 || S.x0 > W + 400) killStrand(S, true);
+  }
+}
+function pruneNodes() {
+  const out = [];
+  for (let i = 0; i < G.nodes.length; i++) {
+    const n = G.nodes[i];
+    if (n.strands.length > 0) out.push(n);
+  }
+  G.nodes = out;
+}
+
+/* ------------------------------ simulation ------------------------------ */
+function physicsStep(dt) {
+  const ps = G.particles;
+  const g = PH.GRAV * dt * dt;
+  const damp = PH.DAMP;
+  const wx = G.wind * dt * dt;
+  /* integrate */
+  for (let i = 0; i < ps.length; i++) {
+    const p = ps[i];
+    if (p.pin) { p.fx = 0; p.fy = 0; continue; }
+    const vx = (p.x - p.px) * damp;
+    const vy = (p.y - p.py) * damp;
+    p.px = p.x; p.py = p.y;
+    p.x += vx + p.fx * dt * dt + wx;
+    p.y += vy + p.fy * dt * dt + g;
+    p.fx = 0; p.fy = 0;
+    /* NaN guard — never let the web explode */
+    if (!(p.x === p.x) || !(p.y === p.y)) { p.x = p.px = G.rect.x + G.rect.w * 0.5; p.y = p.py = G.rect.y + G.rect.h * 0.5; }
+  }
+  /* relax */
+  const strands = G.strands;
+  const stiff = PH.STIFF;
+  for (let it = 0; it < PH.ITER; it++) {
+    for (let s = 0; s < strands.length; s++) {
+      const S = strands[s];
+      if (S.kind === 'anchor') continue;
+      const pts = S.pts, rest = S.rest;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        if (a.pin && b.pin) continue;
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 1e-6) { d = 1e-6; dx = 1e-6; }
+        const diff = ((d - rest[i]) / d) * stiff;
+        const ox = dx * diff, oy = dy * diff;
+        if (a.pin) { b.x -= ox; b.y -= oy; }
+        else if (b.pin) { a.x += ox; a.y += oy; }
+        else {
+          a.x += ox * 0.5; a.y += oy * 0.5;
+          b.x -= ox * 0.5; b.y -= oy * 0.5;
+        }
+      }
+    }
+  }
+  /* strain + tearing + bbox + vibration measure */
+  for (let s = strands.length - 1; s >= 0; s--) {
+    const S = strands[s];
+    if (S.kind === 'anchor') { continue; }
+    const pts = S.pts, rest = S.rest;
+    let worst = 0, vib = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      const r = d / rest[i];
+      if (r > worst) worst = r;
+    }
+    const mid = pts[(pts.length / 2) | 0];
+    vib = Math.hypot(mid.x - mid.px, mid.y - mid.py) / dt;
+    S.vib = S.vib * 0.90 + vib * 0.10;
+    if (worst > PH.TEAR_RATIO) S.strain += dt * (worst - PH.TEAR_RATIO) * 6;
+    else S.strain = Math.max(0, S.strain - dt * 1.6);
+    if (S.strain > PH.TEAR_TIME) {
+      sfxSnap(S.restLen);
+      shake(4.5);
+      killStrand(S);
+      continue;
+    }
+    updateBBox(S);
+  }
+}
+/* push a particle (used by struggling prey, spider weight, wind) */
+function pushP(p, fx, fy) { if (!p.pin) { p.fx += fx; p.fy += fy; } }
+function pushAtU(S, u, fx, fy) {
+  const pts = S.pts, n = pts.length;
+  let i = clamp(u | 0, 0, n - 2);
+  const f = clamp(u - i, 0, 1);
+  pushP(pts[i], fx * (1 - f), fy * (1 - f));
+  pushP(pts[i + 1], fx * f, fy * f);
+}
+function impulseAtU(S, u, ix, iy) {
+  const pts = S.pts, n = pts.length;
+  let i = clamp(u | 0, 0, n - 2);
+  const f = clamp(u - i, 0, 1);
+  const a = pts[i], b = pts[i + 1];
+  if (!a.pin) { a.x += ix * (1 - f); a.y += iy * (1 - f); }
+  if (!b.pin) { b.x += ix * f; b.y += iy * f; }
+}
+
+/* =====================================================================
+   WORLD BUILD — branches as pinned strands, so anchors + silk are one graph
+   ===================================================================== */
+function computeRect() {
+  const padT = clamp(H * 0.13, 34, 68);
+  const padB = clamp(H * 0.115, 30, 58);
+  const m = clamp(Math.min(W, H) * 0.055, 10, 46);
+  const w = Math.max(140, W - 2 * m);
+  const h = Math.max(130, H - padT - padB);
+  return { x: (W - w) / 2, y: padT, w: w, h: h };
+}
+function buildAnchors() {
+  const R = G.rect;
+  const rng = mulberry32(G.seed);
+  const cx = [R.x, R.x + R.w, R.x + R.w, R.x];
+  const cy = [R.y, R.y, R.y + R.h, R.y + R.h];
+  const corners = [];
+  for (let i = 0; i < 4; i++) corners.push(makeNode(makeParticle(cx[i], cy[i], true), 'anchor'));
+  const bwBase = clamp(Math.min(R.w, R.h) * 0.026, 7, 15);
+  const sides = [];
+  for (let i = 0; i < 4; i++) {
+    const a = corners[i], b = corners[(i + 1) % 4];
+    const L = Math.hypot(b.p.x - a.p.x, b.p.y - a.p.y);
+    sides.push(addAnchorStrand(a, b, L * (0.022 + rng() * 0.035), bwBase * (i % 2 ? 0.86 : 1)));
+  }
+  /* two twigs cutting the corners — extra anchor variety */
+  const t1a = nodeAtPick(pickFrac(sides[0], 0.20 + rng() * 0.08));
+  const t1b = nodeAtPick(pickFrac(sides[3], 0.70 + rng() * 0.08));
+  addAnchorStrand(t1a, t1b, -R.w * 0.02, bwBase * 0.6);
+  const t2a = nodeAtPick(pickFrac(sides[2], 0.20 + rng() * 0.08));
+  const t2b = nodeAtPick(pickFrac(sides[1], 0.68 + rng() * 0.09));
+  addAnchorStrand(t2a, t2b, -R.w * 0.02, bwBase * 0.6);
+  const set = [];
+  for (let i = 0; i < G.strands.length; i++) {
+    const S = G.strands[i];
+    if (S.kind === 'anchor' && set.indexOf(S.bw) < 0) set.push(S.bw);
+  }
+  G.bwList = set.length ? set : [11];
+  buildDecor(rng);
+}
+/* leaves + twiglets stored in rect-normalised space so resize is free */
+function buildDecor(rng) {
+  const R = G.rect;
+  const dec = [];
+  for (let s = 0; s < G.strands.length; s++) {
+    const S = G.strands[s];
+    if (S.kind !== 'anchor') continue;
+    const L = strandLen(S);
+    const count = Math.max(1, Math.round(L / 78));
+    for (let i = 0; i < count; i++) {
+      const f = (i + 0.35 + rng() * 0.3) / count;
+      const pk = pickFrac(S, f);
+      const tg = tangentOnStrand(S, pk.u, { x: 1, y: 0 });
+      /* twig points inward-ish: flip normal toward the frame centre */
+      let nx = -tg.y, ny = tg.x;
+      const toC = (R.x + R.w / 2 - pk.x) * nx + (R.y + R.h / 2 - pk.y) * ny;
+      if (toC < 0) { nx = -nx; ny = -ny; }
+      const inward = rng() < 0.62;
+      if (!inward) { nx = -nx; ny = -ny; }
+      const ang = Math.atan2(ny, nx) + rnd(-0.55, 0.55);
+      dec.push({
+        u: (pk.x - R.x) / R.w, v: (pk.y - R.y) / R.h,
+        ang: ang, len: (0.03 + rng() * 0.05) * Math.min(R.w, R.h),
+        leaves: 1 + ((rng() * 3) | 0), seed: rng() * 1000, ph: rng() * TAU,
+        w: 1.4 + rng() * 1.8
+      });
+    }
+  }
+  G.decor = dec;
+}
+function buildBackdrop() {
+  const rng = mulberry32(G.seed ^ 0x9e37);
+  const stars = [];
+  for (let i = 0; i < 130; i++) {
+    stars.push({ x: rng(), y: rng() * 0.72, r: 0.4 + rng() * 1.25, ph: rng() * TAU, sp: 0.5 + rng() * 1.9 });
+  }
+  G.stars = stars;
+  const grass = [];
+  for (let i = 0; i < 46; i++) {
+    grass.push({ x: rng(), h: 0.06 + rng() * 0.15, w: 0.006 + rng() * 0.012, ph: rng() * TAU, lean: rnd(-0.4, 0.4), tone: rng() });
+  }
+  G.grass = grass;
+  const far = [];
+  for (let i = 0; i < 15; i++) {
+    /* keep the middle of the field clear so prey stay readable */
+    far.push({
+      x: rng() < 0.5 ? rng() * 0.26 : 0.74 + rng() * 0.26,
+      y: 0.08 + rng() * 0.88, s: 0.032 + rng() * 0.055,
+      ph: rng() * TAU, rot: rnd(-1.1, 1.1)
+    });
+  }
+  G.far = far;
+}
+function starterWeb() {
+  const R = G.rect, cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+  const rr = Math.max(R.w, R.h);
+  const A1 = pickStrand(R.x, cy, rr, false);
+  const B1 = pickStrand(R.x + R.w, cy, rr, false);
+  if (!A1 || !B1) return;
+  const nA = nodeAtPick(A1), nB = nodeAtPick(B1);
+  if (nA && nB && nA !== nB) spinStrand(nA, nB);
+  const T = pickStrand(cx, R.y, rr, false);
+  const M = pickStrand(cx + R.w * 0.06, cy, R.h * 0.5, true);
+  if (T && M) {
+    const nT = nodeAtPick(T), nM = nodeAtPick(M);
+    if (nT && nM && nT !== nM) spinStrand(nT, nM);
+  }
+  const Bo = pickStrand(cx, R.y + R.h, rr, false);
+  const M2 = pickStrand(cx - R.w * 0.16, cy, R.h * 0.5, true);
+  if (Bo && M2) {
+    const nBo = nodeAtPick(Bo), nM2 = nodeAtPick(M2);
+    if (nBo && nM2 && nBo !== nM2) spinStrand(nBo, nM2);
+  }
+  rebuildParticles();
+  for (let i = 0; i < 90; i++) physicsStep(PH.DT);   /* let it settle */
+}
+
+/* =====================================================================
+   SPIDER — walks the strand graph only
+   ===================================================================== */
+function makeSpider(S, u) {
+  const legs = [];
+  for (let i = 0; i < 8; i++) {
+    legs.push({
+      side: i < 4 ? -1 : 1, idx: i % 4,
+      fx: 0, fy: 0, ox: 0, oy: 0, tx: 0, ty: 0,
+      stepT: 1, up: 0, phase: (i % 4) * 0.25 + (i < 4 ? 0 : 0.5)
+    });
+  }
+  return {
+    strand: S, u: u, x: 0, y: 0, px: 0, py: 0, ang: 0, faceAng: 0,
+    route: null, target: null, walking: false,
+    legs: legs, legInit: false, bob: 0, breathe: 0,
+    wrap: null, wrapT: 0, deny: 0, denyX: 0, denyY: 0, deadT: 0,
+    speed: 0, alive: true, size: 1
+  };
+}
+function spiderPos(sp) {
+  if (!sp.strand || !sp.strand.alive) return;
+  posOnStrand(sp.strand, sp.u, _pt);
+  sp.x = _pt.x; sp.y = _pt.y;
+}
+function spiderRelocate() {
+  const sp = G.spider;
+  const pk = pickStrand(sp.x, sp.y, 1e6, false);
+  if (!pk) return;
+  sp.strand = pk.S; sp.u = pk.u;
+  sp.route = null; sp.target = null; sp.wrap = null;
+  spiderPos(sp);
+  puff(sp.x, sp.y, 8, [230, 236, 255]);
+}
+function spiderStrandLost(S) {
+  const sp = G.spider;
+  if (!sp) return;
+  if (sp.wrap && sp.wrap.strand === S) { sp.wrap = null; sp.wrapT = 0; }
+  if (sp.target && sp.target.S === S) sp.target = null;
+  let routeHit = false;
+  if (sp.route) for (let i = 0; i < sp.route.length; i++) if (sp.route[i].s === S) { routeHit = true; break; }
+  if (sp.strand === S) { spiderRelocate(); return; }
+  if (routeHit) {
+    sp.route = null;
+    if (sp.target && sp.target.S && sp.target.S.alive) {
+      const r = findRoute(sp.strand, sp.u, sp.target);
+      sp.route = r;                       /* silently re-path, or just stop */
+      if (!r) sp.target = null;
+    } else sp.target = null;
+  }
+}
+/* ---------------------------- pathfinding ---------------------------- */
+function findRoute(fromS, fromU, target) {
+  if (!fromS || !fromS.alive || !target || !target.S || !target.S.alive) return null;
+  const T = target.S, tu = clamp(target.u, 0, T.pts.length - 1);
+  const nodes = G.nodes;
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i]; n.dist = Infinity; n.prev = null; n.via = null; n.mark = 0;
+  }
+  const seedA = fromS.nodeA, seedB = fromS.nodeB;
+  seedA.dist = lenAlong(fromS, fromU, 0);
+  seedB.dist = Math.min(seedB.dist, lenAlong(fromS, fromU, fromS.pts.length - 1));
+  if (seedB === seedA) seedA.dist = Math.min(seedA.dist, lenAlong(fromS, fromU, fromS.pts.length - 1));
+  /* Dijkstra (graphs here are tiny; linear scan beats a heap) */
+  for (; ;) {
+    let best = null, bd = Infinity;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (!n.mark && n.dist < bd) { bd = n.dist; best = n; }
+    }
+    if (!best) break;
+    best.mark = 1;
+    const arr = best.strands;
+    for (let i = 0; i < arr.length; i++) {
+      const S = arr[i];
+      if (!S.alive) continue;
+      const o = otherNode(S, best);
+      if (!o || o.mark) continue;
+      const d = best.dist + strandLen(S);
+      if (d < o.dist) { o.dist = d; o.prev = best; o.via = S; }
+    }
+  }
+  /* choose the cheapest way onto the target strand */
+  let bestCost = Infinity, bestEnd = null;
+  const ca = T.nodeA.dist + lenAlong(T, 0, tu);
+  const cb = T.nodeB.dist + lenAlong(T, T.pts.length - 1, tu);
+  if (ca < bestCost) { bestCost = ca; bestEnd = T.nodeA; }
+  if (cb < bestCost) { bestCost = cb; bestEnd = T.nodeB; }
+  let direct = Infinity;
+  if (T === fromS) direct = lenAlong(fromS, fromU, tu);
+  if (direct <= bestCost) {
+    if (!(direct < Infinity)) return null;
+    return [{ s: fromS, from: fromU, to: tu }];
+  }
+  if (!(bestCost < Infinity) || !bestEnd) return null;
+  /* walk the predecessor chain back to a seed */
+  const chain = [];
+  let cur = bestEnd, guard = 0;
+  while (cur && guard++ < 500) { chain.push(cur); if (!cur.prev) break; cur = cur.prev; }
+  chain.reverse();
+  const seed = chain[0];
+  const steps = [];
+  const uSeed = uOfNode(fromS, seed);
+  if (fromS.nodeA !== seed && fromS.nodeB !== seed) return null;
+  steps.push({ s: fromS, from: fromU, to: uSeed });
+  for (let i = 1; i < chain.length; i++) {
+    const n = chain[i], V = n.via;
+    if (!V || !V.alive) return null;
+    steps.push({ s: V, from: uOfNode(V, chain[i - 1]), to: uOfNode(V, n) });
+  }
+  steps.push({ s: T, from: uOfNode(T, bestEnd), to: tu });
+  return steps;
+}
+function commandWalk(target) {
+  const sp = G.spider;
+  if (!sp || !sp.alive) return false;
+  const r = findRoute(sp.strand, sp.u, target);
+  if (!r) {
+    sp.deny = 0.5; sp.denyX = target.x != null ? target.x : sp.x; sp.denyY = target.y != null ? target.y : sp.y;
+    sfxDeny();
+    return false;
+  }
+  sp.route = r;
+  sp.target = { S: target.S, u: target.u };
+  sp.wrap = null; sp.wrapT = 0;
+  return true;
+}
+function nudge(dx, dy) {
+  const sp = G.spider;
+  if (!sp || !sp.alive) return;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len; dy /= len;
+  let best = null, bs = -Infinity;
+  for (let s = 0; s < G.strands.length; s++) {
+    const S = G.strands[s];
+    if (!S.alive) continue;
+    const pts = S.pts;
+    for (let i = 0; i < pts.length - 1; i++) {
+      for (let k = 0; k < 2; k++) {
+        const t = k * 0.5 + 0.25;
+        const a = pts[i], b = pts[i + 1];
+        const px = a.x + (b.x - a.x) * t, py = a.y + (b.y - a.y) * t;
+        const vx = px - sp.x, vy = py - sp.y;
+        const d = Math.hypot(vx, vy);
+        if (d < 26 || d > 340) continue;
+        const dot = (vx * dx + vy * dy) / d;
+        if (dot < 0.58) continue;
+        const sc = dot * 220 - d * 0.55;
+        if (sc > bs) { bs = sc; best = { S: S, u: i + t, x: px, y: py }; }
+      }
+    }
+  }
+  if (best) commandWalk(best); else { sp.deny = 0.4; sp.denyX = sp.x + dx * 40; sp.denyY = sp.y + dy * 40; sfxDeny(); }
+}
+/* ------------------------------ update ------------------------------ */
+function updateSpider(dt) {
+  const sp = G.spider;
+  if (!sp) return;
+  if (!sp.strand || !sp.strand.alive) spiderRelocate();
+  if (!sp.strand) return;
+
+  sp.px = sp.x; sp.py = sp.y;
+  /* follow the route */
+  let moved = 0;
+  if (sp.alive && sp.route && sp.route.length && !sp.wrap) {
+    let budget = 205 * dt;
+    let guard = 0;
+    while (budget > 0 && sp.route && sp.route.length && guard++ < 16) {
+      const st = sp.route[0];
+      if (!st.s || !st.s.alive) { sp.route = null; sp.target = null; break; }
+      if (sp.strand !== st.s) { sp.strand = st.s; sp.u = st.from; }
+      const dir = st.to >= sp.u ? 1 : -1;
+      const rem = lenAlong(st.s, sp.u, st.to);
+      if (rem <= budget + 0.35) {
+        sp.u = st.to; budget -= rem; moved += rem;
+        sp.route.shift();
+        if (!sp.route.length) { sp.route = null; }
+      } else {
+        sp.u = advanceU(st.s, sp.u, budget, dir);
+        moved += budget; budget = 0;
+      }
+    }
+  }
+  sp.walking = moved > 0.4;
+  sp.speed = moved / Math.max(dt, 1e-5);
+  spiderPos(sp);
+  const vx = sp.x - sp.px, vy = sp.y - sp.py;
+  if (sp.walking) sp.faceAng = Math.atan2(vy, vx);
+
+  /* body sits on the silk: apply weight where it stands */
+  if (sp.strand && sp.strand.kind === 'silk' && sp.alive) {
+    pushAtU(sp.strand, sp.u, 0, PH.SPIDER_W);
+  }
+  /* orientation follows the strand it stands on */
+  const tg = tangentOnStrand(sp.strand, sp.u, { x: 1, y: 0 });
+  let ta = Math.atan2(tg.y, tg.x);
+  if (sp.walking) { if (Math.cos(ta - sp.faceAng) < 0) ta += Math.PI; }
+  else { if (Math.abs(ta) > Math.PI / 2) ta += Math.PI; }
+  let da = ta - sp.ang;
+  while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+  sp.ang += da * Math.min(1, dt * 9);
+  sp.bob += dt * (sp.walking ? 13 : 2.2);
+  sp.breathe += dt;
+  if (!sp.alive) sp.deadT += dt;
+  if (sp.deny > 0) sp.deny = Math.max(0, sp.deny - dt);
+
+  updateLegs(sp, dt);
+
+  /* wrapping / eating */
+  if (sp.wrap) {
+    const q = sp.wrap;
+    if (!q.alive || !q.stuck || !q.strand || !q.strand.alive) { sp.wrap = null; sp.wrapT = 0; }
+    else {
+      sp.wrapT += dt;
+      q.wrapped = Math.min(1, sp.wrapT / 0.85);
+      if (Math.random() < dt * 26) puff(q.x + rnd(-8, 8), q.y + rnd(-8, 8), 1, [235, 240, 255]);
+      if (sp.wrapT >= 0.85) { eatPrey(q); sp.wrap = null; sp.wrapT = 0; }
+    }
+  } else if (sp.alive) {
+    for (let i = 0; i < G.prey.length; i++) {
+      const q = G.prey[i];
+      if (!q.alive || !q.stuck || q.kind === 'wasp' || q.kind === 'beetle') continue;
+      const er = 30 * G.art;
+      if (dist2(sp.x, sp.y, q.x, q.y) < er * er) {
+        sp.wrap = q; sp.wrapT = 0; q.wrapped = 0; sp.route = null; sp.target = null;
+        sfxWrap();
+        break;
+      }
+    }
+  }
+  /* wasps kill on contact */
+  if (sp.alive && G.state === 'play') {
+    for (let i = 0; i < G.prey.length; i++) {
+      const q = G.prey[i];
+      if (!q.alive || q.kind !== 'wasp') continue;
+      /* a wasp you have already cut loose is fleeing — it won't finish you */
+      if (q.escaping || q.warn > 0) continue;
+      const rr = (q.stuck ? 31 : 22) * G.art;
+      if (dist2(sp.x, sp.y, q.x, q.y) < rr * rr) { spiderDie(); break; }
+    }
+  }
+}
+function updateLegs(sp, dt) {
+  const legs = sp.legs;
+  const ca = Math.cos(sp.ang), sa = Math.sin(sp.ang);
+  const S = sp.strand;
+  const reach = 15 * sp.size;
+  if (!sp.legInit) {
+    for (let i = 0; i < 8; i++) { legs[i].fx = sp.x; legs[i].fy = sp.y; legs[i].stepT = 1; }
+    sp.legInit = true;
+  }
+  for (let i = 0; i < 8; i++) {
+    const L = legs[i];
+    /* feet grip the thread: spread well fore/aft, only a little to the side */
+    const along = (L.idx - 1.5) * 11.5 * sp.size + (L.idx < 2 ? -4 : 4) * sp.size;
+    const out = (2.6 + (1.5 - Math.abs(L.idx - 1.5)) * 2.6) * sp.size * L.side;
+    let tx, ty;
+    if (S && S.alive) {
+      /* project the fore/aft offset onto the actual strand so feet grip silk */
+      const du = along;
+      const uu = advanceU(S, sp.u, Math.abs(du), du >= 0 ? 1 : -1);
+      posOnStrand(S, uu, _pt);
+      tx = _pt.x - sa * out * 0.92;
+      ty = _pt.y + ca * out * 0.92;
+    } else {
+      tx = sp.x + ca * along - sa * out;
+      ty = sp.y + sa * along + ca * out;
+    }
+    L.tx = tx; L.ty = ty;
+    const d2 = dist2(L.fx, L.fy, tx, ty);
+    if (L.stepT >= 1) {
+      const trig = sp.walking ? reach * 0.62 : reach * 1.5;
+      if (d2 > trig * trig) {
+        /* alternate tetrapod-ish gait: only lift if the neighbour is down */
+        L.stepT = 0; L.ox = L.fx; L.oy = L.fy;
+      }
+    }
+    if (L.stepT < 1) {
+      L.stepT = Math.min(1, L.stepT + dt * (sp.walking ? 11 : 6));
+      const t = smooth(L.stepT);
+      L.fx = L.ox + (tx - L.ox) * t;
+      L.fy = L.oy + (ty - L.oy) * t;
+      L.up = Math.sin(L.stepT * Math.PI) * 5.5 * sp.size;
+    } else {
+      L.up *= 0.8;
+      /* feet drift with the silk they're standing on */
+      L.fx += (tx - L.fx) * Math.min(1, dt * 3.2);
+      L.fy += (ty - L.fy) * Math.min(1, dt * 3.2);
+    }
+  }
+}
+
+/* =====================================================================
+   PARTICLES / FEEDBACK
+   ===================================================================== */
+const PART_MAX = 300;
+function addPart(x, y, vx, vy, life, size, col, type) {
+  const arr = G.parts;
+  let p = null;
+  for (let i = 0; i < arr.length; i++) if (arr[i].life <= 0) { p = arr[i]; break; }
+  if (!p) {
+    if (arr.length >= PART_MAX) return null;
+    p = { x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 1, col: null, type: 0, rot: 0, vr: 0, ph: 0 };
+    arr.push(p);
+  }
+  p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.life = life; p.max = life;
+  p.size = size; p.col = col; p.type = type; p.rot = rnd(0, TAU); p.vr = rnd(-4, 4); p.ph = rnd(0, TAU);
+  return p;
+}
+function puff(x, y, n, col) {
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, TAU), s = rnd(8, 52);
+    addPart(x, y, Math.cos(a) * s, Math.sin(a) * s, rnd(0.35, 0.9), rnd(0.7, 1.9), col, 0);
+  }
+}
+function burstSilk(S) {
+  const n = Math.min(12, Math.max(4, (S.restLen / 40) | 0));
+  for (let i = 0; i < n; i++) {
+    const pk = pickFrac(S, i / n);
+    const a = rnd(0, TAU), s = rnd(10, 60);
+    addPart(pk.x, pk.y, Math.cos(a) * s, Math.sin(a) * s - 12, rnd(0.4, 1.1), rnd(0.8, 2.1), [228, 238, 255], 0);
+  }
+}
+function shake(m) { G.shake = Math.min(22, G.shake + m); }
+function updateParts(dt) {
+  const arr = G.parts;
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i];
+    if (p.life <= 0) continue;
+    p.life -= dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+    if (p.type === 0) { p.vx *= 0.965; p.vy = p.vy * 0.965 + 42 * dt; }
+    else if (p.type === 1) { p.vx *= 0.985; p.vy = p.vy * 0.985 + 18 * dt; }
+    else if (p.type === 2) { p.vx += (G.wind * 0.6 + Math.sin(G.time * 2 + p.ph) * 22) * dt; p.vy = Math.min(70, p.vy + 30 * dt); p.vx *= 0.99; }
+    else { p.vx *= 0.94; p.vy *= 0.94; }
+  }
+}
+
+/* =====================================================================
+   PREY & HAZARDS
+   ===================================================================== */
+const PREY_DEF = {
+  fly: { size: 7.2, stick: 10, score: 100, silk: 16, hunger: 32, escape: [6.2, 8.4], struggle: 1, snapChance: 0.16 },
+  moth: { size: 13.5, stick: 14, score: 250, silk: 30, hunger: 54, escape: [5.4, 7.2], struggle: 2.35, snapChance: 0.34 },
+  beetle: { size: 12.5, stick: 14, score: 0, silk: 0, hunger: 0, escape: [0, 0], struggle: 0, snapChance: 0 },
+  wasp: { size: 11.5, stick: 13, score: 0, silk: 0, hunger: 0, escape: [0, 0], struggle: 3.2, snapChance: 0 }
+};
+function spawnPrey(kind) {
+  const R = G.rect;
+  const def = PREY_DEF[kind];
+  const q = {
+    kind: kind, def: def, alive: true, stuck: false, strand: null, u: 0,
+    x: 0, y: 0, vx: 0, vy: 0, ang: 0, wing: rnd(0, TAU), ph: rnd(0, TAU),
+    stuckAt: 0, escapeT: 0, escapeMax: 0, wrapped: 0, size: def.size * G.art,
+    escaping: false, leaveT: 0, warn: 0, warnFrom: 0, hits: 0, snapT: 0, huntT: 0,
+    buzz: null, jolt: 0, dead: false, spin: 0, wob: rnd(0, TAU)
+  };
+  /* pick an entry edge just outside the frame */
+  const side = (Math.random() * 4) | 0;
+  const pad = 40;
+  if (side === 0) { q.x = rnd(R.x, R.x + R.w); q.y = R.y - pad; }
+  else if (side === 1) { q.x = R.x + R.w + pad; q.y = rnd(R.y, R.y + R.h); }
+  else if (side === 2) { q.x = rnd(R.x, R.x + R.w); q.y = R.y + R.h + pad; }
+  else { q.x = R.x - pad; q.y = rnd(R.y, R.y + R.h); }
+  const cx = R.x + R.w / 2 + rnd(-R.w * 0.3, R.w * 0.3);
+  const cy = R.y + R.h / 2 + rnd(-R.h * 0.3, R.h * 0.3);
+  let a = Math.atan2(cy - q.y, cx - q.x);
+  let sp;
+  if (kind === 'fly') sp = rnd(58, 92);
+  else if (kind === 'moth') sp = rnd(44, 70);
+  else if (kind === 'beetle') { sp = rnd(190, 250); a += rnd(-0.12, 0.12); }
+  else { sp = rnd(105, 145); q.warn = 1.5; q.warnFrom = side; }
+  q.vx = Math.cos(a) * sp; q.vy = Math.sin(a) * sp;
+  q.ang = a;
+  if (kind === 'wasp') {
+    q.x -= Math.cos(a) * 30; q.y -= Math.sin(a) * 30;
+    q.buzz = buzzStart();
+  }
+  G.prey.push(q);
+  G.stats.spawned++;
+  return q;
+}
+function preyStickRadius(q) { return q.def.stick * G.art; }
+function hitSilk(q) {
+  const r = preyStickRadius(q);
+  const strands = G.strands;
+  let bd = r * r, bS = null, bU = 0, bx = 0, by = 0;
+  for (let s = 0; s < strands.length; s++) {
+    const S = strands[s];
+    if (S.kind !== 'silk' || !S.alive) continue;
+    if (q.x < S.x0 - r || q.x > S.x1 + r || q.y < S.y0 - r || q.y > S.y1 + r) continue;
+    const pts = S.pts;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const t = segT(a.x, a.y, b.x, b.y, q.x, q.y);
+      const cx = a.x + (b.x - a.x) * t, cy = a.y + (b.y - a.y) * t;
+      const d = dist2(cx, cy, q.x, q.y);
+      if (d < bd) { bd = d; bS = S; bU = i + t; bx = cx; by = cy; }
+    }
+  }
+  if (!bS) return null;
+  return { S: bS, u: bU, x: bx, y: by };
+}
+function stickPrey(q, hit) {
+  q.stuck = true; q.strand = hit.S; q.u = hit.u;
+  q.stuckAt = G.time; q.escapeT = 0;
+  q.escapeMax = rnd(q.def.escape[0], q.def.escape[1]) * (G.night >= 3 ? 0.88 : 1);
+  q.x = hit.x; q.y = hit.y;
+  const sp = Math.hypot(q.vx, q.vy);
+  impulseAtU(hit.S, hit.u, clamp(q.vx * 0.012, -6, 6), clamp(q.vy * 0.012, -6, 6));
+  q.vx = 0; q.vy = 0;
+  sfxThap(q.size / 6);
+  sfxPluck(hit.S.note, 0.11, 0.5);
+  rippleFrom(hit.S, q.kind === 'wasp' ? 3.2 : (q.size / 8));
+  if (q.kind === 'wasp') { shake(3); q.snapT = rnd(2.2, 3.2); }
+  G.stats.stuck++;
+  tipStuck(q);
+}
+/* shudder that spreads outward through the web graph */
+function rippleFrom(S, strength) {
+  const seen = new Set();
+  let frontier = [S.nodeA, S.nodeB];
+  seen.add(S);
+  for (let hop = 0; hop < 2; hop++) {
+    const next = [];
+    for (let i = 0; i < frontier.length; i++) {
+      const n = frontier[i];
+      for (let k = 0; k < n.strands.length; k++) {
+        const V = n.strands[k];
+        if (V.kind !== 'silk' || seen.has(V)) continue;
+        seen.add(V);
+        const amp = strength * (hop === 0 ? 1.6 : 0.8);
+        const m = (V.pts.length / 2) | 0;
+        impulseAtU(V, m, rnd(-amp, amp), rnd(-amp, amp) - amp * 0.3);
+        next.push(otherNode(V, n));
+      }
+    }
+    frontier = next;
+  }
+}
+function freePrey(q, dropped) {
+  if (!q.stuck) { q.escaping = true; return; }
+  const S = q.strand;
+  q.stuck = false; q.strand = null; q.escaping = true; q.leaveT = 0;
+  q.wrapped = 0;
+  if (G.spider && G.spider.wrap === q) { G.spider.wrap = null; G.spider.wrapT = 0; }
+  const a = dropped ? rnd(Math.PI * 0.15, Math.PI * 0.85) : rnd(0, TAU);
+  const sp = q.kind === 'wasp' ? 150 : (dropped ? 70 : 110);
+  q.vx = Math.cos(a) * sp * (dropped ? 0.5 : 1) + rnd(-20, 20);
+  q.vy = Math.sin(a) * sp * (dropped ? 1 : 1) - (dropped ? 0 : 20);
+  if (S && S.alive) { impulseAtU(S, q.u, rnd(-3, 3), -2); sfxPluck(S.note, 0.07, 0.4); }
+}
+function eatPrey(q) {
+  if (!q.alive) return;
+  const fresh = (G.time - q.stuckAt) < 2.0;
+  let sc = q.def.score;
+  if (fresh) sc = Math.round(sc * 1.5);
+  G.score += sc;
+  G.stats.eaten++;
+  G.stats.score += sc;
+  if (q.kind === 'moth') G.stats.moths++; else G.stats.flies++;
+  G.silk = Math.min(SILK_MAX, G.silk + q.def.silk);
+  G.hunger = Math.min(100, G.hunger + q.def.hunger);
+  q.alive = false;
+  popScore();
+  floatText(q.x, q.y, '+' + sc + (fresh ? '  fresh' : ''), fresh ? [255, 214, 140] : [235, 230, 255]);
+  puff(q.x, q.y, 14, [255, 208, 150]);
+  for (let i = 0; i < 8; i++) {
+    const a = rnd(0, TAU), s = rnd(30, 110);
+    addPart(q.x, q.y, Math.cos(a) * s, Math.sin(a) * s, rnd(0.3, 0.7), rnd(1, 2.4), [255, 180, 110], 3);
+  }
+  sfxEat(q.kind === 'moth');
+  if (q.strand && q.strand.alive) sfxPluck(q.strand.note * 1.5, 0.07, 0.5);
+  if (fresh) G.stats.fresh++;
+  tipAfterEat();
+}
+function updatePrey(dt) {
+  const list = G.prey;
+  const R = G.rect;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const q = list[i];
+    if (!q.alive) {
+      if (q.buzz) { buzzStop(q.buzz); q.buzz = null; }
+      list.splice(i, 1);
+      continue;
+    }
+    q.wing += dt * (q.kind === 'wasp' ? 62 : q.kind === 'moth' ? 26 : 44);
+
+    /* --- wasp warning telegraph --- */
+    if (q.warn > 0) {
+      q.warn -= dt;
+      if (q.buzz) buzzSet(q.buzz, 0.035 * (1 - q.warn / 1.5) + 0.01, 118, 17);
+      continue;
+    }
+    if (q.stuck) {
+      /* ------------------ stuck on the web ------------------ */
+      const S = q.strand;
+      if (!S || !S.alive) { freePrey(q, true); continue; }
+      posOnStrand(S, q.u, _pt);
+      const jitter = q.wrapped > 0 ? 0.25 : 1;
+      const tg = tangentOnStrand(S, q.u, { x: 1, y: 0 });
+      const nx = -tg.y, ny = tg.x;
+      q.ph += dt * (q.kind === 'wasp' ? 30 : 15 + q.def.struggle * 3);
+      const wob = Math.sin(q.ph) * (1.6 + q.def.struggle) * jitter;
+      q.x = _pt.x + nx * wob * 0.35;
+      q.y = _pt.y + ny * wob * 0.35;
+      q.ang = Math.atan2(tg.y, tg.x) + Math.sin(q.ph * 0.7) * 0.4;
+      /* struggling perturbs the actual rope */
+      const stg = q.def.struggle * 1400 * jitter;
+      pushAtU(S, q.u, nx * Math.sin(q.ph * 1.7) * stg, ny * Math.cos(q.ph * 1.3) * stg + 260 * q.def.struggle);
+      if (Math.random() < dt * (q.kind === 'wasp' ? 7 : 2.2) * jitter) {
+        const amp = q.def.struggle * (q.kind === 'wasp' ? 3.4 : 1.9);
+        impulseAtU(S, q.u, rnd(-amp, amp), rnd(-amp, amp));
+        if (Math.random() < 0.5) rippleFrom(S, amp * 0.55);
+        if (Math.random() < 0.35) addPart(q.x, q.y, rnd(-30, 30), rnd(-30, 10), rnd(0.3, 0.8), rnd(0.6, 1.4), [255, 226, 190], 1);
+      }
+      if (q.kind === 'wasp') {
+        if (q.buzz) buzzSet(q.buzz, 0.075, 150 + Math.sin(G.time * 9) * 22, 28);
+        q.snapT -= dt;
+        if (q.snapT <= 0) {
+          q.snapT = rnd(2.4, 3.6);
+          waspSnapNeighbour(q);
+        }
+      } else if (q.wrapped <= 0) {
+        q.escapeT += dt;
+        if (q.escapeT >= q.escapeMax) {
+          if (Math.random() < q.def.snapChance) {
+            sfxSnap(S.restLen); shake(3.5);
+            killStrand(S);
+          } else {
+            sfxPluck(S.note * 0.75, 0.1, 0.6);
+            freePrey(q, false);
+          }
+          if (q.alive && !q.stuck) tipEscaped();
+        }
+      }
+      continue;
+    }
+    /* ------------------ flying ------------------ */
+    if (q.kind === 'fly') {
+      q.ph += dt * 2.4;
+      const wanderA = Math.sin(q.ph * 1.7) * 2.2 + Math.cos(q.ph * 0.9 + q.wob) * 1.6;
+      const s = Math.hypot(q.vx, q.vy) || 1;
+      let a = Math.atan2(q.vy, q.vx) + wanderA * dt;
+      q.vx = Math.cos(a) * s; q.vy = Math.sin(a) * s;
+    } else if (q.kind === 'moth') {
+      q.ph += dt * 3.4;
+      const s = Math.hypot(q.vx, q.vy) || 1;
+      let a = Math.atan2(q.vy, q.vx) + Math.sin(q.ph * 2.3 + q.wob) * 3.4 * dt;
+      q.vx = Math.cos(a) * s; q.vy = Math.sin(a) * s + Math.sin(q.ph * 4) * 26 * dt;
+    } else if (q.kind === 'wasp') {
+      if (q.buzz) buzzSet(q.buzz, q.escaping ? 0.05 : 0.06, 138 + Math.sin(G.time * 7) * 14, 23);
+      if (!q.escaping) {
+        /* hunts in bursts, then drifts — so you can outwalk it, and so it
+           blunders into your silk, which is the real counter */
+        q.huntT += dt;
+        const sp2 = G.spider;
+        if (sp2 && sp2.alive && (q.huntT % 4.6) < 2.6) {
+          const a = Math.atan2(sp2.y - q.y, sp2.x - q.x);
+          const cur = Math.atan2(q.vy, q.vx);
+          let da = a - cur; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+          const na = cur + clamp(da, -0.95 * dt, 0.95 * dt);
+          const s = Math.hypot(q.vx, q.vy) || 1;
+          q.vx = Math.cos(na) * s; q.vy = Math.sin(na) * s;
+        }
+      }
+    } else if (q.kind === 'beetle') {
+      if (q.hits >= 2) { q.vy += 620 * dt; q.spin += dt * 9; q.vx *= 0.995; }
+    }
+    if (q.escaping) {
+      q.leaveT += dt;
+      if (q.kind !== 'wasp') q.vy += 30 * dt;
+    }
+    q.x += q.vx * dt; q.y += q.vy * dt;
+    if (Math.hypot(q.vx, q.vy) > 1) q.ang = Math.atan2(q.vy, q.vx);
+
+    /* collide with silk */
+    if (!q.escaping && !(q.kind === 'beetle' && q.hits >= 2)) {
+      const hit = hitSilk(q);
+      if (hit) {
+        if (q.kind === 'beetle') {
+          q.hits++;
+          sfxSnap(hit.S.restLen); sfxThud(); shake(q.hits >= 2 ? 9 : 6.5);
+          rippleFrom(hit.S, 4);
+          killStrand(hit.S);
+          const s = Math.hypot(q.vx, q.vy) * 0.55;
+          const a = Math.atan2(q.vy, q.vx) + rnd(-0.5, 0.5);
+          q.vx = Math.cos(a) * s; q.vy = Math.sin(a) * s;
+          for (let k = 0; k < 6; k++) addPart(q.x, q.y, rnd(-70, 70), rnd(-70, 20), rnd(0.3, 0.7), rnd(1, 2), [255, 190, 130], 0);
+          if (q.hits >= 2) tipBeetle();
+        } else {
+          stickPrey(q, hit);
+        }
+        continue;
+      }
+    }
+    /* bounds cull */
+    const pad = 130;
+    if (q.x < -pad || q.x > W + pad || q.y < -pad || q.y > H + pad) { q.alive = false; }
+    else if (q.escaping && q.leaveT > 14) q.alive = false;
+    else if (!q.escaping && q.kind !== 'beetle' && q.kind !== 'wasp') {
+      /* keep wanderers near the frame */
+      const mx = clamp(q.x, R.x - 60, R.x + R.w + 60), my = clamp(q.y, R.y - 60, R.y + R.h + 60);
+      if (mx !== q.x) q.vx += (mx - q.x) * 1.6 * dt * 10;
+      if (my !== q.y) q.vy += (my - q.y) * 1.6 * dt * 10;
+    }
+  }
+}
+function waspSnapNeighbour(q) {
+  const S = q.strand;
+  if (!S || !S.alive) return;
+  const cands = [];
+  const ns = [S.nodeA, S.nodeB];
+  for (let i = 0; i < ns.length; i++) {
+    const n = ns[i];
+    for (let k = 0; k < n.strands.length; k++) {
+      const V = n.strands[k];
+      if (V.kind === 'silk' && V !== S && V.alive) cands.push(V);
+    }
+  }
+  shake(5);
+  if (cands.length) {
+    const V = cands[(Math.random() * cands.length) | 0];
+    sfxSnap(V.restLen);
+    rippleFrom(V, 5);
+    killStrand(V);
+  } else {
+    /* nothing left to tear but its own line — it frees itself */
+    sfxSnap(S.restLen);
+    killStrand(S);
+  }
+}
+function spiderDie() {
+  const sp = G.spider;
+  if (!sp || !sp.alive) return;
+  sp.alive = false;
+  sp.route = null; sp.wrap = null;
+  sfxDeath(); shake(14);
+  for (let i = 0; i < 22; i++) {
+    const a = rnd(0, TAU), s = rnd(30, 150);
+    addPart(sp.x, sp.y, Math.cos(a) * s, Math.sin(a) * s, rnd(0.4, 1.2), rnd(1, 2.6), [220, 140, 160], 0);
+  }
+  endGame('wasp');
+}
+
+/* --------------------------- spawn director --------------------------- */
+function nightConfig(n) {
+  const k = Math.min(n, 8);
+  return {
+    dur: 84,
+    preyEvery: Math.max(1.9, 4.0 - (k - 1) * 0.42),
+    mothChance: k >= 2 ? Math.min(0.42, 0.2 + (k - 2) * 0.08) : 0,
+    beetleEvery: k >= 2 ? Math.max(13, 26 - (k - 2) * 5) : 0,
+    waspTimes: k >= 3 ? (k >= 4 ? [0.34, 0.6, 0.84] : [0.42, 0.79]) : (k >= 2 ? [0.66] : []),
+    maxPrey: 3 + Math.min(4, k)
+  };
+}
+function countFlying() {
+  let c = 0;
+  for (let i = 0; i < G.prey.length; i++) {
+    const q = G.prey[i];
+    if (q.alive && !q.escaping && q.kind !== 'beetle') c++;
+  }
+  return c;
+}
+function updateSpawns(dt) {
+  const cfg = G.cfg;
+  const f = G.nightT / cfg.dur;
+  G.spawnT -= dt;
+  if (G.spawnT <= 0) {
+    G.spawnT = cfg.preyEvery * rnd(0.72, 1.3);
+    if (countFlying() < cfg.maxPrey && f < 0.94) {
+      spawnPrey(Math.random() < cfg.mothChance ? 'moth' : 'fly');
+    }
+  }
+  if (cfg.beetleEvery > 0) {
+    G.beetleT -= dt;
+    if (G.beetleT <= 0) {
+      G.beetleT = cfg.beetleEvery * rnd(0.75, 1.25);
+      if (f > 0.15 && f < 0.92) spawnPrey('beetle');
+    }
+  }
+  while (G.waspIdx < cfg.waspTimes.length && f >= cfg.waspTimes[G.waspIdx]) {
+    G.waspIdx++;
+    spawnPrey('wasp');
+    tipWasp();
+  }
+  /* gentle wind gusts */
+  G.gustT -= dt;
+  if (G.gustT <= 0) {
+    G.gustT = rnd(16, 30);
+    G.gust = rnd(1.6, 3.0);
+    G.gustDir = Math.random() < 0.5 ? -1 : 1;
+    G.gustA = rnd(150, 340) * G.gustDir;
+    for (let i = 0; i < 7; i++) {
+      addPart(G.gustDir > 0 ? -20 : W + 20, rnd(G.rect.y, G.rect.y + G.rect.h),
+        G.gustA * rnd(0.35, 0.7), rnd(-20, 40), rnd(3.4, 6), rnd(3, 6.5), [150, 190, 130], 2);
+    }
+  }
+  if (G.gust > 0) {
+    G.gust -= dt;
+    const env = Math.sin(clamp(1 - G.gust / 3, 0, 1) * Math.PI);
+    G.wind = G.gustA * env * 0.9;
+  } else G.wind *= 0.9;
+}
+
+/* =====================================================================
+   GAME STATE
+   ===================================================================== */
+const NIGHTS = 3;
+let rafId = 0, lastT = 0;
+let IS_TOUCH = false;
+
+function newGame(opts) {
+  buzzStopAll();
+  const startNight = (opts && opts.night) || 1;
+  G = {
+    seed: (Math.random() * 1e9) | 0,
+    nextId: 1, time: 0, acc: 0,
+    nodes: [], strands: [], particles: [], prey: [], parts: [], floats: [],
+    decor: [], stars: [], grass: [], far: [], bwList: [11],
+    rect: computeRect(),
+    spider: null,
+    silk: SILK_MAX, hunger: 100, score: 0,
+    night: startNight, nightT: 0, cfg: nightConfig(startNight),
+    endless: !!(opts && opts.endless),
+    spawnT: 3.0, beetleT: 18, waspIdx: 0,
+    gustT: 14, gust: 0, gustA: 0, gustDir: 1, wind: 0,
+    shake: 0, shakeX: 0, shakeY: 0, sweepT: 1.1, art: artScale(),
+    interlude: 0, banner: null, bannerT: 0,
+    state: 'play', overReason: '',
+    tips: {}, tipT: 0,
+    drag: null, hover: null, lastTap: 0, lastTapX: 0, lastTapY: 0, tapRouted: false,
+    stats: { eaten: 0, flies: 0, moths: 0, fresh: 0, spun: 0, silkSpun: 0, cut: 0, stuck: 0, spawned: 0, score: 0, nights: 0 },
+    dawnGlow: 0, pluckT: 0
+  };
+  buildAnchors();
+  buildBackdrop();
+  starterWeb();
+  /* perch the spider on the bottom branch */
+  const R = G.rect;
+  const perch = pickStrand(R.x + R.w * 0.5, R.y + R.h, Math.max(R.w, R.h), false);
+  G.spider = makeSpider(perch ? perch.S : G.strands[0], perch ? perch.u : 0.5);
+  G.spider.size = 2.05 * G.art;
+  spiderPos(G.spider);
+  G.stats.silkSpun = 0;
+  hudOn(true);
+  updateHUD(true);
+  scheduleTip();
+}
+function hudOn(on) {
+  $('hud').classList.toggle('on', on);
+  $('gauges').classList.toggle('on', on);
+}
+function showPanel(id) {
+  const ids = ['startPanel', 'pausePanel', 'overPanel', 'winPanel'];
+  for (let i = 0; i < ids.length; i++) $(ids[i]).classList.toggle('show', ids[i] === id);
+}
+let _pauseBtnOn = null;
+function syncButtons() {
+  const on = !!G && (G.state === 'play' || G.state === 'pause');
+  if (on !== _pauseBtnOn) { _pauseBtnOn = on; $('pauseBtn').style.display = on ? '' : 'none'; }
+}
+function popScore() {
+  const el = $('scorev');
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+}
+let _hudCache = { s: -1, n: '', p: '', si: -1, hu: -1 };
+function updateHUD(force) {
+  if (!G) return;
+  if (force || G.score !== _hudCache.s) { $('scorev').textContent = G.score; _hudCache.s = G.score; }
+  const nt = G.endless ? 'Endless' : 'Night ' + G.night + ' / ' + NIGHTS;
+  if (nt !== _hudCache.n) { $('nightv').textContent = nt; _hudCache.n = nt; }
+  const f = G.nightT / G.cfg.dur;
+  const ph = G.interlude > 0 ? 'Dawn' : f < 0.22 ? 'Dusk' : f < 0.86 ? 'Night' : 'Dawn';
+  if (ph !== _hudCache.p) {
+    $('phasev').textContent = ph;
+    $('phasev').style.color = ph === 'Dusk' ? '#ffc98a' : ph === 'Night' ? '#a9b8ff' : '#ffd9a0';
+    _hudCache.p = ph;
+  }
+  const si = Math.round(clamp(G.silk / SILK_MAX, 0, 1) * 100);
+  if (si !== _hudCache.si) {
+    $('silkfill').style.width = si + '%';
+    $('silkbar').classList.toggle('low', si < 18);
+    _hudCache.si = si;
+  }
+  const hu = Math.round(clamp(G.hunger / 100, 0, 1) * 100);
+  if (hu !== _hudCache.hu) {
+    $('hungfill').style.width = hu + '%';
+    $('hungbar').classList.toggle('low', hu < 22);
+    _hudCache.hu = hu;
+  }
+}
+/* ------------------------------- toasts ------------------------------- */
+function toast(msg, dur) {
+  const box = $('toasts');
+  while (box.children.length > 1) box.removeChild(box.firstChild);
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = msg;
+  box.appendChild(el);
+  const life = dur || 4200;
+  setTimeout(() => {
+    if (!el.parentNode) return;
+    el.classList.add('out');
+    setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 420);
+  }, life);
+}
+function clearToasts() { const b = $('toasts'); while (b.firstChild) b.removeChild(b.firstChild); }
+function tipOnce(key, msg, dur) {
+  if (!G || G.tips[key]) return;
+  G.tips[key] = 1;
+  toast(msg, dur);
+}
+function scheduleTip() {
+  if (G.night === 1 && !G.endless) {
+    setTimeout(() => { if (G && G.state === 'play' && G.time < 12) tipOnce('spin', '<b>Drag</b> from branch to branch to spin silk — or onto silk you already spun.'); }, 1400);
+  }
+}
+function tipStuck(q) {
+  if (q.kind === 'wasp') return;
+  tipOnce('stuck', 'Caught! <b>Click it</b> to send the spider — it will tear loose if you dawdle.');
+}
+function tipEscaped() { tipOnce('escaped', 'It shook free. A tighter web holds longer.'); }
+function tipAfterEat() { tipOnce('ate', 'Prey feeds you and refills your <b>spinnerets</b>. <b>Double-click</b> silk to cut it back.'); }
+function tipWasp() { tipOnce('wasp', 'A <b>wasp</b>. If it sticks, <b>double-click the strand</b> to drop it — never touch it.', 6000); }
+function tipBeetle() { tipOnce('beetle', 'Beetles smash straight through. Rebuild behind them.'); }
+
+/* ------------------------------ float text ------------------------------ */
+function floatText(x, y, txt, col) {
+  G.floats.push({ x: x, y: y, txt: txt, col: col, t: 0, max: 1.5 });
+  if (G.floats.length > 14) G.floats.shift();
+}
+
+/* ------------------------------ transitions ------------------------------ */
+function startInterlude() {
+  if (G.interlude > 0) return;
+  G.interlude = 3.6;
+  G.banner = G.endless ? 'Dawn' : (G.night >= NIGHTS ? 'Dawn' : 'Night ' + G.night + ' survived');
+  G.bannerT = 0;
+  G.stats.nights++;
+  sfxChime(262, true);
+  /* wasps give up at first light */
+  for (let i = 0; i < G.prey.length; i++) {
+    const q = G.prey[i];
+    if (q.kind === 'wasp' && q.alive) { if (q.stuck) freePrey(q, true); else q.escaping = true; }
+  }
+  G.silk = Math.min(SILK_MAX, G.silk + 28);
+  G.hunger = Math.min(100, G.hunger + 18);
+}
+function advanceNight() {
+  if (!G.endless && G.night >= NIGHTS) { winGame(); return; }
+  G.night++;
+  G.nightT = 0;
+  G.cfg = nightConfig(G.night);
+  G.waspIdx = 0;
+  G.spawnT = 2.4;
+  G.beetleT = 14;
+  G.banner = null;
+  toast('<b>Night ' + G.night + '</b> — the garden gets braver.', 3200);
+}
+function endGame(reason) {
+  if (!G || G.state !== 'play') return;
+  G.state = 'over';
+  G.overReason = reason;
+  G.drag = null;
+  buzzStopAll();
+  setDuck(0.55);
+  hudOn(false);
+  clearToasts();
+  const title = reason === 'wasp' ? 'Stung' : 'Faded';
+  const txt = reason === 'wasp'
+    ? 'The wasp was faster than your legs. The web hangs on without you, humming in the dark.'
+    : 'The hunger won. You curl at the centre of your own beautiful, empty web, and the garden goes quiet.';
+  $('overTitle').textContent = title;
+  $('overTxt').textContent = txt;
+  $('overTally').innerHTML = tallyHTML();
+  showPanel('overPanel');
+  if (reason !== 'wasp') sfxSad();
+}
+function winGame() {
+  if (!G || G.state !== 'play') return;
+  G.state = 'win';
+  G.drag = null;
+  buzzStopAll();
+  setDuck(0.75);
+  hudOn(false);
+  clearToasts();
+  $('winTally').innerHTML = tallyHTML(true);
+  showPanel('winPanel');
+  sfxChime(330, true);
+  setTimeout(() => sfxChime(392, true), 520);
+}
+function tallyHTML(win) {
+  const s = G.stats;
+  const rows = [
+    ['Flies eaten', s.flies],
+    ['Moths eaten', s.moths],
+    ['Fresh catches', s.fresh],
+    ['Strands spun', s.spun],
+    ['Nights survived', s.nights + (win ? 0 : 0)]
+  ];
+  let h = '';
+  for (let i = 0; i < rows.length; i++) h += '<div class="tk">' + rows[i][0] + '</div><div class="tv">' + rows[i][1] + '</div>';
+  h += '<div class="tk tot">Score</div><div class="tv tot">' + G.score + '</div>';
+  return h;
+}
+function pauseGame(reason) {
+  if (!G || G.state !== 'play') return;
+  G.state = 'pause';
+  G.drag = null;
+  setDuck(0.18);
+  $('pauseTxt').textContent = reason === 'blur' ? 'You looked away. The garden waited.' : 'The garden holds its breath.';
+  showPanel('pausePanel');
+}
+function resumeGame() {
+  if (!G || G.state !== 'pause') return;
+  G.state = 'play';
+  setDuck(1);
+  showPanel(null);
+  audioResume();
+}
+function startGame(opts) {
+  audioInit(); audioResume();
+  clearToasts();
+  showPanel(null);
+  setDuck(1);
+  newGame(opts);
+  lastT = performance.now();
+}
+
+/* =====================================================================
+   INPUT
+   ===================================================================== */
+function canvasPt(e) {
+  const r = cvs.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function pickRadius() { return IS_TOUCH ? 34 : 24; }
+function attachPick(x, y) { return pickStrand(x, y, pickRadius(), false); }
+
+function onDown(e) {
+  if (e.pointerType === 'touch') IS_TOUCH = true;
+  audioInit(); audioResume();
+  if (!G || (G.state !== 'play')) return;
+  e.preventDefault();
+  try { cvs.setPointerCapture(e.pointerId); } catch (err) { }
+  const p = canvasPt(e);
+  const pk = attachPick(p.x, p.y);
+  G.drag = {
+    id: e.pointerId,
+    S: pk ? pk.S : null, u: pk ? pk.u : 0,
+    x0: p.x, y0: p.y, x: p.x, y: p.y,
+    moved: false, valid: false, cost: 0, end: null
+  };
+}
+function onMove(e) {
+  if (!G) return;
+  const p = canvasPt(e);
+  if (G.state !== 'play') { G.hover = null; return; }
+  if (G.drag && G.drag.id === e.pointerId) {
+    e.preventDefault();
+    G.drag.x = p.x; G.drag.y = p.y;
+    if (!G.drag.moved && dist2(p.x, p.y, G.drag.x0, G.drag.y0) > 13 * 13) G.drag.moved = true;
+  } else if (e.pointerType !== 'touch') {
+    const pk = attachPick(p.x, p.y);
+    G.hover = pk ? { x: pk.x, y: pk.y, S: pk.S } : null;
+  }
+}
+function onUp(e) {
+  if (!G) return;
+  try { cvs.releasePointerCapture(e.pointerId); } catch (err) { }
+  const d = G.drag;
+  if (!d || d.id !== e.pointerId) { G.drag = null; return; }
+  G.drag = null;
+  if (G.state !== 'play') return;
+  e.preventDefault();
+  const p = canvasPt(e);
+  /* a fast flick can release without a final move event — trust the up point */
+  d.x = p.x; d.y = p.y;
+  if (!d.moved && dist2(p.x, p.y, d.x0, d.y0) > 13 * 13) d.moved = true;
+  if (d.moved && d.S) doSpin(d, p.x, p.y);
+  else if (!d.moved) onTap(p.x, p.y);
+}
+function onCancel(e) { if (G) G.drag = null; }
+
+function dragEndpoints(d, out) {
+  /* the anchor point rides the (moving) strand it was started on */
+  if (d.S && d.S.alive) { posOnStrand(d.S, d.u, out); }
+  else { out.x = d.x0; out.y = d.y0; }
+  return out;
+}
+const _ep = { x: 0, y: 0 };
+function evalDrag(d) {
+  d.valid = false; d.cost = 0; d.end = null; d.reason = '';
+  if (!d.S || !d.S.alive) { d.reason = 'gone'; return; }
+  dragEndpoints(d, _ep);
+  const pk = attachPick(d.x, d.y);
+  if (!pk) { d.reason = 'air'; return; }
+  const L = Math.hypot(pk.x - _ep.x, pk.y - _ep.y);
+  d.cost = L * SILK_COST;
+  d.end = { x: pk.x, y: pk.y, S: pk.S, u: pk.u };
+  if (L < MIN_SPAN) { d.reason = 'short'; return; }
+  if (pk.S === d.S && Math.abs(pk.u - d.u) < 0.9) { d.reason = 'short'; return; }
+  if (d.cost > G.silk) { d.reason = 'silk'; return; }
+  d.valid = true;
+}
+function doSpin(d, x, y) {
+  evalDrag(d);
+  if (!d.valid) {
+    if (d.reason === 'silk') { sfxDull(); toastLow(); }
+    else if (d.reason === 'air' || d.reason === 'short') sfxDeny();
+    return;
+  }
+  const cost = d.cost;
+  const startPick = { S: d.S, seg: clamp(d.u | 0, 0, d.S.pts.length - 2), t: clamp(d.u - (d.u | 0), 0, 1) };
+  const nA = nodeAtPick(startPick);
+  if (!nA) return;
+  /* the start split may have replaced the end strand — re-pick */
+  const pk2 = attachPick(x, y);
+  if (!pk2) return;
+  const nB = nodeAtPick(pk2);
+  if (!nB || nB === nA) { sfxDeny(); return; }
+  const L = Math.hypot(nA.p.x - nB.p.x, nA.p.y - nB.p.y);
+  if (L < MIN_SPAN * 0.7) { sfxDeny(); return; }
+  const S = spinStrand(nA, nB);
+  G.silk = Math.max(0, G.silk - cost);
+  G.stats.spun++;
+  G.stats.silkSpun += Math.round(L);
+  sfxPluck(S.note, 0.16, 0.9);
+  const n = clamp(Math.round(L / 26), 3, 14);
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    addPart(lerp(nA.p.x, nB.p.x, t), lerp(nA.p.y, nB.p.y, t), rnd(-16, 16), rnd(-26, 6), rnd(0.35, 0.85), rnd(0.6, 1.6), [225, 236, 255], 0);
+  }
+  tipOnce('spun2', 'The web is one object — pluck one thread and the rest feels it.', 3600);
+}
+function toastLow() { tipOnce('lowsilk', 'Not enough silk. It rebuilds slowly — and prey refills it fast.'); }
+function onTap(x, y) {
+  const now = performance.now();
+  if (now - G.lastTap < 320 && dist2(x, y, G.lastTapX, G.lastTapY) < 34 * 34) {
+    G.lastTap = 0;
+    doCut(x, y);
+    return;
+  }
+  G.lastTap = now; G.lastTapX = x; G.lastTapY = y;
+  doWalk(x, y);
+}
+function doWalk(x, y) {
+  const sp = G.spider;
+  if (!sp || !sp.alive) return;
+  /* prefer a stuck prey near the tap */
+  let target = null;
+  let bd = (IS_TOUCH ? 40 : 30);
+  bd = bd * bd;
+  for (let i = 0; i < G.prey.length; i++) {
+    const q = G.prey[i];
+    if (!q.alive || !q.stuck || !q.strand || !q.strand.alive) continue;
+    const dd = dist2(x, y, q.x, q.y);
+    if (dd < bd) { bd = dd; target = { S: q.strand, u: q.u, x: q.x, y: q.y }; }
+  }
+  if (!target) {
+    const pk = pickStrand(x, y, IS_TOUCH ? 40 : 30, false);
+    if (pk) target = { S: pk.S, u: pk.u, x: pk.x, y: pk.y };
+  }
+  if (!target) { G.tapRouted = false; return; }
+  G.tapRouted = commandWalk(target);
+}
+function doCut(x, y) {
+  const sp = G.spider;
+  if (sp && G.tapRouted) { sp.route = null; sp.target = null; G.tapRouted = false; }
+  const pk = pickStrand(x, y, IS_TOUCH ? 34 : 26, true);
+  if (!pk) { sfxDeny(); return; }
+  const S = pk.S;
+  const refund = S.restLen * SILK_COST * CUT_REFUND;
+  sfxCut();
+  sfxPluck(S.note * 1.25, 0.09, 0.35);
+  killStrand(S);
+  G.silk = Math.min(SILK_MAX, G.silk + refund);
+  G.stats.cut++;
+  tipOnce('cut1', 'Cut silk returns a little to your spinnerets.', 3000);
+}
+
+/* keyboard */
+function onKey(e) {
+  const k = e.key;
+  const kl = k ? k.toLowerCase() : '';
+  if (k === ' ' || kl === 'spacebar' || k === 'Spacebar') {
+    e.preventDefault();
+    if (!G) return;
+    if (G.state === 'play') pauseGame('key');
+    else if (G.state === 'pause') resumeGame();
+    return;
+  }
+  if (kl === 'm') { audioInit(); setMute(!A.muted); return; }
+  if (kl === 'r') {
+    if (!G) return;
+    if (G.state === 'over' || G.state === 'win' || G.state === 'pause') { startGame(); }
+    return;
+  }
+  if (kl === 'p') { if (G && G.state === 'play') pauseGame('key'); else if (G && G.state === 'pause') resumeGame(); return; }
+  if (!G || G.state !== 'play') return;
+  let dx = 0, dy = 0;
+  if (kl === 'arrowleft' || kl === 'a') dx = -1;
+  else if (kl === 'arrowright' || kl === 'd') dx = 1;
+  else if (kl === 'arrowup' || kl === 'w') dy = -1;
+  else if (kl === 'arrowdown' || kl === 's') dy = 1;
+  if (dx || dy) { e.preventDefault(); nudge(dx, dy); }
+}
+
+/* =====================================================================
+   RESIZE — remap the whole world so physics survives any viewport change
+   ===================================================================== */
+function remapWorld(o, n) {
+  if (!o || !n) return;
+  const sx = n.w / o.w, sy = n.h / o.h;
+  if (!isFinite(sx) || !isFinite(sy) || sx <= 0 || sy <= 0) return;
+  const s = (sx + sy) * 0.5;
+  const mapx = v => n.x + (v - o.x) * sx;
+  const mapy = v => n.y + (v - o.y) * sy;
+  for (let i = 0; i < G.particles.length; i++) {
+    const p = G.particles[i];
+    p.x = mapx(p.x); p.y = mapy(p.y);
+    p.px = mapx(p.px); p.py = mapy(p.py);
+    p.fx = 0; p.fy = 0;
+  }
+  for (let i = 0; i < G.strands.length; i++) {
+    const S = G.strands[i];
+    for (let k = 0; k < S.rest.length; k++) S.rest[k] *= s;
+    S.restLen *= s;
+    S.note = clamp(58000 / Math.max(50, S.restLen), 82, 940);
+    updateBBox(S);
+  }
+  for (let i = 0; i < G.prey.length; i++) {
+    const q = G.prey[i];
+    if (!q.stuck) { q.x = mapx(q.x); q.y = mapy(q.y); q.vx *= sx; q.vy *= sy; }
+  }
+  for (let i = 0; i < G.parts.length; i++) {
+    const p = G.parts[i];
+    if (p.life > 0) { p.x = mapx(p.x); p.y = mapy(p.y); }
+  }
+  for (let i = 0; i < G.floats.length; i++) {
+    const f = G.floats[i];
+    f.x = mapx(f.x); f.y = mapy(f.y);
+  }
+  const oldArt = G.art || 1;
+  G.art = artScale();
+  const ar = G.art / oldArt;
+  for (let i = 0; i < G.prey.length; i++) G.prey[i].size *= ar;
+  if (G.spider) { G.spider.size = 2.05 * G.art; G.spider.legInit = false; spiderPos(G.spider); }
+  G.drag = null;
+}
+function resize() {
+  const w = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 320);
+  const h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 480);
+  /* on big retina desktops a full 2x surface is mostly wasted fill */
+  DPR = clamp(window.devicePixelRatio || 1, 1, w * h > 1300000 ? 1.5 : 2);
+  W = w; H = h;
+  cvs.style.width = w + 'px'; cvs.style.height = h + 'px';
+  cvs.width = Math.max(1, Math.round(w * DPR));
+  cvs.height = Math.max(1, Math.round(h * DPR));
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (G) {
+    const nr = computeRect();
+    remapWorld(G.rect, nr);
+    G.rect = nr;
+  }
+  invalidateSky();
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+let RA = 1;                       /* render interpolation alpha */
+const _pt2 = { x: 0, y: 0 }, _pt3 = { x: 0, y: 0 };
+const IX = p => p.px + (p.x - p.px) * RA;
+const IY = p => p.py + (p.y - p.py) * RA;
+function posOnStrandR(S, u, out) {
+  const pts = S.pts, n = pts.length;
+  u = clamp(u, 0, n - 1);
+  let i = u | 0; if (i > n - 2) i = n - 2; if (i < 0) i = 0;
+  const f = clamp(u - i, 0, 1);
+  const a = pts[i], b = pts[i + 1];
+  const ax = IX(a), ay = IY(a), bx = IX(b), by = IY(b);
+  out.x = ax + (bx - ax) * f;
+  out.y = ay + (by - ay) * f;
+  return out;
+}
+
+/* ------------------------------- palette ------------------------------- */
+const SKY = [
+  { t: 0.00, top: [40, 24, 70], mid: [104, 48, 82], hor: [226, 134, 74], star: 0.00, amb: [255, 194, 132], glow: 0.95, moon: 0.15 },
+  { t: 0.20, top: [26, 18, 60], mid: [58, 34, 78], hor: [154, 76, 84], star: 0.35, amb: [214, 160, 176], glow: 0.55, moon: 0.55 },
+  { t: 0.42, top: [11, 10, 38], mid: [20, 22, 60], hor: [46, 34, 76], star: 0.95, amb: [158, 174, 236], glow: 0.22, moon: 1.00 },
+  { t: 0.70, top: [6, 7, 27], mid: [12, 16, 46], hor: [28, 25, 62], star: 1.00, amb: [142, 166, 236], glow: 0.14, moon: 1.00 },
+  { t: 0.86, top: [12, 14, 44], mid: [40, 34, 78], hor: [96, 62, 92], star: 0.62, amb: [190, 168, 216], glow: 0.30, moon: 0.6 },
+  { t: 0.95, top: [34, 40, 92], mid: [104, 82, 128], hor: [214, 140, 116], star: 0.16, amb: [244, 194, 168], glow: 0.62, moon: 0.2 },
+  { t: 1.00, top: [66, 86, 138], mid: [158, 132, 172], hor: [250, 202, 144], star: 0.00, amb: [255, 226, 186], glow: 1.00, moon: 0.05 }
+];
+const PAL = { top: [0, 0, 0], mid: [0, 0, 0], hor: [0, 0, 0], amb: [0, 0, 0], star: 0, glow: 0, moon: 0 };
+function palAt(f) {
+  f = clamp(f, 0, 1);
+  let i = 0;
+  while (i < SKY.length - 2 && f > SKY[i + 1].t) i++;
+  const a = SKY[i], b = SKY[i + 1];
+  const t = clamp((f - a.t) / (b.t - a.t || 1), 0, 1);
+  mixc(a.top, b.top, t, PAL.top);
+  mixc(a.mid, b.mid, t, PAL.mid);
+  mixc(a.hor, b.hor, t, PAL.hor);
+  mixc(a.amb, b.amb, t, PAL.amb);
+  PAL.star = lerp(a.star, b.star, t);
+  PAL.glow = lerp(a.glow, b.glow, t);
+  PAL.moon = lerp(a.moon, b.moon, t);
+  return PAL;
+}
+let skyKey = -99;
+function invalidateSky() { skyKey = -99; }
+
+/* glow sprite cache */
+const glowCache = new Map();
+function glowSprite(col) {
+  const key = (col[0] | 0) + ',' + (col[1] | 0) + ',' + (col[2] | 0);
+  let c = glowCache.get(key);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  rg.addColorStop(0, rgba(col, 0.85));
+  rg.addColorStop(0.35, rgba(col, 0.30));
+  rg.addColorStop(1, rgba(col, 0));
+  g.fillStyle = rg;
+  g.fillRect(0, 0, 64, 64);
+  glowCache.set(key, c);
+  return c;
+}
+function drawGlow(x, y, r, col, a) {
+  if (a <= 0.004) return;
+  const s = glowSprite(col);
+  ctx.globalAlpha = clamp(a, 0, 1);
+  ctx.drawImage(s, x - r, y - r, r * 2, r * 2);
+  ctx.globalAlpha = 1;
+}
+/* smooth polyline through particle list */
+function subPathPts(pts, interp) {
+  const n = pts.length;
+  if (n < 2) return;
+  const gx = interp ? IX : (p => p.x), gy = interp ? IY : (p => p.y);
+  ctx.moveTo(gx(pts[0]), gy(pts[0]));
+  for (let i = 1; i < n - 1; i++) {
+    const cx = gx(pts[i]), cy = gy(pts[i]);
+    const mx = (cx + gx(pts[i + 1])) * 0.5, my = (cy + gy(pts[i + 1])) * 0.5;
+    ctx.quadraticCurveTo(cx, cy, mx, my);
+  }
+  ctx.lineTo(gx(pts[n - 1]), gy(pts[n - 1]));
+}
+function pathPts(pts, interp) { ctx.beginPath(); subPathPts(pts, interp); }
+
+/* ------------------------------ backdrop ------------------------------ */
+/* The sky changes slowly, so bake gradient + horizon bloom into a half-res
+   offscreen and blit it. One opaque blit per frame instead of a full-screen
+   gradient plus a full-screen additive pass. */
+let skyCv = null, skyCtx = null;
+function drawSky(f) {
+  const p = palAt(f);
+  const key = Math.round(f * 240);
+  const cw = Math.max(2, Math.round(W / 2)), ch = Math.max(2, Math.round(H / 2));
+  if (!skyCv) {
+    skyCv = document.createElement('canvas');
+    skyCtx = skyCv.getContext('2d');
+  }
+  if (skyCv.width !== cw || skyCv.height !== ch) { skyCv.width = cw; skyCv.height = ch; skyKey = -99; }
+  if (key !== skyKey) {
+    skyKey = key;
+    const g = skyCtx;
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    const grad = g.createLinearGradient(0, 0, 0, ch);
+    grad.addColorStop(0, rgb(p.top));
+    grad.addColorStop(0.46, rgb(p.mid));
+    grad.addColorStop(1, rgb(p.hor));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, cw, ch);
+    if (p.glow > 0.02) {
+      g.globalCompositeOperation = 'lighter';
+      const spr = glowSprite(p.hor);
+      const r = Math.max(cw, ch) * 0.66;
+      g.globalAlpha = clamp(p.glow * 0.46, 0, 1);
+      g.drawImage(spr, cw * 0.5 - r, ch * 1.04 - r, r * 2, r * 2);
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
+    }
+  }
+  ctx.drawImage(skyCv, 0, 0, W, H);
+}
+function drawStars(f) {
+  const p = PAL;
+  if (p.star < 0.02) return;
+  const st = G.stars;
+  ctx.save();
+  for (let i = 0; i < st.length; i++) {
+    const s = st[i];
+    const tw = 0.55 + 0.45 * Math.sin(G.time * s.sp + s.ph);
+    const a = p.star * tw * 0.9;
+    if (a < 0.03) continue;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = i % 7 === 0 ? '#ffe6c8' : '#e9edff';
+    const x = s.x * W, y = s.y * H, r = s.r;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    if (s.r > 1.1) {
+      ctx.globalAlpha = a * 0.35;
+      ctx.fillRect(x - r * 2.6, y - 0.25, r * 5.2, 0.5);
+      ctx.fillRect(x - 0.25, y - r * 2.6, 0.5, r * 5.2);
+    }
+  }
+  ctx.restore();
+}
+function drawMoon(f) {
+  const m = PAL.moon;
+  if (m < 0.04) return;
+  const arc = clamp(f, 0, 1);
+  const x = W * (0.16 + arc * 0.68);
+  const y = H * (0.42 - Math.sin(arc * Math.PI) * 0.28);
+  const r = Math.max(11, Math.min(W, H) * 0.032);
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(x, y, r * 6.5, [210, 224, 255], m * 0.30);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = m * 0.92;
+  ctx.fillStyle = '#f2f0ff';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.globalAlpha = m * 0.5;
+  ctx.fillStyle = rgba(PAL.top, 0.85);
+  ctx.beginPath(); ctx.arc(x + r * 0.42, y - r * 0.3, r * 0.94, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function buildFg() {
+  const rng = mulberry32(G.seed ^ 0x51ab);
+  const fg = [];
+  for (let i = 0; i < 5; i++) {
+    fg.push({
+      x: rng() < 0.5 ? rng() * 0.16 : 0.84 + rng() * 0.16,
+      y: rng() * 0.3 + (rng() < 0.5 ? -0.04 : 0.7),
+      s: 0.085 + rng() * 0.105, rot: rnd(-1.2, 1.2), ph: rng() * TAU
+    });
+  }
+  G.fg = fg;
+}
+function leafShape(x, y, len, wid, ang, col, alpha, vein) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(ang);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(len * 0.38, -wid, len, 0);
+  ctx.quadraticCurveTo(len * 0.38, wid, 0, 0);
+  ctx.fill();
+  if (vein) {
+    ctx.globalAlpha = alpha * 0.45;
+    ctx.strokeStyle = vein;
+    ctx.lineWidth = Math.max(0.6, wid * 0.12);
+    ctx.beginPath(); ctx.moveTo(len * 0.04, 0); ctx.quadraticCurveTo(len * 0.5, wid * 0.12, len * 0.94, 0); ctx.stroke();
+    for (let i = 1; i <= 3; i++) {
+      const t = i / 4.2;
+      ctx.beginPath();
+      ctx.moveTo(len * t, wid * 0.06);
+      ctx.lineTo(len * (t + 0.16), -wid * (0.45 - t * 0.2));
+      ctx.moveTo(len * t, wid * 0.06);
+      ctx.lineTo(len * (t + 0.16), wid * (0.5 - t * 0.2));
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+function drawFar(f) {
+  if (!G.fg) buildFg();
+  const sway = Math.sin(G.time * 0.5) * 0.05 + G.wind * 0.00035;
+  /* backlit leaves stay silhouettes, even against a bright dawn */
+  const dark = rgba(mixc(PAL.top, [0, 0, 0], 0.74), 1);
+  for (let i = 0; i < G.far.length; i++) {
+    const o = G.far[i];
+    const s = o.s * Math.min(W, H);
+    leafShape(o.x * W, o.y * H, s * 2.2, s * 0.7, o.rot + sway * 1.4 + Math.sin(G.time * 0.7 + o.ph) * 0.05, dark, 0.34);
+  }
+  /* grass along the bottom */
+  const gcol = rgba(mixc(PAL.top, [10, 26, 16], 0.5), 1);
+  ctx.strokeStyle = gcol;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < G.grass.length; i++) {
+    const b = G.grass[i];
+    const x = b.x * W, h = b.h * H;
+    const lean = b.lean + sway * 3 + Math.sin(G.time * 0.9 + b.ph) * 0.12;
+    ctx.globalAlpha = 0.5 + b.tone * 0.35;
+    ctx.lineWidth = Math.max(1, b.w * W * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(x, H + 2);
+    ctx.quadraticCurveTo(x + lean * h * 0.3, H - h * 0.55, x + lean * h, H - h);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+function drawFgLeaves() {
+  const sway = Math.sin(G.time * 0.42) * 0.06 + G.wind * 0.0004;
+  const col = 'rgba(6,4,16,0.92)';
+  for (let i = 0; i < G.fg.length; i++) {
+    const o = G.fg[i];
+    const s = o.s * Math.min(W, H);
+    const a = o.rot + sway + Math.sin(G.time * 0.6 + o.ph) * 0.06;
+    leafShape(o.x * W, o.y * H, s * 2.6, s * 0.86, a, col, 0.55);
+    leafShape(o.x * W + Math.cos(a) * s * 0.5, o.y * H + Math.sin(a) * s * 0.5, s * 1.9, s * 0.6, a + 0.7, col, 0.45);
+  }
+}
+/* ------------------------------ branches ------------------------------ */
+/* A branch is drawn as a tapered ribbon whose half-width comes from each
+   particle, so splitting a branch never produces a visible step. */
+const _rx = [], _ry = [], _sx = [], _sy = [];
+function branchRibbon(S, scale, grow, ox, oy) {
+  const pts = S.pts, n = pts.length;
+  if (n < 2) return;
+  _rx.length = 0; _ry.length = 0; _sx.length = 0; _sy.length = 0;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    const a = pts[i > 0 ? i - 1 : 0], b = pts[i < n - 1 ? i + 1 : n - 1];
+    let tx = b.x - a.x, ty = b.y - a.y;
+    const d = Math.hypot(tx, ty) || 1; tx /= d; ty /= d;
+    const w = ((p.bwv == null ? 10 : p.bwv) * scale + grow) * 0.5;
+    _rx.push(p.x - ty * w + ox); _ry.push(p.y + tx * w + oy);
+    _sx.push(p.x + ty * w + ox); _sy.push(p.y - tx * w + oy);
+  }
+  ctx.moveTo(_rx[0], _ry[0]);
+  for (let i = 1; i < n - 1; i++) ctx.quadraticCurveTo(_rx[i], _ry[i], (_rx[i] + _rx[i + 1]) * 0.5, (_ry[i] + _ry[i + 1]) * 0.5);
+  ctx.lineTo(_rx[n - 1], _ry[n - 1]);
+  ctx.lineTo(_sx[n - 1], _sy[n - 1]);
+  for (let i = n - 2; i > 0; i--) ctx.quadraticCurveTo(_sx[i], _sy[i], (_sx[i] + _sx[i - 1]) * 0.5, (_sy[i] + _sy[i - 1]) * 0.5);
+  ctx.lineTo(_sx[0], _sy[0]);
+  ctx.closePath();
+}
+function drawBranches() {
+  const amb = PAL.amb;
+  const barkDark = rgba(mixc(PAL.top, [8, 5, 10], 0.6), 1);
+  const barkMid = rgba(mixc(mixc(PAL.top, [46, 30, 34], 0.75), [0, 0, 0], 0.15), 1);
+  const hi = rgba(amb, 0.30);
+  const strands = G.strands;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  /* All branches share one path per pass, so a heavily-split frame still
+     costs three fills. Winding is consistent, so nonzero fill is safe. */
+  for (let pass = 0; pass < 3; pass++) {
+    ctx.beginPath();
+    let any = false;
+    for (let s = 0; s < strands.length; s++) {
+      const S = strands[s];
+      if (S.kind !== 'anchor') continue;
+      if (pass === 0) branchRibbon(S, 1, 3.4, 0, 0);
+      else if (pass === 1) branchRibbon(S, 1, 0, 0, 0);
+      else branchRibbon(S, 0.30, 0, -1.5, -1.9);
+      any = true;
+    }
+    if (!any) break;
+    ctx.fillStyle = pass === 0 ? barkDark : pass === 1 ? barkMid : hi;
+    ctx.fill();
+  }
+  /* twiglets + leaves */
+  const R = G.rect;
+  const leafBase = mixc(PAL.top, [24, 46, 30], 0.62);
+  const leafLit = mixc(leafBase, PAL.amb, 0.30);
+  const sway = Math.sin(G.time * 0.6) * 0.055 + G.wind * 0.00055;
+  const dec = G.decor;
+  for (let i = 0; i < dec.length; i++) {
+    const d = dec[i];
+    const x = R.x + d.u * R.w, y = R.y + d.v * R.h;
+    const a = d.ang + sway * 2.2 + Math.sin(G.time * 0.9 + d.ph) * 0.07;
+    const L = d.len;
+    const ex = x + Math.cos(a) * L, ey = y + Math.sin(a) * L;
+    ctx.strokeStyle = barkMid; ctx.lineWidth = d.w;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + Math.cos(a - 0.3) * L * 0.6, y + Math.sin(a - 0.3) * L * 0.6, ex, ey);
+    ctx.stroke();
+    for (let k = 0; k < d.leaves; k++) {
+      const t = 0.45 + k * 0.26;
+      const lx = x + (ex - x) * t, ly = y + (ey - y) * t;
+      const la = a + (k % 2 ? 0.85 : -0.85) + Math.sin(G.time * 1.1 + d.ph + k) * 0.09;
+      leafShape(lx, ly, L * 0.62, L * 0.21, la, rgba(k % 2 ? leafLit : leafBase, 1), 0.92, rgba(mixc(leafBase, [0, 0, 0], 0.5), 1));
+    }
+  }
+}
+/* -------------------------------- silk -------------------------------- */
+function drawSilk() {
+  const strands = G.strands;
+  const amb = PAL.amb;
+  const base = mixc([214, 228, 255], amb, 0.30);
+  const dawn = clamp((G.nightT / G.cfg.dur - 0.84) / 0.16, 0, 1) + (G.interlude > 0 ? 1 : 0);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  /* A strand is "quiet" when it is settled, unstretched and not newborn.
+     Quiet strands share one path per pass — that keeps a 200-strand web at
+     a handful of strokes instead of six hundred. */
+  const isQuiet = S => S.vib < 24 && S.strain < 0.02 && (G.time - S.born) > 0.42;
+  const qHalo = 0.045 + PAL.glow * 0.02 + dawn * 0.05;
+  const qCore = 0.34 + dawn * 0.18;
+  const qSheen = 0.20 + dawn * 0.3;
+
+  /* --- halo --- */
+  ctx.globalCompositeOperation = 'lighter';
+  let any = false;
+  ctx.beginPath();
+  for (let s = 0; s < strands.length; s++) {
+    const S = strands[s];
+    if (S.kind !== 'silk' || !isQuiet(S)) continue;
+    subPathPts(S.pts, true); any = true;
+  }
+  if (any) { ctx.strokeStyle = rgba(base, qHalo); ctx.lineWidth = 3.4; ctx.stroke(); }
+  for (let s = 0; s < strands.length; s++) {
+    const S = strands[s];
+    if (S.kind !== 'silk' || isQuiet(S)) continue;
+    const vib = clamp(S.vib / 240, 0, 1);
+    const age = clamp((G.time - S.born) / 0.4, 0, 1);
+    const a = (qHalo + vib * 0.12) * age;
+    if (a < 0.012) continue;
+    ctx.strokeStyle = rgba(base, a);
+    ctx.lineWidth = 3.4 + vib * 3.2;
+    pathPts(S.pts, true);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  /* --- core thread --- */
+  any = false;
+  ctx.beginPath();
+  for (let s = 0; s < strands.length; s++) {
+    const S = strands[s];
+    if (S.kind !== 'silk' || !isQuiet(S)) continue;
+    subPathPts(S.pts, true); any = true;
+  }
+  if (any) { ctx.strokeStyle = rgba(base, qCore); ctx.lineWidth = 0.95; ctx.stroke(); }
+  /* --- sheen: the glint down the middle of every quiet thread --- */
+  any = false;
+  ctx.beginPath();
+  for (let s = 0; s < strands.length; s++) {
+    const S = strands[s];
+    if (S.kind !== 'silk' || !isQuiet(S)) continue;
+    const n = S.pts.length;
+    if (n < 4) continue;
+    const i0 = Math.max(1, (n * 0.3) | 0), i1 = Math.min(n - 1, (n * 0.72) | 0);
+    if (i1 <= i0) continue;
+    ctx.moveTo(IX(S.pts[i0]), IY(S.pts[i0]));
+    for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(IX(S.pts[i]), IY(S.pts[i]));
+    any = true;
+  }
+  if (any) { ctx.strokeStyle = rgba(mixc(base, [255, 255, 255], 0.5), qSheen); ctx.lineWidth = 1.25; ctx.stroke(); }
+  /* --- active strands, drawn individually so they can shimmer --- */
+  const tint = [0, 0, 0];
+  for (let s = 0; s < strands.length; s++) {
+    const S = strands[s];
+    if (S.kind !== 'silk' || isQuiet(S)) continue;
+    const vib = clamp(S.vib / 240, 0, 1);
+    const age = clamp((G.time - S.born) / 0.4, 0, 1);
+    const strain = clamp(S.strain / PH.TEAR_TIME, 0, 1);
+    let col = base;
+    if (strain > 0.02) col = mixc(base, [255, 150, 110], strain * 0.85, tint);
+    ctx.strokeStyle = rgba(col, (qCore + vib * 0.4) * age);
+    ctx.lineWidth = (0.95 + vib * 0.5) * (1 + strain * 0.5);
+    pathPts(S.pts, true);
+    ctx.stroke();
+    const n = S.pts.length;
+    if (n > 3) {
+      const i0 = Math.max(1, (n * 0.3) | 0), i1 = Math.min(n - 1, (n * 0.72) | 0);
+      if (i1 > i0) {
+        ctx.beginPath();
+        ctx.moveTo(IX(S.pts[i0]), IY(S.pts[i0]));
+        for (let i = i0 + 1; i <= i1; i++) ctx.lineTo(IX(S.pts[i]), IY(S.pts[i]));
+        ctx.strokeStyle = rgba(mixc(col, [255, 255, 255], 0.5), (qSheen + vib * 0.45) * age);
+        ctx.lineWidth = 1.25 + vib * 0.6;
+        ctx.stroke();
+      }
+    }
+  }
+  /* --- junction knots, one fill for all of them --- */
+  ctx.beginPath(); any = false;
+  const nodes = G.nodes;
+  for (let i = 0; i < nodes.length; i++) {
+    const nd = nodes[i];
+    if (nd.strands.length < 3) continue;
+    let silky = false;
+    for (let k = 0; k < nd.strands.length; k++) if (nd.strands[k].kind === 'silk') { silky = true; break; }
+    if (!silky) continue;
+    const x = IX(nd.p), y = IY(nd.p);
+    ctx.moveTo(x + 1.7, y);
+    ctx.arc(x, y, 1.7, 0, TAU);
+    any = true;
+  }
+  if (any) {
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = rgba(mixc(base, [255, 255, 255], 0.4), 1);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+function drawDew() {
+  const f = G.nightT / G.cfg.dur;
+  let amt = clamp((f - 0.44) / 0.22, 0, 1);
+  if (G.interlude > 0) amt = 1;
+  if (f > 0.95) amt = 1;
+  if (amt < 0.02) return;
+  const strands = G.strands;
+  ctx.globalCompositeOperation = 'lighter';
+  let budget = 80;   /* a huge web must not drown in sparkles */
+  for (let s = 0; s < strands.length && budget > 0; s++) {
+    const S = strands[s];
+    if (S.kind !== 'silk' || !S.dew) continue;
+    if (G.time - S.born < 1.2) continue;
+    for (let i = 0; i < S.dew.length && budget > 0; i++) {
+      budget--;
+      const d = S.dew[i];
+      posOnStrandR(S, d.u, _pt);
+      const tw = 0.5 + 0.5 * Math.sin(G.time * 1.6 + d.ph);
+      const a = amt * (0.35 + tw * 0.65);
+      const r = 1.1 + tw * 0.9;
+      drawGlow(_pt.x, _pt.y, r * 4.5, [200, 226, 255], a * 0.5);
+      ctx.globalAlpha = a * 0.9;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(_pt.x, _pt.y, r * 0.62, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ------------------------------ creatures ------------------------------ */
+function bodyCol(mix) { return rgba(mixc(mixc(PAL.top, [26, 14, 20], 0.55), [0, 0, 0], 0.25), mix == null ? 1 : mix); }
+function drawWingPair(x, y, ang, len, wid, ph, alpha, col) {
+  const beat = Math.sin(ph);
+  for (let s = -1; s <= 1; s += 2) {
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(ang + s * (0.55 + beat * 0.42));
+    ctx.scale(1, s);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(len * 0.5, -wid, len, -wid * 0.24);
+    ctx.quadraticCurveTo(len * 0.55, wid * 0.28, 0, 0);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+function drawFly(q, x, y) {
+  const a = q.ang, s = q.size / 5.6;
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(x, y, 15 * s, [255, 190, 130], 0.20);
+  ctx.globalCompositeOperation = 'source-over';
+  drawWingPair(x, y, a - Math.PI * 0.5, 9 * s, 4.4 * s, q.wing, 0.28, 'rgba(220,232,255,1)');
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(a);
+  ctx.fillStyle = bodyCol();
+  ctx.beginPath(); ctx.ellipse(1.6 * s, 0, 4.4 * s, 2.9 * s, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-3.1 * s, 0, 2.7 * s, 2.4 * s, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = bodyCol(0.85); ctx.lineWidth = 0.8 * s;
+  for (let i = 0; i < 3; i++) {
+    const la = -0.7 + i * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-1 * s, 0);
+    ctx.lineTo(-1 * s + Math.cos(la) * 4.4 * s, Math.sin(la) * 4.4 * s);
+    ctx.moveTo(-1 * s, 0);
+    ctx.lineTo(-1 * s + Math.cos(-la) * 4.4 * s, -Math.sin(-la) * 4.4 * s);
+    ctx.stroke();
+  }
+  /* rim light */
+  ctx.strokeStyle = rgba(PAL.amb, 0.5); ctx.lineWidth = 0.85 * s;
+  ctx.beginPath(); ctx.ellipse(1.6 * s, 0, 4.4 * s, 2.9 * s, 0, Math.PI * 0.15, Math.PI * 0.95); ctx.stroke();
+  ctx.restore();
+}
+function drawMoth(q, x, y) {
+  const a = q.ang, s = q.size / 10.5;
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(x, y, 34 * s, [255, 200, 140], 0.28);
+  ctx.globalCompositeOperation = 'source-over';
+  const wcol = rgba(mixc(mixc(PAL.top, [180, 140, 110], 0.7), PAL.amb, 0.2), 1);
+  const wcol2 = rgba(mixc(mixc(PAL.top, [120, 88, 76], 0.7), PAL.amb, 0.1), 1);
+  const beat = Math.sin(q.wing) * 0.34;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(a);
+  for (let sd = -1; sd <= 1; sd += 2) {
+    ctx.save(); ctx.scale(1, sd);
+    ctx.rotate(-0.35 - beat);
+    /* hindwing */
+    ctx.fillStyle = wcol2; ctx.globalAlpha = 0.92;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-6 * s, -9 * s, -11 * s, -3 * s);
+    ctx.quadraticCurveTo(-8 * s, 2 * s, 0, 0);
+    ctx.fill();
+    /* forewing */
+    ctx.fillStyle = wcol;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(4 * s, -13 * s, 13 * s, -8.5 * s);
+    ctx.quadraticCurveTo(9 * s, -1 * s, 0.5 * s, 0);
+    ctx.fill();
+    ctx.strokeStyle = rgba(mixc(PAL.top, [60, 40, 36], 0.6), 0.75);
+    ctx.lineWidth = 0.9 * s;
+    ctx.beginPath();
+    ctx.moveTo(2 * s, -3.2 * s); ctx.quadraticCurveTo(7 * s, -6.5 * s, 11.6 * s, -7.2 * s);
+    ctx.stroke();
+    ctx.fillStyle = rgba(mixc(PAL.top, [40, 26, 30], 0.5), 0.85);
+    ctx.beginPath(); ctx.ellipse(7.2 * s, -6.4 * s, 1.5 * s, 1.1 * s, 0.4, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  /* fuzzy body */
+  ctx.fillStyle = bodyCol();
+  ctx.beginPath(); ctx.ellipse(0, 0, 6.4 * s, 3.1 * s, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = bodyCol(0.7); ctx.lineWidth = 0.7 * s;
+  for (let i = 0; i < 7; i++) {
+    const px = -5 * s + i * 1.7 * s;
+    ctx.beginPath(); ctx.moveTo(px, -2.4 * s); ctx.lineTo(px + rnd(-0.4, 0.4), -4.2 * s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px, 2.4 * s); ctx.lineTo(px + rnd(-0.4, 0.4), 4.2 * s); ctx.stroke();
+  }
+  ctx.strokeStyle = rgba(PAL.amb, 0.42); ctx.lineWidth = 0.9 * s;
+  ctx.beginPath(); ctx.ellipse(0, 0, 6.4 * s, 3.1 * s, 0, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
+  /* antennae */
+  ctx.strokeStyle = bodyCol(0.9); ctx.lineWidth = 0.8 * s;
+  for (let sd = -1; sd <= 1; sd += 2) {
+    ctx.beginPath();
+    ctx.moveTo(5.4 * s, sd * 1.2 * s);
+    ctx.quadraticCurveTo(9.5 * s, sd * 3.4 * s, 12 * s, sd * 2.2 * s);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawBeetle(q, x, y) {
+  const a = q.ang + q.spin, s = q.size / 10;
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(x, y, 20 * s, [190, 150, 255], 0.16);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(a);
+  if (q.hits < 2) drawWingPair(0, 0, -Math.PI * 0.5, 12 * s, 5 * s, q.wing, 0.16, 'rgba(210,220,255,1)');
+  ctx.fillStyle = bodyCol();
+  ctx.strokeStyle = bodyCol(0.9); ctx.lineWidth = 1.1 * s;
+  for (let i = 0; i < 3; i++) {
+    const la = -0.9 + i * 0.9;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(la) * 8 * s, Math.sin(la) * 8 * s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(la) * 8 * s, -Math.sin(la) * 8 * s); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.ellipse(-1 * s, 0, 8.6 * s, 5.6 * s, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7 * s, 0, 3.4 * s, 3.2 * s, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = rgba(mixc(PAL.amb, [255, 255, 255], 0.3), 0.5);
+  ctx.lineWidth = 1.2 * s;
+  ctx.beginPath(); ctx.ellipse(-1 * s, 0, 8.6 * s, 5.6 * s, 0, Math.PI * 1.05, Math.PI * 1.85); ctx.stroke();
+  ctx.strokeStyle = rgba(mixc(PAL.top, [0, 0, 0], 0.6), 0.9); ctx.lineWidth = 1 * s;
+  ctx.beginPath(); ctx.moveTo(-9 * s, 0); ctx.lineTo(6 * s, 0); ctx.stroke();
+  ctx.restore();
+}
+function drawWasp(q, x, y) {
+  const a = q.ang, s = q.size / 9.2;
+  const danger = q.stuck ? (0.55 + 0.45 * Math.sin(G.time * 8)) : 0.35;
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(x, y, 30 * s, [255, 90, 70], 0.22 * danger + (q.stuck ? 0.16 : 0));
+  drawGlow(x, y, 15 * s, [255, 200, 90], 0.3);
+  ctx.globalCompositeOperation = 'source-over';
+  const spd = G.spider;
+  const near = (!q.stuck && !q.escaping && spd) ? clamp(1 - Math.hypot(spd.x - x, spd.y - y) / 165, 0, 1) : 0;
+  if (q.stuck || near > 0.1) {
+    const rr = q.stuck ? 26 : 20;
+    ctx.strokeStyle = 'rgba(255,90,80,' + ((q.stuck ? 0.20 : 0.10 * near) + danger * 0.30 * (q.stuck ? 1 : near)) + ')';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(x, y, rr + Math.sin(G.time * 8) * 3.5, 0, TAU); ctx.stroke();
+  }
+  drawWingPair(x, y, a - Math.PI * 0.5, 13 * s, 5 * s, q.wing, 0.24, 'rgba(230,240,255,1)');
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(a);
+  const dark = rgba(mixc(PAL.top, [16, 10, 8], 0.5), 1);
+  const gold = rgba(mixc([255, 200, 60], PAL.amb, 0.25), 1);
+  /* abdomen with stripes */
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(-6.5 * s, 0, 7.4 * s, 4.3 * s, 0, 0, TAU);
+  ctx.clip();
+  ctx.fillStyle = gold; ctx.fillRect(-15 * s, -6 * s, 18 * s, 12 * s);
+  ctx.fillStyle = dark;
+  for (let i = 0; i < 4; i++) ctx.fillRect((-13.6 + i * 3.6) * s, -6 * s, 1.9 * s, 12 * s);
+  ctx.restore();
+  ctx.strokeStyle = rgba(mixc(PAL.amb, [255, 255, 255], 0.2), 0.4); ctx.lineWidth = 0.8 * s;
+  ctx.beginPath(); ctx.ellipse(-6.5 * s, 0, 7.4 * s, 4.3 * s, 0, 0, TAU); ctx.stroke();
+  /* sting */
+  ctx.fillStyle = dark;
+  ctx.beginPath();
+  ctx.moveTo(-13.4 * s, 0); ctx.lineTo(-18 * s, 0.9 * s); ctx.lineTo(-13.4 * s, -0.9 * s); ctx.closePath(); ctx.fill();
+  /* waist + thorax + head */
+  ctx.strokeStyle = dark; ctx.lineWidth = 1.5 * s;
+  ctx.beginPath(); ctx.moveTo(-1.4 * s, 0); ctx.lineTo(1.2 * s, 0); ctx.stroke();
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.ellipse(3.4 * s, 0, 4 * s, 3.3 * s, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8.4 * s, 0, 2.7 * s, 2.5 * s, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = gold;
+  ctx.beginPath(); ctx.ellipse(3.4 * s, 0, 4 * s, 1.1 * s, 0, 0, TAU); ctx.fill();
+  /* eyes */
+  ctx.fillStyle = 'rgba(255,240,220,.75)';
+  ctx.beginPath(); ctx.ellipse(9.4 * s, -1.4 * s, 1.05 * s, 0.85 * s, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(9.4 * s, 1.4 * s, 1.05 * s, 0.85 * s, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = dark; ctx.lineWidth = 0.85 * s;
+  for (let sd = -1; sd <= 1; sd += 2) {
+    ctx.beginPath(); ctx.moveTo(9.6 * s, sd * 1.6 * s);
+    ctx.quadraticCurveTo(13 * s, sd * 3.6 * s, 15 * s, sd * 2.2 * s); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawWrapSilk(q, x, y) {
+  if (q.wrapped <= 0) return;
+  const r = q.size * 1.9;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(q.ang);
+  ctx.strokeStyle = 'rgba(240,246,255,' + (0.35 + q.wrapped * 0.5) + ')';
+  ctx.lineWidth = 1.15;
+  const bands = 3 + Math.round(q.wrapped * 5);
+  for (let i = 0; i < bands; i++) {
+    const t = (i + 0.5) / bands;
+    const yy = (t - 0.5) * r * 2.1;
+    const w = Math.sqrt(Math.max(0.02, 1 - (t - 0.5) * (t - 0.5) * 4)) * r;
+    ctx.beginPath();
+    ctx.ellipse(yy * 0.9, 0, w * 0.36, w * 0.82, 0, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = q.wrapped * 0.35;
+  ctx.fillStyle = '#eef3ff';
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.85, r * 0.62, 0, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+function drawWarn(q) {
+  const R = G.rect;
+  const t = 1 - q.warn / 1.5;
+  const pulse = 0.45 + 0.55 * Math.abs(Math.sin(G.time * 7));
+  let x = clamp(q.x, 22, W - 22), y = clamp(q.y, 22, H - 22);
+  const a = Math.atan2(R.y + R.h / 2 - q.y, R.x + R.w / 2 - q.x);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(0, 0, 34, [255, 90, 70], 0.3 * pulse);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.rotate(a);
+  ctx.globalAlpha = 0.55 + pulse * 0.45;
+  ctx.fillStyle = '#ff9a72';
+  for (let i = 0; i < 2; i++) {
+    const o = i * 7 + Math.sin(G.time * 6) * 2;
+    ctx.beginPath();
+    ctx.moveTo(o - 4, -7); ctx.lineTo(o + 4, 0); ctx.lineTo(o - 4, 7);
+    ctx.lineTo(o - 1.5, 0); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+function drawPrey() {
+  const list = G.prey;
+  for (let i = 0; i < list.length; i++) {
+    const q = list[i];
+    if (!q.alive) continue;
+    if (q.warn > 0) { drawWarn(q); continue; }
+    let x = q.x, y = q.y;
+    if (q.stuck && q.strand && q.strand.alive) {
+      /* keep the struggle wobble, but ride the interpolated silk */
+      posOnStrandR(q.strand, q.u, _pt2);
+      posOnStrand(q.strand, q.u, _pt3);
+      x = _pt2.x + (q.x - _pt3.x);
+      y = _pt2.y + (q.y - _pt3.y);
+    }
+    if (q.kind === 'fly') drawFly(q, x, y);
+    else if (q.kind === 'moth') drawMoth(q, x, y);
+    else if (q.kind === 'beetle') drawBeetle(q, x, y);
+    else drawWasp(q, x, y);
+    if (q.wrapped > 0) drawWrapSilk(q, x, y);
+    /* struggle countdown ring */
+    if (q.stuck && q.kind !== 'wasp' && q.escapeMax > 0 && q.wrapped <= 0) {
+      const t = clamp(q.escapeT / q.escapeMax, 0, 1);
+      if (t > 0.25) {
+        ctx.strokeStyle = 'rgba(255,' + (200 - t * 120 | 0) + ',120,' + (0.14 + t * 0.4) + ')';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(x, y, q.size + 7, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - t));
+        ctx.stroke();
+      }
+    }
+  }
+}
+/* ------------------------------- spider ------------------------------- */
+function drawSpider() {
+  const sp = G.spider;
+  if (!sp || !sp.strand) return;
+  let ox = 0, oy = 0;
+  if (sp.strand.alive) {
+    posOnStrandR(sp.strand, sp.u, _pt);
+    ox = _pt.x - sp.x; oy = _pt.y - sp.y;
+  }
+  const dead = !sp.alive;
+  const curl = dead ? clamp((sp.deadT || 0) / 0.9, 0, 1) : 0;
+  const s = sp.size * (1 - curl * 0.12);
+  const ca = Math.cos(sp.ang), sa = Math.sin(sp.ang);
+  const nx = -sa, ny = ca;
+  const bob = Math.sin(sp.bob) * (sp.walking ? 0.9 : 0.5) + Math.sin(sp.breathe * 1.7) * 0.5;
+  /* hang just under the thread, the way an orb-weaver actually sits */
+  const hang = 3.7 * s + bob * 0.4;
+  const bx = sp.x + ox + nx * hang;
+  const by = sp.y + oy + ny * hang;
+
+  const dark = rgba(mixc(PAL.top, [30, 16, 24], 0.42), 1);
+  const darker = rgba(mixc(PAL.top, [10, 5, 10], 0.5), 1);
+  const rim = rgba(PAL.amb, 0.55);
+
+  ctx.save();
+  /* legs */
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 8; i++) {
+    const L = sp.legs[i];
+    let fx = L.fx + ox, fy = L.fy + oy;
+    if (curl > 0) { fx = lerp(fx, bx + (fx - bx) * 0.3, curl); fy = lerp(fy, by + (fy - by) * 0.3, curl); }
+    const hx = bx + ca * (L.idx - 1.5) * 2.0 * s + nx * L.side * 1.5 * s;
+    const hy = by + sa * (L.idx - 1.5) * 2.0 * s + ny * L.side * 1.5 * s;
+    const dx = fx - hx, dy = fy - hy;
+    const dl = Math.hypot(dx, dy) || 1;
+    /* a real knee: femur arches up over the thread, tibia drops to the foot */
+    const lift = (dl * 0.34 + 5 * s + L.up) * (1 - curl * 0.55);
+    const kx = hx + dx * 0.46 - nx * lift + (-dy / dl) * L.side * dl * 0.06;
+    const ky = hy + dy * 0.46 - ny * lift + (dx / dl) * L.side * dl * 0.06;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = darker;
+    ctx.lineWidth = 1.85 * s;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
+    ctx.lineWidth = 1.15 * s;
+    ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+    /* rim light down the femur */
+    ctx.strokeStyle = rgba(PAL.amb, 0.20);
+    ctx.lineWidth = 0.6 * s;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+    /* knee joint + foot tip */
+    ctx.fillStyle = darker;
+    ctx.beginPath(); ctx.arc(kx, ky, 1.05 * s, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(fx, fy, 0.75 * s, 0, TAU); ctx.fill();
+  }
+  /* abdomen */
+  ctx.save();
+  ctx.translate(bx, by); ctx.rotate(sp.ang);
+  const ab = 7.4 * s, abw = 6.1 * s;
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.ellipse(-5.6 * s, 0, ab, abw, 0, 0, TAU); ctx.fill();
+  /* orb-weaver chevrons */
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(-5.6 * s, 0, ab, abw, 0, 0, TAU); ctx.clip();
+  ctx.strokeStyle = rgba(mixc(PAL.amb, [255, 245, 230], 0.45), 0.35);
+  ctx.lineWidth = 1.15 * s;
+  for (let i = 0; i < 3; i++) {
+    const xx = -10.5 * s + i * 3.3 * s;
+    ctx.beginPath();
+    ctx.moveTo(xx - 1.6 * s, -abw); ctx.quadraticCurveTo(xx + 1.9 * s, 0, xx - 1.6 * s, abw);
+    ctx.stroke();
+  }
+  ctx.fillStyle = rgba(mixc(PAL.amb, [255, 250, 240], 0.5), 0.16);
+  ctx.beginPath(); ctx.ellipse(-6.6 * s, -2.1 * s, ab * 0.55, abw * 0.42, -0.3, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = rim; ctx.lineWidth = 0.9 * s;
+  ctx.beginPath(); ctx.ellipse(-5.6 * s, 0, ab, abw, 0, Math.PI * 1.02, Math.PI * 1.98); ctx.stroke();
+  /* cephalothorax */
+  ctx.fillStyle = darker;
+  ctx.beginPath(); ctx.ellipse(2.1 * s, 0, 4.4 * s, 3.7 * s, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = rim; ctx.lineWidth = 0.8 * s;
+  ctx.beginPath(); ctx.ellipse(2.1 * s, 0, 4.4 * s, 3.7 * s, 0, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+  /* eyes */
+  if (!dead) {
+    ctx.fillStyle = rgba(mixc(PAL.amb, [255, 255, 255], 0.6), 0.85);
+    for (let i = 0; i < 4; i++) {
+      const ex = 5.1 * s - (i % 2) * 1.5 * s;
+      const ey = (i < 2 ? -1 : 1) * (1.05 + (i % 2) * 0.95) * s;
+      ctx.beginPath(); ctx.arc(ex, ey, (i % 2 ? 0.55 : 0.75) * s, 0, TAU); ctx.fill();
+    }
+  }
+  /* pedipalps */
+  ctx.strokeStyle = darker; ctx.lineWidth = 1.5 * s;
+  for (let sd = -1; sd <= 1; sd += 2) {
+    ctx.beginPath(); ctx.moveTo(5 * s, sd * 2 * s);
+    ctx.quadraticCurveTo(7.6 * s, sd * 3.4 * s, 8.4 * s, sd * 1.6 * s); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+
+  /* wrapping wisps */
+  if (sp.wrap && sp.wrap.alive) {
+    const q = sp.wrap;
+    ctx.strokeStyle = 'rgba(238,244,255,.5)';
+    ctx.lineWidth = 0.9;
+    for (let i = 0; i < 3; i++) {
+      const t = G.time * 7 + i * 2.1;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.quadraticCurveTo((bx + q.x) / 2 + Math.cos(t) * 9, (by + q.y) / 2 + Math.sin(t) * 9, q.x, q.y);
+      ctx.stroke();
+    }
+  }
+  /* not-connected marker */
+  if (sp.deny > 0) {
+    const t = sp.deny / 0.5;
+    const sh = Math.sin(G.time * 44) * 4 * t;
+    ctx.save();
+    ctx.translate(sp.denyX + sh, sp.denyY);
+    ctx.globalAlpha = t * 0.9;
+    ctx.strokeStyle = '#ff9aa8'; ctx.lineWidth = 1.7;
+    ctx.beginPath(); ctx.arc(0, 0, 12, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-4.5, -4.5); ctx.lineTo(4.5, 4.5);
+    ctx.moveTo(4.5, -4.5); ctx.lineTo(-4.5, 4.5); ctx.stroke();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+/* ------------------------------ particles ------------------------------ */
+function drawParts() {
+  const arr = G.parts;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i];
+    if (p.life <= 0) continue;
+    const t = p.life / p.max;
+    if (p.type === 2) continue;
+    const a = clamp(t, 0, 1) * (p.type === 3 ? 0.9 : 0.65);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = rgb(p.col);
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.4 + t * 0.8), 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  /* leaf flecks are opaque silhouettes */
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i];
+    if (p.life <= 0 || p.type !== 2) continue;
+    const t = clamp(p.life / p.max, 0, 1);
+    leafShape(p.x, p.y, p.size * 3.2, p.size * 1.1, p.rot, rgba(mixc(PAL.top, p.col, 0.5), 1), Math.min(1, t * 2) * 0.8);
+  }
+}
+function drawFloats(dt) {
+  const arr = G.floats;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const f = arr[i];
+    f.t += dt;
+    if (f.t > f.max) { arr.splice(i, 1); continue; }
+    const t = f.t / f.max;
+    ctx.globalAlpha = (1 - t) * (t < 0.12 ? t / 0.12 : 1);
+    ctx.fillStyle = rgb(f.col);
+    ctx.font = '600 12px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.fillText(f.txt, f.x, f.y - 12 - t * 26);
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = 'left';
+}
+const FONT = 'ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
+
+/* --------------------------- drag preview / UI --------------------------- */
+function drawDrag() {
+  const d = G.drag;
+  if (!d || !d.moved || !d.S) return;
+  evalDrag(d);
+  dragEndpoints(d, _ep);
+  const ex = d.end ? d.end.x : d.x, ey = d.end ? d.end.y : d.y;
+  const ok = d.valid;
+  const col = ok ? [232, 240, 255] : [255, 130, 130];
+  const L = Math.hypot(ex - _ep.x, ey - _ep.y);
+  const mx = (_ep.x + ex) / 2, my = (_ep.y + ey) / 2 + Math.min(26, L * 0.07);
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.lineDashOffset = -G.time * 26;
+  ctx.strokeStyle = rgba(col, ok ? 0.75 : 0.6);
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(_ep.x, _ep.y);
+  ctx.quadraticCurveTo(mx, my, ex, ey);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(_ep.x, _ep.y, 13, col, 0.4);
+  if (d.end) drawGlow(ex, ey, 13, col, 0.45);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = rgba(col, 0.9); ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.arc(_ep.x, _ep.y, 4.5, 0, TAU); ctx.stroke();
+  if (d.end) {
+    const pulse = 4.5 + Math.sin(G.time * 9) * 1.1;
+    ctx.beginPath(); ctx.arc(ex, ey, pulse, 0, TAU); ctx.stroke();
+  }
+  /* cost readout */
+  const label = !d.end ? 'no anchor' : d.reason === 'short' ? 'too short' : Math.round(d.cost) + ' silk';
+  ctx.font = '600 11px ' + FONT;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = rgba(col, 0.95);
+  ctx.fillText(label, d.x, d.y - 16);
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+function drawHover() {
+  if (!G.hover || G.drag || IS_TOUCH || G.state !== 'play') return;
+  const h = G.hover;
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = h.S.kind === 'anchor' ? 'rgba(255,210,150,.9)' : 'rgba(210,230,255,.9)';
+  ctx.lineWidth = 1.1;
+  const r = 4 + Math.sin(G.time * 4) * 0.7;
+  ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, TAU); ctx.stroke();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+function drawTopBar(f) {
+  if (G.state === 'menu') return;
+  const col = mixc(PAL.hor, PAL.amb, 0.55);
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.fillRect(0, 0, W, 2.5);
+  const w = W * clamp(f, 0, 1);
+  ctx.fillStyle = rgba(col, 0.8);
+  ctx.fillRect(0, 0, w, 2.5);
+  ctx.globalCompositeOperation = 'lighter';
+  drawGlow(w, 1.2, 15, col, 0.45);
+  ctx.globalCompositeOperation = 'source-over';
+}
+function drawBanner(dt) {
+  if (!G.banner) return;
+  const iv = G.interlude;
+  const a = clamp(Math.min((3.6 - iv) / 0.5, iv / 0.9), 0, 1);
+  if (a <= 0.005) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.textAlign = 'center';
+  const y = H * 0.4;
+  ctx.font = '400 ' + Math.round(clamp(Math.min(W, H) * 0.075, 24, 50)) + 'px ' + SERIF;
+  ctx.fillStyle = 'rgba(10,6,20,.5)';
+  ctx.fillText(G.banner, W / 2 + 1.5, y + 2);
+  ctx.fillStyle = rgba(mixc([255, 255, 255], PAL.amb, 0.35), 0.96);
+  ctx.fillText(G.banner, W / 2, y);
+  ctx.font = '500 11px ' + FONT;
+  ctx.fillStyle = rgba(PAL.amb, 0.75);
+  ctx.fillText('THE LIGHT COMES BACK', W / 2, y + 26);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+/* ------------------------------- main draw ------------------------------- */
+function render(dt) {
+  const f = (G.interlude > 0 || G.state === 'win') ? 1 : clamp(G.nightT / G.cfg.dur, 0, 1);
+  drawSky(f);
+  drawStars(f);
+  drawMoon(f);
+  ctx.save();
+  ctx.translate(G.shakeX, G.shakeY);
+  drawFar(f);
+  drawBranches();
+  drawSilk();
+  drawDew();
+  drawPrey();
+  drawSpider();
+  drawParts();
+  drawDrag();
+  drawHover();
+  drawFloats(dt);
+  ctx.restore();
+  drawFgLeaves();
+  drawTopBar(f);
+  drawBanner(dt);
+}
+
+/* =====================================================================
+   LOOP
+   ===================================================================== */
+let cricketT = 5;
+function stepGame(dt) {
+  G.time += dt;
+  physicsStep(dt);
+  updateSpider(dt);
+  updatePrey(dt);
+  updateParts(dt);
+  if (G.state === 'play') {
+    G.silk = Math.min(SILK_MAX, G.silk + SILK_REGEN * dt);
+    G.hunger -= (G.interlude > 0 ? 0.5 : 1.15) * dt;
+    if (G.hunger <= 0) { G.hunger = 0; endGame('starve'); }
+    if (G.interlude > 0) {
+      G.interlude -= dt;
+      if (G.interlude <= 0) { G.interlude = 0; advanceNight(); }
+    } else {
+      G.nightT += dt;
+      updateSpawns(dt);
+      if (G.nightT >= G.cfg.dur) startInterlude();
+    }
+  } else if (G.state === 'menu') {
+    updateSpawns(dt);
+    G.silk = SILK_MAX;
+  }
+  /* the web as an instrument: let loud strands ring */
+  G.pluckT -= dt;
+  if (G.pluckT <= 0) {
+    let best = null, bv = 190;
+    for (let i = 0; i < G.strands.length; i++) {
+      const S = G.strands[i];
+      if (S.kind !== 'silk') continue;
+      if (S.vib > bv) { bv = S.vib; best = S; }
+    }
+    if (best) { sfxPluck(best.note, clamp(bv / 2600, 0.012, 0.075), 0.7); G.pluckT = 0.26; }
+    else G.pluckT = 0.1;
+  }
+  cricketT -= dt;
+  if (cricketT <= 0) {
+    cricketT = rnd(2.6, 7.5);
+    const f = G.nightT / G.cfg.dur;
+    if (f > 0.18 && f < 0.9 && !A.muted) sfxCricket();
+  }
+  G.sweepT -= dt;
+  if (G.sweepT <= 0) { G.sweepT = 1.1; pruneFallen(); }
+  G.shake *= Math.exp(-dt * 7);
+  if (G.shake < 0.05) G.shake = 0;
+  G.shakeX = (Math.random() * 2 - 1) * G.shake;
+  G.shakeY = (Math.random() * 2 - 1) * G.shake;
+}
+function frame(now) {
+  rafId = requestAnimationFrame(frame);
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  if (!(dt > 0)) dt = 0;
+  if (dt > 0.2) dt = 0.2;
+  if (!G) return;
+  if (G.state !== 'pause') {
+    G.acc += dt;
+    let steps = 0;
+    while (G.acc >= PH.DT && steps < 8) { stepGame(PH.DT); G.acc -= PH.DT; steps++; }
+    if (steps >= 8) G.acc = 0;
+    RA = clamp(G.acc / PH.DT, 0, 1);
+  } else {
+    RA = 0;
+  }
+  render(G.state === 'pause' ? 0 : dt);
+  syncButtons();
+  if (G.state === 'play' || G.state === 'menu') updateHUD(false);
+}
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+function bindBtn(el, fn) {
+  el.addEventListener('click', e => { e.preventDefault(); audioInit(); audioResume(); fn(); });
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); audioInit(); audioResume(); fn(); }
+  });
+}
+function continueEndless() {
+  if (!G) return;
+  G.endless = true;
+  G.night = Math.max(4, G.night + 1);
+  G.cfg = nightConfig(G.night);
+  G.nightT = 0; G.interlude = 0; G.banner = null;
+  G.waspIdx = 0; G.spawnT = 2.4; G.beetleT = 14;
+  G.hunger = Math.max(G.hunger, 70);
+  G.silk = Math.max(G.silk, 60);
+  G.state = 'play';
+  if (G.spider && !G.spider.alive) { G.spider.alive = true; G.spider.deadT = 0; }
+  setDuck(1);
+  showPanel(null);
+  hudOn(true);
+  updateHUD(true);
+  toast('<b>Endless dawn.</b> The garden keeps coming. Hold what you built.', 4200);
+}
+function init() {
+  resize();
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => { setTimeout(resize, 140); });
+  cvs.addEventListener('pointerdown', onDown, { passive: false });
+  window.addEventListener('pointermove', onMove, { passive: false });
+  window.addEventListener('pointerup', onUp, { passive: false });
+  window.addEventListener('pointercancel', onCancel);
+  cvs.addEventListener('contextmenu', e => e.preventDefault());
+  cvs.addEventListener('dblclick', e => e.preventDefault());
+  cvs.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  cvs.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  window.addEventListener('keydown', onKey);
+  window.addEventListener('blur', () => { if (G && G.state === 'play') pauseGame('blur'); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && G && G.state === 'play') pauseGame('blur');
+  });
+  bindBtn($('playBtn'), () => startGame());
+  bindBtn($('resumeBtn'), () => resumeGame());
+  bindBtn($('restartBtn2'), () => startGame());
+  bindBtn($('againBtn'), () => startGame());
+  bindBtn($('restartBtn3'), () => startGame());
+  bindBtn($('endlessBtn'), () => continueEndless());
+  bindBtn($('pauseBtn'), () => { if (G && G.state === 'play') pauseGame('key'); else if (G && G.state === 'pause') resumeGame(); });
+  bindBtn($('muteBtn'), () => setMute(!A.muted));
+
+  newGame();
+  G.state = 'menu';
+  hudOn(false);
+  showPanel('startPanel');
+  lastT = performance.now();
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(frame);
+}
+init();
+</script>
+</body>
+</html>
