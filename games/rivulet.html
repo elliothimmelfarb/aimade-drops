@@ -1,0 +1,2191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="RIVULET - you are a raindrop on a dusk windowpane. Stay heavy. A drop that stalls, dries.">
+<title>RIVULET</title>
+<style>
+  :root{
+    --glass:#0d1826;
+    --glass-d:#070e18;
+    --water:#9ad8f2;
+    --water-d:#3f8fc2;
+    --gold:#ffd28a;
+    --amber:#ffbe6a;
+    --rose:#ff9aa6;
+    --ink:#e9f4fb;
+    --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:#070e18;color:var(--ink);
+    font-family:var(--ui);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#070e18;}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+
+  /* ---------------- HUD ---------------- */
+  #hud{
+    position:absolute;left:0;right:0;top:0;z-index:6;pointer-events:none;
+    padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));
+    display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+    opacity:0;transition:opacity .45s ease;
+  }
+  #hud.on{opacity:1;}
+  .hcol{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .hcol.r{align-items:flex-end;text-align:right;}
+  .lbl{
+    font-size:9px;letter-spacing:.26em;text-transform:uppercase;font-weight:600;
+    color:rgba(215,238,250,.5);text-shadow:0 1px 4px rgba(4,10,20,.8);
+  }
+  .val{
+    font-size:23px;line-height:1;font-weight:600;font-variant-numeric:tabular-nums;
+    letter-spacing:.02em;color:#eef8ff;text-shadow:0 2px 12px rgba(4,12,24,.8);
+    transition:transform .14s cubic-bezier(.2,1.7,.4,1);transform-origin:0 50%;
+  }
+  .hcol.r .val{transform-origin:100% 50%;font-size:15px;color:rgba(233,244,251,.82);}
+  .val.pop{transform:scale(1.26);}
+
+  /* water gauge */
+  #gaugeWrap{margin-top:9px;position:relative;width:clamp(124px,34vw,186px);}
+  #gauge{
+    position:relative;height:13px;border-radius:8px;overflow:hidden;
+    background:linear-gradient(180deg,rgba(6,14,26,.62),rgba(10,22,36,.5));
+    box-shadow:inset 0 0 0 1px rgba(170,214,238,.24), inset 0 2px 5px rgba(0,0,0,.42);
+  }
+  #gFill{
+    position:absolute;left:0;top:0;bottom:0;width:100%;
+    transform-origin:0 50%;transform:scaleX(0);
+    background:linear-gradient(180deg,#bfeaff 0%,#7cc9ec 42%,#3f8fc2 100%);
+    box-shadow:0 0 10px rgba(124,201,236,.45);
+  }
+  #gShine{
+    position:absolute;left:0;top:0;bottom:0;width:100%;
+    transform-origin:0 50%;transform:scaleX(0);
+    background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.34) 46%,rgba(255,255,255,0) 100%);
+    opacity:.55;mix-blend-mode:screen;
+  }
+  #gMark{
+    position:absolute;top:-3px;bottom:-3px;width:2px;border-radius:2px;
+    background:linear-gradient(180deg,rgba(255,214,140,.35),rgba(255,190,106,1),rgba(255,214,140,.35));
+    box-shadow:0 0 6px rgba(255,190,106,.75);
+  }
+  #gMarkLbl{
+    position:absolute;top:15px;font-size:8px;letter-spacing:.18em;font-weight:700;
+    color:rgba(255,190,106,.86);transform:translateX(-50%);white-space:nowrap;
+    text-shadow:0 1px 4px rgba(4,10,20,.9);
+  }
+  #gaugeWrap.warn #gauge{box-shadow:inset 0 0 0 1px rgba(255,190,106,.6), inset 0 2px 5px rgba(0,0,0,.42), 0 0 12px rgba(255,160,80,.3);}
+  #gaugeWrap.warn #gFill{background:linear-gradient(180deg,#ffe0b0 0%,#ffbe6a 45%,#e08a3c 100%);}
+  #gaugeWrap.crit{animation:gpulse .62s ease-in-out infinite;}
+  #gaugeWrap.crit #gFill{background:linear-gradient(180deg,#ffd0c0 0%,#ff9a76 45%,#d05a3c 100%);}
+  @keyframes gpulse{0%,100%{transform:scale(1);}50%{transform:scale(1.045);}}
+
+  /* mute button */
+  #mute{
+    position:absolute;z-index:8;pointer-events:auto;
+    right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));
+    font-family:var(--ui);font-size:9px;letter-spacing:.2em;font-weight:700;
+    color:rgba(222,242,252,.86);background:rgba(12,26,42,.62);
+    border:1px solid rgba(160,205,232,.34);border-radius:999px;
+    padding:8px 12px;cursor:pointer;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    transition:color .2s ease,border-color .2s ease,background .2s ease;
+  }
+  #mute:hover{color:#eef8ff;border-color:rgba(160,205,232,.44);}
+  #mute.off{color:rgba(215,238,250,.36);}
+
+  /* ------------- banner ------------- */
+  #banner{
+    position:absolute;left:0;right:0;top:24%;z-index:7;pointer-events:none;
+    text-align:center;opacity:0;padding:0 18px;
+  }
+  #banner.show{animation:bannerIn 2.9s cubic-bezier(.16,.9,.3,1) forwards;}
+  @keyframes bannerIn{
+    0%{opacity:0;transform:translateY(18px) scale(.95);}
+    11%{opacity:1;transform:translateY(0) scale(1);}
+    70%{opacity:1;transform:translateY(0) scale(1);}
+    100%{opacity:0;transform:translateY(-14px) scale(1.02);}
+  }
+  #bMain{
+    font-size:clamp(24px,6.4vw,46px);font-weight:300;letter-spacing:.3em;
+    color:#f2fbff;text-shadow:0 0 34px rgba(124,201,236,.5),0 6px 28px rgba(4,10,22,.8);
+    text-indent:.3em;
+  }
+  #bSub{
+    margin-top:9px;font-size:clamp(10px,2.6vw,14px);letter-spacing:.24em;text-transform:uppercase;
+    color:rgba(255,190,106,.9);text-shadow:0 2px 14px rgba(40,16,0,.7);text-indent:.24em;
+  }
+
+  /* ------------- screens ------------- */
+  .screen{
+    position:absolute;inset:0;z-index:10;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:24px;
+    background:radial-gradient(125% 92% at 50% 44%, rgba(6,14,26,.14) 0%, rgba(6,14,26,.6) 58%, rgba(4,9,18,.84) 100%);
+    opacity:1;transition:opacity .45s ease;
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  }
+  .screen.hidden{opacity:0;pointer-events:none;}
+  /* the title screen keeps a thinner veil so the demo drop stays visible */
+  #startScreen{
+    background:radial-gradient(125% 92% at 50% 42%, rgba(6,14,26,.06) 0%, rgba(6,14,26,.44) 56%, rgba(4,9,18,.74) 100%);
+    -webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px);
+  }
+  .card{
+    max-width:min(580px,94vw);
+    display:flex;flex-direction:column;align-items:center;
+    animation:cardIn .6s cubic-bezier(.16,.9,.3,1) both;
+  }
+  @keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(.975);}to{opacity:1;transform:none;}}
+  h1{
+    margin:0;font-size:clamp(40px,12.5vw,86px);font-weight:200;letter-spacing:.34em;line-height:1;
+    color:#f4fcff;text-indent:.34em;
+    text-shadow:0 0 46px rgba(124,201,236,.55), 0 0 96px rgba(63,143,194,.34), 0 8px 40px rgba(3,8,16,.8);
+  }
+  .rule{
+    width:min(300px,68vw);height:1px;margin:20px 0 16px;
+    background:linear-gradient(90deg,transparent,rgba(154,216,242,.65),rgba(255,190,106,.5),transparent);
+  }
+  .prem{
+    margin:0 0 20px;font-size:clamp(13px,3.5vw,17px);line-height:1.6;
+    color:rgba(233,244,251,.9);max-width:30ch;font-weight:300;letter-spacing:.02em;
+    text-shadow:0 2px 12px rgba(3,8,16,.85);
+  }
+  .prem em{font-style:normal;color:#ffbe6a;}
+  .keys{
+    display:flex;flex-wrap:wrap;gap:7px 8px;justify-content:center;margin-bottom:22px;max-width:min(470px,92vw);
+  }
+  .k{
+    display:flex;align-items:center;gap:7px;
+    font-size:11px;letter-spacing:.03em;color:rgba(233,244,251,.8);font-weight:300;
+    background:rgba(12,26,42,.5);border:1px solid rgba(154,216,242,.15);
+    padding:6px 11px;border-radius:999px;white-space:nowrap;
+  }
+  .k b{
+    font-weight:700;color:#0a1522;background:rgba(190,229,247,.92);
+    padding:2px 7px;border-radius:5px;font-size:10px;letter-spacing:.07em;
+  }
+  .cta{
+    font-size:11px;letter-spacing:.3em;text-transform:uppercase;font-weight:700;
+    color:#08121e;padding:14px 30px;border-radius:999px;text-indent:.3em;
+    background:linear-gradient(180deg,#cbeeff,#7cc9ec);
+    box-shadow:0 8px 30px rgba(63,143,194,.4),0 2px 0 rgba(255,255,255,.35) inset;
+    animation:bob 2.6s ease-in-out infinite;
+  }
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
+  .stats{display:flex;gap:clamp(16px,6vw,44px);justify-content:center;margin:10px 0 18px;flex-wrap:wrap;}
+  .stat{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .stat .sv{font-size:clamp(26px,7.5vw,40px);font-weight:300;line-height:1;color:#f2fbff;
+    font-variant-numeric:tabular-nums;text-shadow:0 0 28px rgba(124,201,236,.4);}
+  .stat .sl{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:rgba(215,238,250,.5);font-weight:600;}
+  .best{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,190,106,.92);
+    margin-bottom:18px;min-height:13px;font-weight:600;}
+  h2{
+    margin:0 0 8px;font-size:clamp(28px,8.5vw,54px);font-weight:200;letter-spacing:.26em;line-height:1;
+    color:#f2fbff;text-indent:.26em;text-shadow:0 0 40px rgba(124,201,236,.4),0 8px 34px rgba(3,8,16,.8);
+  }
+  .sub{font-size:clamp(12px,3.2vw,15px);color:rgba(233,244,251,.74);margin:0 0 14px;
+    letter-spacing:.05em;font-weight:300;max-width:32ch;line-height:1.5;}
+  .tiny{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:rgba(215,238,250,.38);margin-top:20px;font-weight:600;}
+  #pauseScreen h2{font-size:clamp(24px,7vw,42px);}
+  @media (max-height:460px){
+    h1{font-size:clamp(32px,9.5vh,56px);}
+    .rule{margin:12px 0 10px;}
+    .prem{margin-bottom:12px;font-size:12px;}
+    .keys{margin-bottom:14px;gap:5px 6px;}
+    .k{padding:5px 9px;font-size:10px;}
+    .cta{padding:11px 24px;}
+    .stats{margin:6px 0 12px;}
+    .best{margin-bottom:12px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="hcol">
+      <div class="lbl">Score</div>
+      <div class="val" id="scoreEl">0</div>
+      <div id="gaugeWrap">
+        <div id="gauge">
+          <div id="gFill"></div>
+          <div id="gShine"></div>
+          <div id="gMark"></div>
+        </div>
+        <div id="gMarkLbl">STALL</div>
+      </div>
+    </div>
+    <div class="hcol r">
+      <div class="lbl">Pane</div>
+      <div class="val" id="paneEl" style="font-size:23px;color:#eef8ff">1</div>
+      <div class="lbl" style="margin-top:8px">Drunk</div>
+      <div class="val" id="drunkEl">0</div>
+    </div>
+  </div>
+
+  <button id="mute" type="button" aria-label="Toggle sound">&#9834; ON</button>
+
+  <div id="banner"><div id="bMain"></div><div id="bSub"></div></div>
+
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <h1>RIVULET</h1>
+      <div class="rule"></div>
+      <p class="prem">You are a raindrop on the outside of the glass. <em>Stay heavy. A drop that stalls, dries.</em></p>
+      <div class="keys">
+        <div class="k"><b>MOUSE</b> / <b>TOUCH</b> steer</div>
+        <div class="k"><b>&larr; &rarr;</b> / <b>A D</b> steer</div>
+        <div class="k"><b>DRINK</b> droplets to stay heavy</div>
+        <div class="k"><b>AVOID</b> sun-glare &amp; dust</div>
+        <div class="k"><b>REACH</b> the sill</div>
+        <div class="k"><b>M</b> mute</div>
+      </div>
+      <div class="cta" id="startCta">Click / tap to begin</div>
+      <div class="tiny">or press space</div>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="overScreen">
+    <div class="card">
+      <h2>DRIED</h2>
+      <p class="sub" id="overSub">The last of you lifted off the warm glass.</p>
+      <div class="stats">
+        <div class="stat"><div class="sv" id="oScore">0</div><div class="sl">Score</div></div>
+        <div class="stat"><div class="sv" id="oPanes">0</div><div class="sl">Panes cleared</div></div>
+        <div class="stat"><div class="sv" id="oDrunk">0</div><div class="sl">Droplets drunk</div></div>
+      </div>
+      <div class="best" id="oBest"></div>
+      <div class="cta" id="overCta">Click / tap to fall again</div>
+      <div class="tiny">or press space</div>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="pauseScreen">
+    <div class="card">
+      <h2>PAUSED</h2>
+      <p class="sub">The rain waits.</p>
+      <div class="cta">Click or press to resume</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   RIVULET — a raindrop on a dusk windowpane
+   World coordinates are normalized: x in [0,1] across the pane,
+   y in [0,1] down the pane. Everything scales on resize, so entities
+   can never be stranded off-screen.
+   ========================================================================= */
+
+var TAU = Math.PI * 2;
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function rnd(a,b){ return a+Math.random()*(b-a); }
+function rndi(a,b){ return (a+Math.random()*(b-a+1))|0; }
+function smoothstep(t){ t=clamp(t,0,1); return t*t*(3-2*t); }
+function easeOutCubic(t){ t=clamp(t,0,1); var u=1-t; return 1-u*u*u; }
+function easeInOutCubic(t){ t=clamp(t,0,1); return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function chance(p){ return Math.random() < p; }
+
+/* ---------------- canvas / viewport ---------------- */
+var wrapEl = document.getElementById('wrap');
+var cv  = document.getElementById('game');
+var ctx = cv.getContext('2d', { alpha:false });
+var W = 1, H = 1, DPR = 1, PS = 1;   // PS = "pane scale", the isotropic size unit
+
+/* ---------------- DOM ---------------- */
+var hudEl       = document.getElementById('hud');
+var scoreEl     = document.getElementById('scoreEl');
+var paneEl      = document.getElementById('paneEl');
+var drunkEl     = document.getElementById('drunkEl');
+var gaugeWrap   = document.getElementById('gaugeWrap');
+var gFill       = document.getElementById('gFill');
+var gShine      = document.getElementById('gShine');
+var gMark       = document.getElementById('gMark');
+var gMarkLbl    = document.getElementById('gMarkLbl');
+var muteBtn     = document.getElementById('mute');
+var bannerEl    = document.getElementById('banner');
+var bMain       = document.getElementById('bMain');
+var bSub        = document.getElementById('bSub');
+var startScreen = document.getElementById('startScreen');
+var overScreen  = document.getElementById('overScreen');
+var pauseScreen = document.getElementById('pauseScreen');
+var oScore = document.getElementById('oScore');
+var oPanes = document.getElementById('oPanes');
+var oDrunk = document.getElementById('oDrunk');
+var oBest  = document.getElementById('oBest');
+var overSub = document.getElementById('overSub');
+
+/* =========================================================================
+   TUNING
+   ========================================================================= */
+var M_START  = 110;    // starting mass
+var M_STALL  = 34;     // below this the drop is pinned by surface tension
+var M_REF    = 150;    // mass at which vertical speed caps out
+var M_MAX    = 170;    // absolute mass ceiling (gauge full)
+var CREEP    = 0.0115; // stalled crawl, in pane-heights / second
+var VY_MIN   = 0.052;
+var VY_MAX   = 0.163;
+var VX_MAX   = 0.72;   // pane-widths / second
+var STEER_K  = 5.4;
+var KEY_RATE = 1.05;
+var TRAIL_COST = 90;   // mass per pane-height of slide, at mass 100
+var EVAP_STALL = 3.2;  // multiplier on ambient while stalled
+var GLARE_BURN = 10.5; // extra mass/sec at the heart of a glare
+var DUST_MULT  = 2.25; // trail cost multiplier over dust
+var SILL_Y   = 0.945;
+var R_BASE   = 0.055;  // player radius (in PS) at mass 100
+
+/* =========================================================================
+   AUDIO — synthesized only, built on first user gesture
+   ========================================================================= */
+var SND = {
+  ctx:null, master:null, ready:false, muted:false,
+  noiseBuf:null,
+  rainGain:null, rainFilt:null,
+  sizzGain:null, sizzFilt:null,
+  rainLfoPhase:0, sizzCur:0, sizzTarget:0,
+
+  init:function(){
+    if(this.ctx){ this.resume(); return; }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    try{ this.ctx = new AC(); }catch(e){ this.ctx=null; return; }
+    var c = this.ctx;
+
+    this.master = c.createGain();
+    this.master.gain.value = 0;
+    this.master.connect(c.destination);
+    this.master.gain.setTargetAtTime(this.muted?0:0.9, c.currentTime, 0.5);
+
+    // ---- pink-ish noise loop
+    var len = Math.floor(c.sampleRate*2.4);
+    var b = c.createBuffer(1, len, c.sampleRate);
+    var d = b.getChannelData(0), last = 0, i;
+    for(i=0;i<len;i++){
+      var wn = Math.random()*2-1;
+      last = last*0.74 + wn*0.26;
+      d[i] = last*1.35;
+    }
+    var fadeN = 2400;
+    for(i=0;i<fadeN;i++){
+      var t = i/fadeN;
+      d[i] = d[i]*t + d[len-fadeN+i]*(1-t);
+    }
+    this.noiseBuf = b;
+
+    // ---- rain bed: soft filtered noise
+    this.rainGain = c.createGain(); this.rainGain.gain.value = 0;
+    this.rainFilt = c.createBiquadFilter();
+    this.rainFilt.type='bandpass'; this.rainFilt.frequency.value=1250; this.rainFilt.Q.value=0.5;
+    var rlp = c.createBiquadFilter(); rlp.type='lowpass'; rlp.frequency.value=3200;
+    var rsrc = c.createBufferSource(); rsrc.buffer=b; rsrc.loop=true;
+    rsrc.connect(this.rainFilt); this.rainFilt.connect(rlp);
+    rlp.connect(this.rainGain); this.rainGain.connect(this.master);
+    try{ rsrc.start(0); }catch(e){}
+    this.rainSrc = rsrc;
+    this.rainGain.gain.setTargetAtTime(0.055, c.currentTime, 1.4);
+
+    // ---- glare sizzle
+    this.sizzGain = c.createGain(); this.sizzGain.gain.value = 0;
+    this.sizzFilt = c.createBiquadFilter();
+    this.sizzFilt.type='highpass'; this.sizzFilt.frequency.value=3600;
+    var shp = c.createBiquadFilter(); shp.type='peaking'; shp.frequency.value=5200; shp.Q.value=1.2; shp.gain.value=5;
+    var ssrc = c.createBufferSource(); ssrc.buffer=b; ssrc.loop=true;
+    ssrc.connect(this.sizzFilt); this.sizzFilt.connect(shp);
+    shp.connect(this.sizzGain); this.sizzGain.connect(this.master);
+    try{ ssrc.start(0); }catch(e){}
+    this.sizzSrc = ssrc;
+
+    this.ready = true;
+  },
+
+  resume:function(){
+    if(this.ctx && this.ctx.state === 'suspended'){ try{ this.ctx.resume(); }catch(e){} }
+  },
+  suspend:function(){
+    if(this.ctx && this.ctx.state === 'running'){ try{ this.ctx.suspend(); }catch(e){} }
+  },
+  setMuted:function(m){
+    this.muted = m;
+    if(this.master && this.ctx){
+      this.master.gain.setTargetAtTime(m?0:0.9, this.ctx.currentTime, 0.05);
+    }
+  },
+  now:function(){ return this.ctx ? this.ctx.currentTime : 0; },
+
+  /* one-shot helpers ---------------------------------------------------- */
+  tone:function(type, f0, f1, dur, vol, delay, filtHz){
+    if(!this.ready || this.muted) return;
+    var c = this.ctx, t = c.currentTime + (delay||0);
+    var o = c.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if(f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20,f1), t+dur);
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), t+Math.min(0.02,dur*0.2));
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    if(filtHz){
+      var f = c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=filtHz;
+      o.connect(f); f.connect(g);
+    } else { o.connect(g); }
+    g.connect(this.master);
+    o.start(t); o.stop(t+dur+0.05);
+  },
+
+  noiseBurst:function(dur, vol, hz, q, delay, sweepTo){
+    if(!this.ready || this.muted) return;
+    var c = this.ctx, t = c.currentTime + (delay||0);
+    var s = c.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
+    var f = c.createBiquadFilter(); f.type='bandpass'; f.frequency.setValueAtTime(hz,t); f.Q.value = q||3;
+    if(sweepTo) f.frequency.exponentialRampToValueAtTime(Math.max(40,sweepTo), t+dur);
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t); s.stop(t+dur+0.05);
+  },
+
+  plip:function(mass){
+    if(!this.ready || this.muted) return;
+    var k = clamp(mass/M_MAX, 0, 1);
+    var f = 300 + 680*k;
+    this.tone('sine', f*1.9, f*0.72, 0.15, 0.16, 0, 4200);
+    this.noiseBurst(0.055, 0.045, 1600+1800*k, 2.2, 0.005, 700);
+  },
+  creak:function(){
+    if(!this.ready || this.muted) return;
+    this.tone('triangle', 132, 96, 0.5, 0.1, 0, 900);
+    this.noiseBurst(0.3, 0.028, 420, 7, 0.02, 240);
+  },
+  warn:function(){
+    if(!this.ready || this.muted) return;
+    this.tone('sine', 208, 196, 0.34, 0.075, 0, 1400);
+    this.tone('sine', 312, 294, 0.28, 0.035, 0.03, 1800);
+  },
+  chime:function(){
+    if(!this.ready || this.muted) return;
+    var notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+    for(var i=0;i<notes.length;i++){
+      this.tone('sine', notes[i], notes[i], 0.9 - i*0.09, 0.11 - i*0.012, i*0.085, 6000);
+      this.tone('triangle', notes[i]*2, notes[i]*2, 0.3, 0.02, i*0.085, 7000);
+    }
+    this.noiseBurst(0.22, 0.03, 2400, 1.6, 0.02, 5200);
+  },
+  drip:function(){
+    if(!this.ready || this.muted) return;
+    this.tone('sine', 900, 260, 0.2, 0.13, 0, 4000);
+  },
+  over:function(){
+    if(!this.ready || this.muted) return;
+    this.tone('sine', 174.6, 87.3, 1.5, 0.15, 0, 900);
+    this.tone('sine', 130.8, 65.4, 1.7, 0.1, 0.1, 800);
+    this.tone('triangle', 220, 110, 0.9, 0.045, 0.02, 1200);
+    this.noiseBurst(1.1, 0.045, 1800, 0.9, 0, 300);
+  },
+  start:function(){
+    if(!this.ready || this.muted) return;
+    this.tone('sine', 392, 392, 0.5, 0.07, 0, 5000);
+    this.tone('sine', 587.3, 587.3, 0.6, 0.055, 0.09, 5000);
+  },
+
+  /* continuous sizzle level */
+  setSizzle:function(v, dt){
+    if(!this.ready) return;
+    this.sizzTarget = v;
+    var k = 1 - Math.exp(-dt*6);
+    this.sizzCur += (this.sizzTarget - this.sizzCur)*k;
+    var g = this.sizzGain.gain.value;
+    var want = this.sizzCur*0.05;
+    if(Math.abs(g-want) > 0.0008) this.sizzGain.gain.value = want;
+  }
+};
+
+/* =========================================================================
+   PRE-RENDERED SPRITES (no per-frame gradient churn)
+   ========================================================================= */
+var SPR = { drop:null, glowGold:null, glowBlue:null, glare:null, bokeh:null };
+
+function makeCanvas(w,h){
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+function buildSprites(){
+  /* ---- droplet body: darker rim, faint lens, transparent middle ---- */
+  var S = 128, c = makeCanvas(S,S), g = c.getContext('2d');
+  var cx = S/2, cy = S/2, R = S/2 - 2;
+  var rg = g.createRadialGradient(cx, cy, 0, cx, cy, R);
+  rg.addColorStop(0.00, 'rgba(158,204,232,0.10)');
+  rg.addColorStop(0.45, 'rgba(132,182,214,0.14)');
+  rg.addColorStop(0.74, 'rgba(96,150,188,0.26)');
+  rg.addColorStop(0.90, 'rgba(26,52,78,0.60)');
+  rg.addColorStop(0.975,'rgba(12,28,46,0.34)');
+  rg.addColorStop(1.00, 'rgba(10,24,40,0)');
+  g.fillStyle = rg;
+  g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fill();
+  // lens focus low in the drop
+  var lg = g.createRadialGradient(cx, cy+R*0.30, 0, cx, cy+R*0.30, R*0.62);
+  lg.addColorStop(0, 'rgba(206,236,250,0.26)');
+  lg.addColorStop(1, 'rgba(206,236,250,0)');
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = lg;
+  g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fill();
+  g.globalCompositeOperation = 'source-over';
+  SPR.drop = c;
+
+  /* ---- soft glows ---- */
+  function glow(col0, col1){
+    var s = 96, k = makeCanvas(s,s), q = k.getContext('2d');
+    var gg = q.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+    gg.addColorStop(0, col0);
+    gg.addColorStop(0.42, col1);
+    gg.addColorStop(1, 'rgba(255,255,255,0)');
+    q.fillStyle = gg;
+    q.fillRect(0,0,s,s);
+    return k;
+  }
+  SPR.glowGold = glow('rgba(255,232,186,1)',   'rgba(255,182,96,0.30)');
+  SPR.glowBlue = glow('rgba(216,244,255,0.95)','rgba(126,190,228,0.26)');
+
+  /* ---- pre-tinted bokeh discs ---- */
+  SPR.bokeh = [];
+  for(var bi=0; bi<BOKEH_COLS.length; bi++){
+    var bc = BOKEH_COLS[bi];
+    var pre = 'rgba('+bc[0]+','+bc[1]+','+bc[2]+',';
+    var bs = 128, bk = makeCanvas(bs,bs), bq = bk.getContext('2d');
+    var bg2 = bq.createRadialGradient(bs/2,bs/2,0,bs/2,bs/2,bs/2);
+    bg2.addColorStop(0.00, pre+'1)');
+    bg2.addColorStop(0.30, pre+'0.52)');
+    bg2.addColorStop(0.62, pre+'0.16)');
+    bg2.addColorStop(1.00, pre+'0)');
+    bq.fillStyle = bg2;
+    bq.fillRect(0,0,bs,bs);
+    SPR.bokeh.push(bk);
+  }
+
+  /* ---- sun glare: saturated gold with a shelf at the edge so the hazard
+         reads as a ZONE, never as another soft light behind the glass ---- */
+  var GS = 256, gc = makeCanvas(GS,GS), gq = gc.getContext('2d');
+  var gr = gq.createRadialGradient(GS/2,GS/2,0,GS/2,GS/2,GS/2);
+  gr.addColorStop(0.00, 'rgba(255,214,146,0.66)');
+  gr.addColorStop(0.28, 'rgba(255,190,108,0.44)');
+  gr.addColorStop(0.50, 'rgba(255,168,76,0.27)');
+  gr.addColorStop(0.70, 'rgba(255,156,64,0.19)');
+  gr.addColorStop(0.86, 'rgba(255,146,56,0.09)');
+  gr.addColorStop(1.00, 'rgba(255,140,52,0)');
+  gq.fillStyle = gr;
+  gq.fillRect(0,0,GS,GS);
+  SPR.glare = gc;
+}
+
+/* =========================================================================
+   BACKGROUND — city bokeh + rain behind the glass + glass texture
+   ========================================================================= */
+var bokeh = [];
+var BOKEH_COLS = [
+  [255,186,110], [255,148,120], [255,214,152],
+  [176,196,255], [255,170,168], [214,182,255]
+];
+function buildBokeh(){
+  bokeh.length = 0;
+  var n = 30;
+  for(var i=0;i<n;i++){
+    // bias the lights low, like a city glowing under the dusk
+    var by = 0.02 + Math.pow(Math.random(), 0.62)*1.02;
+    bokeh.push({
+      x: rnd(-0.05,1.05),
+      y: by,
+      r: rnd(0.018,0.075),           // in PS units
+      ci: rndi(0, BOKEH_COLS.length-1),
+      a: rnd(0.16,0.40),
+      ph: rnd(0,TAU),
+      sp: rnd(0.25,0.85),
+      depth: rnd(0.25,1.0)
+    });
+  }
+}
+
+var RAINN = 58;
+var rain = [];
+function buildRain(){
+  rain.length = 0;
+  for(var i=0;i<RAINN;i++){
+    rain.push({
+      x: Math.random(),
+      y: Math.random(),
+      len: rnd(0.03,0.10),
+      sp: rnd(0.55,1.5),
+      a: rnd(0.05,0.20),
+      dx: rnd(-0.03,0.03)
+    });
+  }
+}
+function updateRain(dt){
+  for(var i=0;i<RAINN;i++){
+    var r = rain[i];
+    r.y += r.sp*dt;
+    r.x += r.dx*dt;
+    if(r.y - r.len > 1.06){
+      r.y = -r.len - Math.random()*0.15;
+      r.x = Math.random();
+      r.sp = rnd(0.55,1.5);
+      r.len = rnd(0.03,0.10);
+      r.a = rnd(0.05,0.20);
+    }
+    if(r.x < -0.05) r.x += 1.1; else if(r.x > 1.05) r.x -= 1.1;
+  }
+}
+
+var glassTex = null;
+function buildGlassTex(){
+  if(W < 2 || H < 2) return;
+  // skip the rebuild if the viewport barely moved (mobile URL-bar jitter)
+  if(glassTex && Math.abs(glassTex.width - W) < 3 && Math.abs(glassTex.height - H) < 3) return;
+  var c = makeCanvas(Math.max(2,Math.round(W)), Math.max(2,Math.round(H)));
+  var g = c.getContext('2d');
+  var i, j;
+  // faint old dried streaks
+  for(i=0;i<16;i++){
+    var x = Math.random()*W;
+    var w = rnd(0.006,0.03)*W;
+    var y0 = rnd(-0.1,0.6)*H, y1 = y0 + rnd(0.25,1.05)*H;
+    var lg = g.createLinearGradient(0,y0,0,y1);
+    lg.addColorStop(0,'rgba(190,222,240,0)');
+    lg.addColorStop(0.3,'rgba(190,222,240,'+rnd(0.012,0.032).toFixed(3)+')');
+    lg.addColorStop(1,'rgba(190,222,240,0)');
+    g.fillStyle = lg;
+    g.beginPath();
+    g.moveTo(x, y0);
+    g.quadraticCurveTo(x+rnd(-24,24), (y0+y1)/2, x+rnd(-16,16), y1);
+    g.lineTo(x+w+rnd(-16,16), y1);
+    g.quadraticCurveTo(x+w+rnd(-24,24), (y0+y1)/2, x+w, y0);
+    g.closePath(); g.fill();
+  }
+  // condensation speckle
+  var n = Math.min(900, Math.round(W*H/2600));
+  for(j=0;j<n;j++){
+    var sx = Math.random()*W, sy = Math.random()*H;
+    var sr = rnd(0.4,1.7);
+    g.fillStyle = 'rgba(206,234,248,'+rnd(0.03,0.11).toFixed(3)+')';
+    g.beginPath(); g.arc(sx,sy,sr,0,TAU); g.fill();
+  }
+  glassTex = c;
+}
+
+/* =========================================================================
+   PANE GENERATION
+   ========================================================================= */
+var PANE_LINES = [
+  'the first cool sheet',
+  'the glass is warmer',
+  'low sun on the pane',
+  'the dust has settled here',
+  'the glare is patient',
+  'heat comes through',
+  'the sill is far tonight',
+  'thin water, wide light',
+  'the pane drinks deep',
+  'nothing here stays wet'
+];
+
+function paneDifficulty(n){
+  var d = {};
+  d.droplets = clamp(Math.round(34 - 1.9*(n-1)), 15, 36);
+  d.glares   = n === 1 ? 1 : Math.min(1 + Math.floor(n*0.62), 6);
+  d.glareScale = Math.min(1 + 0.065*(n-1), 1.65);
+  d.glareSpeed = Math.min(1 + 0.13*(n-1), 2.5);
+  d.dusts    = Math.min(2 + Math.floor((n-1)*0.55), 6);
+  d.evap     = Math.min(2.3 + 0.34*(n-1), 5.0);
+  d.warmth   = clamp((n-1)/9, 0, 1);
+  return d;
+}
+
+function makePane(n){
+  var d = paneDifficulty(n);
+  var p = {
+    n: n,
+    diff: d,
+    droplets: [],
+    glares: [],
+    dusts: [],
+    trail: newTrail(),
+    line: PANE_LINES[Math.min(n-1, PANE_LINES.length-1)]
+  };
+
+  // ---- dust patches ----
+  var i, k;
+  for(i=0;i<d.dusts;i++){
+    p.dusts.push({
+      x: rnd(0.12,0.88),
+      y: rnd(0.16,0.86),
+      rx: rnd(0.10,0.20),
+      ry: rnd(0.045,0.10),
+      rot: rnd(-0.35,0.35),
+      seed: Math.random()*1000,
+      spr: null, sw:0, sh:0
+    });
+  }
+
+  // ---- sun glare ----
+  for(i=0;i<d.glares;i++){
+    var gs = d.glareScale;
+    p.glares.push({
+      x: rnd(0.15,0.85),
+      y: rnd(0.14,0.84),
+      rx: rnd(0.13,0.23)*gs,
+      ry: rnd(0.09,0.16)*gs,
+      rot: rnd(-0.6,0.6),
+      ph: rnd(0,TAU),
+      ax: rnd(0.16,0.34),                        // sweep amplitude
+      ay: rnd(0.05,0.13),
+      sx: rnd(0.055,0.11)*d.glareSpeed,          // sweep rate
+      sy: rnd(0.035,0.085)*d.glareSpeed,
+      bx: 0, by: 0, cx:0, cy:0
+    });
+    var gg = p.glares[p.glares.length-1];
+    gg.bx = gg.x; gg.by = gg.y; gg.cx = gg.x; gg.cy = gg.y;
+  }
+
+  // ---- static droplets, banded so routes exist but must be chosen ----
+  var bandTop = 0.115, bandBot = 0.885;
+  var bands = Math.max(6, Math.round(d.droplets/2.6));
+  var bh = (bandBot-bandTop)/bands;
+  var placed = 0;
+  for(var b=0; b<bands && placed < d.droplets; b++){
+    var perBand = Math.min(rndi(1,3), d.droplets - placed);
+    for(k=0;k<perBand;k++){
+      var ok = false, dx=0, dy=0, tries=0;
+      while(!ok && tries < 22){
+        tries++;
+        dx = rnd(0.07, 0.93);
+        dy = bandTop + b*bh + rnd(0.12, 0.88)*bh;
+        ok = true;
+        // keep out of dust
+        for(i=0;i<p.dusts.length;i++){
+          var du = p.dusts[i];
+          var ex = (dx-du.x)/(du.rx*0.92), ey = (dy-du.y)/(du.ry*0.92);
+          if(ex*ex+ey*ey < 1){ ok = false; break; }
+        }
+        if(!ok) continue;
+        // spacing
+        for(i=0;i<p.droplets.length;i++){
+          var o = p.droplets[i];
+          var ddx = (dx-o.x), ddy = (dy-o.y)*1.55;
+          if(ddx*ddx+ddy*ddy < 0.0042){ ok = false; break; }
+        }
+      }
+      if(!ok) continue;
+      var m = rnd(8, 26);
+      if(chance(0.14)) m = rnd(26, 36);   // occasional fat one
+      p.droplets.push({
+        x: dx, y: dy, m: m,
+        ph: rnd(0,TAU),
+        glint: rnd(0,TAU),
+        shiver: 0,
+        dead: false,
+        absorb: 0,      // 0..1 progress
+        ax: 0, ay: 0    // captured position when absorbing starts
+      });
+      placed++;
+    }
+  }
+  buildDustSprites(p);
+  return p;
+}
+
+function buildDustSprites(p){
+  if(!p || W < 2 || H < 2) return;
+  for(var i=0;i<p.dusts.length;i++){
+    var du = p.dusts[i];
+    var w = Math.max(8, Math.round(du.rx*2*W));
+    var h = Math.max(8, Math.round(du.ry*2*H));
+    if(w > 1400) w = 1400;
+    if(h > 1400) h = 1400;
+    var c = makeCanvas(w,h), g = c.getContext('2d');
+    // grain
+    var n = Math.min(900, Math.round(w*h/170));
+    var seed = du.seed;
+    for(var k=0;k<n;k++){
+      seed = (seed*16807 + 11) % 2147483647;
+      var rx = (seed/2147483647);
+      seed = (seed*16807 + 11) % 2147483647;
+      var ry = (seed/2147483647);
+      seed = (seed*16807 + 11) % 2147483647;
+      var rv = (seed/2147483647);
+      var px = rx*w, py = ry*h;
+      var sz = 0.5 + rv*1.9;
+      var a = 0.10 + rv*0.30;
+      var warm = rv > 0.55;
+      g.fillStyle = warm
+        ? 'rgba(196,172,142,'+a.toFixed(3)+')'
+        : 'rgba(150,150,152,'+(a*0.85).toFixed(3)+')';
+      g.fillRect(px, py, sz, sz);
+    }
+    // soft base haze
+    g.globalCompositeOperation = 'destination-over';
+    var bg = g.createRadialGradient(w/2,h/2,0,w/2,h/2,Math.max(w,h)/2);
+    bg.addColorStop(0,'rgba(168,150,128,0.30)');
+    bg.addColorStop(0.6,'rgba(150,136,120,0.16)');
+    bg.addColorStop(1,'rgba(138,126,114,0)');
+    g.fillStyle = bg; g.fillRect(0,0,w,h);
+    // elliptical mask with soft edge (drawn in unit space, so it scales to an ellipse)
+    g.globalCompositeOperation = 'destination-in';
+    g.save();
+    g.translate(w/2, h/2);
+    g.scale(w/2, h/2);
+    var mg = g.createRadialGradient(0,0,0,0,0,1);
+    mg.addColorStop(0,'rgba(0,0,0,1)');
+    mg.addColorStop(0.55,'rgba(0,0,0,0.95)');
+    mg.addColorStop(0.85,'rgba(0,0,0,0.42)');
+    mg.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle = mg;
+    g.fillRect(-1,-1,2,2);
+    g.restore();
+    g.globalCompositeOperation = 'source-over';
+    du.spr = c; du.sw = w; du.sh = h;
+  }
+}
+
+/* =========================================================================
+   TRAIL — fixed ring buffer, zero per-frame allocation
+   ========================================================================= */
+var TRAIL_N = 190;
+var TRAIL_LIFE = 5.6;
+
+function newTrail(){
+  var pts = new Array(TRAIL_N);
+  for(var i=0;i<TRAIL_N;i++) pts[i] = { x:0, y:0, w:0, age:0 };
+  return { pts:pts, head:-1, n:0 };
+}
+function trailPush(t, x, y, w){
+  t.head = (t.head+1) % TRAIL_N;
+  var p = t.pts[t.head];
+  p.x = x; p.y = y; p.w = w; p.age = 0;
+  if(t.n < TRAIL_N) t.n++;
+}
+function trailAt(t, k){ // k = 0 is newest
+  return t.pts[((t.head - k) % TRAIL_N + TRAIL_N) % TRAIL_N];
+}
+function trailUpdate(t, dt){
+  if(t.n === 0) return;
+  for(var k=0;k<t.n;k++) trailAt(t,k).age += dt;
+  while(t.n > 0 && trailAt(t, t.n-1).age > TRAIL_LIFE) t.n--;
+}
+
+/* =========================================================================
+   PARTICLES + POPUPS — preallocated pools
+   ========================================================================= */
+var PMAX = 260;
+var parts = new Array(PMAX);
+(function(){
+  for(var i=0;i<PMAX;i++){
+    parts[i] = { on:false, x:0, y:0, vx:0, vy:0, life:0, max:1, r:0, kind:0, rot:0, spin:0 };
+  }
+})();
+var pIdx = 0;
+
+/* kinds: 0 mist, 1 splash, 2 steam, 3 spark */
+function spawnP(kind, x, y, vx, vy, life, r){
+  var p = null, i;
+  for(i=0;i<PMAX;i++){
+    pIdx = (pIdx+1) % PMAX;
+    if(!parts[pIdx].on){ p = parts[pIdx]; break; }
+  }
+  if(!p) p = parts[pIdx];      // pool full: recycle
+  p.on = true; p.kind = kind;
+  p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+  p.life = life; p.max = life; p.r = r;
+  p.rot = Math.random()*TAU; p.spin = rnd(-1.6,1.6);
+  return p;
+}
+function clearParts(){
+  for(var i=0;i<PMAX;i++) parts[i].on = false;
+}
+function updateParts(dt){
+  for(var i=0;i<PMAX;i++){
+    var p = parts[i];
+    if(!p.on) continue;
+    p.life -= dt;
+    if(p.life <= 0){ p.on = false; continue; }
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    p.rot += p.spin*dt;
+    if(p.kind === 0){          // mist: rises, slows, spreads
+      p.vy -= 0.05*dt; p.vx *= (1 - 0.9*dt); p.r += 0.018*dt;
+    } else if(p.kind === 1){   // splash: gravity
+      p.vy += 0.85*dt; p.vx *= (1 - 1.4*dt);
+    } else if(p.kind === 2){   // steam
+      p.vy -= 0.09*dt; p.vx += Math.sin(p.rot*2)*0.03*dt; p.r += 0.026*dt;
+    } else {                   // spark
+      p.vy += 0.16*dt; p.vx *= (1 - 0.6*dt);
+    }
+  }
+}
+
+var POPN = 8;
+var pops = new Array(POPN);
+(function(){ for(var i=0;i<POPN;i++) pops[i] = { on:false, x:0, y:0, life:0, max:1, txt:'' }; })();
+var popIdx = 0;
+function popup(x,y,txt){
+  popIdx = (popIdx+1)%POPN;
+  var p = pops[popIdx];
+  p.on = true; p.x = x; p.y = y; p.life = 0.85; p.max = 0.85; p.txt = txt;
+}
+function clearPops(){ for(var i=0;i<POPN;i++) pops[i].on = false; }
+function updatePops(dt){
+  for(var i=0;i<POPN;i++){
+    var p = pops[i];
+    if(!p.on) continue;
+    p.life -= dt;
+    if(p.life <= 0){ p.on = false; continue; }
+    p.y -= 0.055*dt;
+  }
+}
+
+/* =========================================================================
+   GAME STATE
+   ========================================================================= */
+var STATE = 'start';        // start | play | clear | slide | dying | over | paused
+var prevState = 'start';
+var pane = null;
+var oldPane = null;
+var slideT = 0, clearT = 0, dieT = 0;
+
+var player = {
+  x:0.5, y:0.06, m:M_START, vx:0, vy:0,
+  wob:0, r:0, rn:0, stretch:1, alive:true,
+  stalled:false, wasStalled:false, glare:0, dust:0,
+  dripY:0, bead:1
+};
+
+var targetX = 0.5;
+var keyDir = 0;
+var keyL = false, keyR = false;
+
+var score = 0, drunk = 0, panes = 0;
+var best = 0;               // in-memory only, per spec
+var warmth = 0;             // eased pane warmth
+var shake = 0, shakeX = 0, shakeY = 0;
+var parallax = 0;
+var warnCool = 0;
+var wasWarn = false;
+var mistCool = 0, steamCool = 0;
+var timeS = 0;
+var overReadyAt = 0;
+
+/* HUD cache */
+var hudScore = -1, hudPane = -1, hudDrunk = -1, hudGauge = -1, hudCls = '';
+
+/* =========================================================================
+   RESIZE
+   ========================================================================= */
+var needRebuild = true;
+function resize(){
+  var w = Math.max(1, window.innerWidth  || document.documentElement.clientWidth  || 320);
+  var h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 480);
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = w; H = h;
+  PS = Math.min(W, H*0.62);
+  cv.width  = Math.round(W*DPR);
+  cv.height = Math.round(H*DPR);
+  cv.style.width  = W+'px';
+  cv.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.imageSmoothingEnabled = true;
+  needRebuild = true;
+}
+function doRebuild(){
+  needRebuild = false;
+  buildGlassTex();
+  if(pane) buildDustSprites(pane);
+  if(oldPane) buildDustSprites(oldPane);
+  layoutGauge();
+}
+function layoutGauge(){
+  var pct = (M_STALL/M_MAX)*100;
+  gMark.style.left = pct+'%';
+  gMarkLbl.style.left = pct+'%';
+}
+
+/* =========================================================================
+   PLAYER HELPERS
+   ========================================================================= */
+function radiusFor(m){
+  var mm = Math.max(0.5, m);
+  return R_BASE * PS * Math.pow(mm/100, 1/3);
+}
+function resetPlayer(m, x){
+  player.x = clamp(x, 0.08, 0.92);
+  player.y = 0.055;
+  player.m = m;
+  player.vx = 0; player.vy = 0;
+  player.wob = Math.random()*TAU;
+  player.r = radiusFor(m);
+  player.rn = player.r/Math.max(1,H);
+  player.stretch = 1;
+  player.alive = true;
+  player.stalled = false;
+  player.wasStalled = false;
+  player.glare = 0; player.dust = 0;
+  player.bead = 1;
+  targetX = player.x;
+}
+
+/* Ellipse test performed in PIXEL space, matching exactly how the shape is
+   drawn (translate -> rotate -> scale), so what you see is what burns you. */
+function ellipseDist(x, y, cx, cy, rxN, ryN, rot){
+  var dx = (x-cx)*W, dy = (y-cy)*H;
+  var cs = Math.cos(-rot), sn = Math.sin(-rot);
+  var rx2 = dx*cs - dy*sn;
+  var ry2 = dx*sn + dy*cs;
+  var ax = Math.max(1, rxN*W), ay = Math.max(1, ryN*H);
+  rx2 /= ax; ry2 /= ay;
+  return Math.sqrt(rx2*rx2 + ry2*ry2);
+}
+function glareAt(p, x, y){
+  var mx = 0;
+  for(var i=0;i<p.glares.length;i++){
+    var g = p.glares[i];
+    var d = ellipseDist(x, y, g.cx, g.cy, g.rx, g.ry, g.rot);
+    var v = 1 - smoothstep((d - 0.40)/0.60);
+    if(v > mx) mx = v;
+  }
+  return clamp(mx, 0, 1);
+}
+function dustAt(p, x, y){
+  var mx = 0;
+  for(var i=0;i<p.dusts.length;i++){
+    var du = p.dusts[i];
+    var d = ellipseDist(x, y, du.x, du.y, du.rx, du.ry, du.rot);
+    var v = 1 - smoothstep((d - 0.50)/0.50);
+    if(v > mx) mx = v;
+  }
+  return clamp(mx,0,1);
+}
+
+function absorbDroplet(d, silent){
+  d.dead = true;
+  d.absorb = 0.0001;
+  d.ax = d.x; d.ay = d.y;
+  if(!silent){
+    player.m = Math.min(M_MAX, player.m + d.m);
+    drunk++;
+    score = drunk + panes*10;
+    SND.plip(player.m);
+    popup(d.x, d.y, '+'+Math.round(d.m));
+    var n = 3 + Math.min(3, Math.round(d.m/12));
+    for(var i=0;i<n;i++){
+      var a = rnd(0,TAU);
+      spawnP(1, d.x, d.y, Math.cos(a)*rnd(0.05,0.19), Math.sin(a)*rnd(0.05,0.22)-0.05,
+             rnd(0.25,0.5), rnd(0.004,0.011));
+    }
+    spawnP(3, d.x, d.y, 0, -0.02, 0.3, 0.03);
+    popScore();
+  }
+}
+function popScore(){
+  scoreEl.classList.remove('pop');
+  // force reflow so the transition retriggers
+  void scoreEl.offsetWidth;
+  scoreEl.classList.add('pop');
+  setTimeout(function(){ scoreEl.classList.remove('pop'); }, 150);
+}
+
+/* let in-flight slurp animations finish even outside normal play */
+function advanceAbsorb(p, dt){
+  if(!p) return;
+  for(var i=0;i<p.droplets.length;i++){
+    var d = p.droplets[i];
+    if(d.dead && d.absorb > 0 && d.absorb < 1){
+      d.absorb += dt/0.11;
+      if(d.absorb > 1) d.absorb = 1;
+    }
+  }
+}
+
+/* magnetic pickup + shiver */
+function checkDroplets(p, dt, isDemo){
+  var pr = player.r;
+  var magPx = 0.034*PS;      // small attraction halo — generous, not a vacuum
+  for(var i=0;i<p.droplets.length;i++){
+    var d = p.droplets[i];
+    if(d.dead){
+      if(d.absorb > 0){
+        d.absorb += dt/0.11;
+        if(d.absorb >= 1) d.absorb = 1;
+      }
+      continue;
+    }
+    var dr = radiusFor(d.m)*0.72;
+    var dx = (d.x - player.x)*W;
+    var dy = (d.y - player.y)*H;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    var reach = pr + dr;
+
+    if(dist < reach*0.95){
+      absorbDroplet(d, isDemo);
+      continue;
+    }
+    if(dist < reach + magPx){
+      // slight magnetism, so grazing a droplet still drinks it
+      var pull = clamp(1 - (dist - reach)/magPx, 0, 1);
+      var inv = dist > 1e-4 ? 1/dist : 0;
+      d.x -= dx*inv * (pull*pull*0.26*PS*dt) / Math.max(1,W);
+      d.y -= dy*inv * (pull*pull*0.26*PS*dt) / Math.max(1,H);
+      d.shiver = Math.max(d.shiver, pull);
+    } else if(dist < reach + magPx*3.2){
+      d.shiver = Math.max(d.shiver, 0.35*(1 - (dist-reach)/(magPx*3.2)));
+    }
+    d.shiver *= (1 - 3.2*dt);
+    if(d.shiver < 0.001) d.shiver = 0;
+    d.ph += dt*(3 + d.shiver*26);
+    d.glint += dt*0.9;
+  }
+}
+
+/* =========================================================================
+   UPDATE — play
+   ========================================================================= */
+function updateGlares(p, dt){
+  for(var i=0;i<p.glares.length;i++){
+    var g = p.glares[i];
+    g.ph += dt;
+    g.cx = clamp(g.bx + Math.sin(g.ph*g.sx*TAU*0.5 + i)*g.ax, -0.1, 1.1);
+    g.cy = clamp(g.by + Math.sin(g.ph*g.sy*TAU*0.5 + i*2.1)*g.ay, -0.1, 1.1);
+  }
+}
+
+function updatePlay(dt){
+  var p = pane;
+  updateGlares(p, dt);
+
+  // ---- steering target from keys
+  if(keyDir !== 0){
+    targetX = clamp(targetX + keyDir*KEY_RATE*dt, 0.03, 0.97);
+  }
+
+  // ---- mass -> speed
+  var over = player.m - M_STALL;
+  var stalled = over <= 0;
+  var u = clamp(over/(M_REF - M_STALL), 0, 1);
+  var fast = VY_MIN + (VY_MAX - VY_MIN)*smoothstep(u);
+  var creep = CREEP * clamp(player.m/M_STALL, 0.15, 1);
+  var blend = clamp(over/8, 0, 1);
+  var vy = lerp(creep, fast, blend);
+  player.vy = vy;
+
+  if(stalled && !player.wasStalled){
+    // stall onset
+    shake = Math.max(shake, 5.2);
+    SND.creak();
+  }
+  player.wasStalled = stalled;
+  player.stalled = stalled;
+
+  // ---- steering
+  var steerScale = stalled ? 0.24 : (0.5 + 0.5*smoothstep(u));
+  var vxDes = clamp((targetX - player.x)*STEER_K, -VX_MAX, VX_MAX)*steerScale;
+  // organic wobble, scaled by speed
+  var speedN = clamp(vy/VY_MAX, 0, 1);
+  player.wob += dt*(2.4 + 5.6*speedN);
+  vxDes += Math.sin(player.wob)*0.105*speedN;
+  player.vx += (vxDes - player.vx)*Math.min(1, dt*9.5);
+
+  var ox = player.x, oy = player.y;
+  player.x += player.vx*dt;
+  player.y += player.vy*dt;
+
+  // pane edges
+  var margin = player.r/Math.max(1,W) + 0.012;
+  if(player.x < margin){ player.x = margin; if(player.vx<0) player.vx *= -0.15; }
+  if(player.x > 1-margin){ player.x = 1-margin; if(player.vx>0) player.vx *= -0.15; }
+
+  // ---- environment sampling
+  player.glare = glareAt(p, player.x, player.y);
+  player.dust  = dustAt(p, player.x, player.y);
+
+  // ---- mass economy
+  var dx = player.x - ox, dy = player.y - oy;
+  var ds = Math.sqrt(dy*dy + (dx*0.62)*(dx*0.62));
+  var widthFac = 0.55 + 0.45*(player.m/100);
+  var dustMul = 1 + (DUST_MULT-1)*player.dust;
+  player.m -= TRAIL_COST * ds * widthFac * dustMul;
+  var ambient = p.diff.evap;
+  player.m -= (ambient*(stalled ? EVAP_STALL : 1) + GLARE_BURN*player.glare)*dt;
+  if(player.m > M_MAX) player.m = M_MAX;
+
+  player.r = radiusFor(player.m);
+  player.rn = player.r/Math.max(1,H);
+  player.stretch = 1 + 0.34*speedN;
+
+  // ---- trail
+  var td = Math.sqrt((player.x-lastTrailX)*(player.x-lastTrailX)*0.4 + (player.y-lastTrailY)*(player.y-lastTrailY));
+  trailAcc += dt;
+  if(td > 0.0035 || trailAcc > 0.05){
+    trailPush(p.trail, player.x, player.y, (player.r*0.66)/Math.max(1,PS));
+    lastTrailX = player.x; lastTrailY = player.y;
+    trailAcc = 0;
+  }
+  trailUpdate(p.trail, dt);
+
+  // ---- droplets
+  checkDroplets(p, dt, false);
+
+  // ---- particles from evaporation / glare
+  mistCool -= dt;
+  var lowM = clamp(1 - (player.m - M_STALL*0.5)/(M_STALL*1.4), 0, 1);
+  var mistRate = 0.09 + (1-lowM)*0.5;
+  if(lowM > 0.05 || stalled){
+    if(mistCool <= 0){
+      mistCool = mistRate*0.35;
+      var a = rnd(0,TAU);
+      spawnP(0, player.x + Math.cos(a)*player.rn*0.6*(H/Math.max(1,W))*1.4,
+                player.y + Math.sin(a)*player.rn*0.6,
+                rnd(-0.03,0.03), rnd(-0.11,-0.04),
+                rnd(0.6,1.15), rnd(0.012,0.026));
+    }
+  }
+  steamCool -= dt;
+  if(player.glare > 0.08 && steamCool <= 0){
+    steamCool = 0.045 - 0.028*player.glare;
+    spawnP(2, player.x + rnd(-0.02,0.02), player.y + rnd(-0.012,0.012),
+              rnd(-0.05,0.05), rnd(-0.24,-0.10), rnd(0.5,0.95), rnd(0.010,0.022));
+  }
+
+  // ---- audio sizzle level
+  SND.setSizzle(player.glare, dt);
+
+  // ---- stall / low warning tone
+  var warnZone = player.m < M_STALL*1.45;
+  warnCool -= dt;
+  if(warnZone){
+    if(!wasWarn || warnCool <= 0){
+      SND.warn();
+      warnCool = stalled ? 0.85 : 1.25;
+    }
+  }
+  wasWarn = warnZone;
+
+  // ---- death
+  if(player.m <= 0.6){
+    beginDeath();
+    return;
+  }
+
+  // ---- reached the sill?
+  if(player.y + player.rn*0.5 >= SILL_Y){
+    beginClear();
+  }
+}
+
+var lastTrailX = 0.5, lastTrailY = 0, trailAcc = 0;
+
+/* =========================================================================
+   DEMO DROP (start screen)
+   ========================================================================= */
+function updateDemo(dt){
+  var p = pane;
+  updateGlares(p, dt);
+
+  // gentle scripted steering toward the nearest un-drunk droplet below
+  var bestD = null, bestScore = 1e9;
+  for(var i=0;i<p.droplets.length;i++){
+    var d = p.droplets[i];
+    if(d.dead) continue;
+    var dy = d.y - player.y;
+    if(dy < 0.02 || dy > 0.34) continue;
+    var s = Math.abs(d.x - player.x)*1.6 + dy;
+    if(s < bestScore){ bestScore = s; bestD = d; }
+  }
+  var want = bestD ? bestD.x : 0.5 + Math.sin(timeS*0.5)*0.22;
+  targetX += (want - targetX)*Math.min(1, dt*2.2);
+
+  var vy = 0.115;
+  player.vy = vy;
+  var vxDes = clamp((targetX - player.x)*3.4, -0.5, 0.5);
+  player.wob += dt*5.4;
+  vxDes += Math.sin(player.wob)*0.085;
+  player.vx += (vxDes - player.vx)*Math.min(1, dt*8);
+  player.x = clamp(player.x + player.vx*dt, 0.06, 0.94);
+  player.y += vy*dt;
+  player.m = clamp(player.m, 60, M_MAX);
+  player.r = radiusFor(player.m);
+  player.rn = player.r/Math.max(1,H);
+  player.stretch = 1.28;
+  player.glare = glareAt(p, player.x, player.y);
+
+  var td = Math.abs(player.y-lastTrailY) + Math.abs(player.x-lastTrailX)*0.5;
+  trailAcc += dt;
+  if(td > 0.0035 || trailAcc > 0.05){
+    trailPush(p.trail, player.x, player.y, (player.r*0.66)/Math.max(1,PS));
+    lastTrailX = player.x; lastTrailY = player.y;
+    trailAcc = 0;
+  }
+  trailUpdate(p.trail, dt);
+  checkDroplets(p, dt, true);
+
+  if(player.glare > 0.1){
+    steamCool -= dt;
+    if(steamCool <= 0){
+      steamCool = 0.07;
+      spawnP(2, player.x, player.y, rnd(-0.04,0.04), rnd(-0.2,-0.09), rnd(0.5,0.9), rnd(0.010,0.02));
+    }
+  }
+
+  if(player.y > 1.05){
+    pane = makePane(1);
+    warmth = 0;
+    clearParts(); clearPops();
+    resetPlayer(rnd(96,120), rnd(0.2,0.8));
+    lastTrailX = player.x; lastTrailY = player.y;
+  }
+}
+
+/* =========================================================================
+   PANE CLEAR / SLIDE / DEATH
+   ========================================================================= */
+function beginClear(){
+  STATE = 'clear';
+  clearT = 0;
+  panes++;
+  score = drunk + panes*10;
+  player.dripY = player.y;
+  SND.chime();
+  SND.setSizzle(0, 1);
+  for(var i=0;i<16;i++){
+    var a = rnd(-Math.PI*0.85, -Math.PI*0.15);
+    spawnP(3, player.x + rnd(-0.03,0.03), SILL_Y + 0.005,
+              Math.cos(a)*rnd(0.06,0.26), Math.sin(a)*rnd(0.10,0.34),
+              rnd(0.5,1.0), rnd(0.006,0.014));
+  }
+}
+
+function updateClear(dt){
+  clearT += dt;
+  updateGlares(pane, dt);
+  trailUpdate(pane.trail, dt);
+  advanceAbsorb(pane, dt);
+  // the drop gathers on the lip, then drips off
+  var t = clamp(clearT/1.0, 0, 1);
+  if(t < 0.42){
+    player.y = lerp(player.dripY, SILL_Y + 0.012, easeOutCubic(t/0.42));
+    player.stretch = lerp(1, 1.5, t/0.42);
+  } else {
+    var u = (t-0.42)/0.58;
+    player.y = SILL_Y + 0.012 + u*u*0.13;
+    player.stretch = lerp(1.5, 2.2, u);
+    if(clearT >= 0.62 && clearT - dt < 0.62) SND.drip();
+  }
+  if(clearT >= 1.0){
+    beginSlide();
+  }
+}
+
+function beginSlide(){
+  STATE = 'slide';
+  slideT = 0;
+  oldPane = pane;
+  pane = makePane(oldPane.n + 1);
+  bMain.textContent = 'PANE ' + pane.n;
+  bSub.textContent = pane.line;
+  bannerEl.classList.remove('show');
+  void bannerEl.offsetWidth;
+  bannerEl.classList.add('show');
+}
+
+function updateSlide(dt){
+  slideT += dt;
+  if(oldPane){ trailUpdate(oldPane.trail, dt); advanceAbsorb(oldPane, dt); }
+  if(slideT >= 0.8){
+    STATE = 'play';
+    oldPane = null;
+    var carry = clamp(player.m + 12, 72, 152);
+    resetPlayer(carry, player.x);
+    lastTrailX = player.x; lastTrailY = player.y; trailAcc = 0;
+    clearPops();
+    wasWarn = false; warnCool = 0;
+  }
+}
+
+function beginDeath(){
+  if(STATE === 'dying' || STATE === 'over') return;
+  STATE = 'dying';
+  dieT = 0;
+  player.m = 0;
+  player.alive = false;
+  SND.over();
+  SND.setSizzle(0, 1);
+  wasWarn = false;
+}
+
+function updateDying(dt){
+  var wasT = dieT;
+  dieT += dt;
+  updateGlares(pane, dt);
+  trailUpdate(pane.trail, dt);
+  advanceAbsorb(pane, dt);
+
+  if(dieT < 0.45){
+    // shrink to a bead
+    var t = dieT/0.45;
+    player.bead = 1 - t;
+    player.r = lerp(radiusFor(M_STALL*0.6), 1.1, easeOutCubic(t));
+    player.rn = player.r/Math.max(1,H);
+  } else {
+    player.bead = 0;
+    player.r = 0;      // drawPlayer bails out below 0.5px
+    player.rn = 0;
+  }
+
+  if(dieT >= 0.45 && wasT < 0.45){
+    // flash to mist
+    for(var i=0;i<26;i++){
+      var a = rnd(0,TAU), sp = rnd(0.03,0.16);
+      spawnP(0, player.x, player.y, Math.cos(a)*sp, Math.sin(a)*sp - 0.06,
+             rnd(0.9,1.7), rnd(0.014,0.034));
+    }
+    shake = Math.max(shake, 3);
+  }
+
+  if(dieT >= 1.35){
+    STATE = 'over';
+    if(score > best) best = score;
+    oScore.textContent = score;
+    oPanes.textContent = panes;
+    oDrunk.textContent = drunk;
+    oBest.textContent = 'Best this session — ' + best;
+    overSub.textContent = panes === 0
+      ? 'You never reached the sill. The pane drank you.'
+      : 'The last of you lifted off the warm glass.';
+    overReadyAt = timeS + 0.32;
+    showScreens();
+  }
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+var skyGrad = null, skyKey = -1;
+function skyGradient(){
+  var key = Math.round(warmth*40)*1000 + Math.round(H);
+  if(skyGrad && skyKey === key) return skyGrad;
+  skyKey = key;
+  var g = ctx.createLinearGradient(0,0,0,H);
+  var w = warmth;
+  function cs(r0,g0,b0, r1,g1,b1){
+    return 'rgb('+Math.round(lerp(r0,r1,w))+','+Math.round(lerp(g0,g1,w))+','+Math.round(lerp(b0,b1,w))+')';
+  }
+  g.addColorStop(0.00, cs( 10, 18, 33,   30, 20, 32));
+  g.addColorStop(0.34, cs( 17, 31, 53,   52, 31, 44));
+  g.addColorStop(0.62, cs( 31, 47, 71,   88, 46, 50));
+  g.addColorStop(0.84, cs( 54, 58, 78,  132, 66, 54));
+  g.addColorStop(1.00, cs( 74, 66, 76,  164, 88, 60));
+  skyGrad = g;
+  return g;
+}
+
+function drawBackground(){
+  ctx.fillStyle = skyGradient();
+  ctx.fillRect(0,0,W,H);
+
+  // ---- bokeh city lights (behind the glass), with parallax
+  // pre-tinted sprites: no per-frame gradient allocation
+  var px = parallax*0.045*W;
+  ctx.globalCompositeOperation = 'lighter';
+  for(var i=0;i<bokeh.length;i++){
+    var b = bokeh[i];
+    var pulse = 0.78 + 0.22*Math.sin(timeS*b.sp + b.ph);
+    var r = b.r*PS*(1 + 0.05*Math.sin(timeS*b.sp*0.7 + b.ph));
+    var x = b.x*W + px*b.depth + Math.sin(timeS*0.09 + b.ph)*6*b.depth;
+    var y = b.y*H + Math.cos(timeS*0.07 + b.ph)*4*b.depth;
+    var a = b.a*pulse*(0.75 + 0.25*warmth);
+    if(a <= 0.004 || r < 0.5) continue;
+    ctx.globalAlpha = clamp(a,0,1);
+    ctx.drawImage(SPR.bokeh[b.ci], x-r, y-r, r*2, r*2);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+
+  // ---- rain falling behind the glass
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(190,222,244,1)';
+  for(var k=0;k<RAINN;k++){
+    var r2 = rain[k];
+    ctx.globalAlpha = r2.a*(0.55+0.45*(1-warmth*0.5));
+    ctx.lineWidth = 0.9 + r2.sp*0.5;
+    var rx = r2.x*W + px*0.35;
+    ctx.beginPath();
+    ctx.moveTo(rx, r2.y*H);
+    ctx.lineTo(rx + r2.dx*W*0.4, (r2.y - r2.len)*H);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // ---- the glass itself: cool wash + slight vignette
+  ctx.fillStyle = 'rgba(10,22,38,0.30)';
+  ctx.fillRect(0,0,W,H);
+
+  if(glassTex){
+    ctx.globalAlpha = 0.7;
+    ctx.drawImage(glassTex, 0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawDust(p, yoff){
+  for(var i=0;i<p.dusts.length;i++){
+    var du = p.dusts[i];
+    if(!du.spr) continue;
+    var cx = du.x*W, cy = du.y*H + yoff;
+    var w = du.rx*2*W, h = du.ry*2*H;
+    if(cy + h < -20 || cy - h > H+20) continue;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(du.rot);
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(du.spr, -w/2, -h/2, w, h);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawGlare(p, yoff){
+  ctx.globalCompositeOperation = 'lighter';
+  var lw = Math.max(1, 0.0045*PS);
+  for(var i=0;i<p.glares.length;i++){
+    var g = p.glares[i];
+    var cx = g.cx*W, cy = g.cy*H + yoff;
+    var rx = g.rx*W, ry = g.ry*H;
+    if(cy + ry*1.4 < -20 || cy - ry*1.4 > H+20) continue;
+    var shim = 0.5 + 0.5*Math.sin(timeS*1.35 + i*1.7);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(g.rot);
+    ctx.scale(rx/128, ry/128);
+    ctx.globalAlpha = 0.88 + 0.12*shim;
+    ctx.drawImage(SPR.glare, -128, -128, 256, 256);
+    ctx.restore();
+
+    // a soft burning rim: this is what separates "hazard on the glass"
+    // from "harmless light behind it"
+    ctx.globalAlpha = 0.12 + 0.07*shim;
+    ctx.strokeStyle = 'rgba(255,198,118,1)';
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx*0.80, ry*0.80, g.rot, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 0.06 + 0.04*(1-shim);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx*0.97, ry*0.97, g.rot, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+}
+
+/* Edge buffers are allocated once; the ribbon is rebuilt into them each
+   frame so the hot path never allocates. */
+var edgeL = new Float32Array(TRAIL_N*2);
+var edgeR = new Float32Array(TRAIL_N*2);
+var edgeC = new Float32Array(TRAIL_N*2);
+
+/* smooth polyline: quadratics through the midpoints kill the faceting */
+function edgePath(buf, from, to){
+  var step = to > from ? 1 : -1, k, k2, mx, my;
+  ctx.lineTo(buf[from*2], buf[from*2+1]);
+  for(k = from; k !== to; k += step){
+    k2 = k + step;
+    mx = (buf[k*2] + buf[k2*2])*0.5;
+    my = (buf[k*2+1] + buf[k2*2+1])*0.5;
+    ctx.quadraticCurveTo(buf[k*2], buf[k*2+1], mx, my);
+  }
+  ctx.lineTo(buf[to*2], buf[to*2+1]);
+}
+
+function drawTrail(t, yoff){
+  if(t.n < 2) return;
+  var head = trailAt(t,0), tail = trailAt(t,t.n-1);
+  var hx = head.x*W, hy = head.y*H+yoff, tx = tail.x*W, ty = tail.y*H+yoff;
+  if(Math.abs(hy-ty) < 0.5 && Math.abs(hx-tx) < 0.5) return;
+
+  var i, p0, pn, nx, ny, len, wpx, fade, x, y;
+  var n = t.n;
+
+  // build both edges + the centre line
+  for(i=0;i<n;i++){
+    p0 = trailAt(t,i);
+    pn = trailAt(t, i+1 < n ? i+1 : n-1);
+    var ddx = (pn.x - p0.x)*W, ddy = (pn.y - p0.y)*H;
+    len = Math.sqrt(ddx*ddx + ddy*ddy);
+    if(len < 1e-4){ nx = 1; ny = 0; } else { nx = -ddy/len; ny = ddx/len; }
+    fade = 1 - p0.age/TRAIL_LIFE;
+    wpx = p0.w*PS*(0.30 + 0.70*fade);
+    x = p0.x*W; y = p0.y*H + yoff;
+    edgeL[i*2]   = x + nx*wpx; edgeL[i*2+1] = y + ny*wpx;
+    edgeR[i*2]   = x - nx*wpx; edgeR[i*2+1] = y - ny*wpx;
+    edgeC[i*2]   = x;          edgeC[i*2+1] = y;
+  }
+
+  var grad = ctx.createLinearGradient(hx,hy,tx,ty);
+  grad.addColorStop(0,   'rgba(150,206,237,0.42)');
+  grad.addColorStop(0.35,'rgba(122,182,218,0.25)');
+  grad.addColorStop(1,   'rgba(96,150,190,0)');
+
+  ctx.beginPath();
+  ctx.moveTo(edgeL[0], edgeL[1]);
+  edgePath(edgeL, 0, n-1);
+  edgePath(edgeR, n-1, 0);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // wet meniscus glint riding just off the centre line
+  var grad2 = ctx.createLinearGradient(hx,hy,tx,ty);
+  grad2.addColorStop(0,   'rgba(226,246,255,0.32)');
+  grad2.addColorStop(0.45,'rgba(200,232,250,0.10)');
+  grad2.addColorStop(1,   'rgba(190,225,245,0)');
+  ctx.beginPath();
+  ctx.moveTo(lerp(edgeC[0], edgeL[0], 0.42), lerp(edgeC[1], edgeL[1], 0.42));
+  for(i=0;i<n-1;i++){
+    var ax = lerp(edgeC[i*2],   edgeL[i*2],   0.42);
+    var ay = lerp(edgeC[i*2+1], edgeL[i*2+1], 0.42);
+    var bx = lerp(edgeC[(i+1)*2],   edgeL[(i+1)*2],   0.42);
+    var by = lerp(edgeC[(i+1)*2+1], edgeL[(i+1)*2+1], 0.42);
+    ctx.quadraticCurveTo(ax, ay, (ax+bx)*0.5, (ay+by)*0.5);
+  }
+  ctx.strokeStyle = grad2;
+  ctx.lineWidth = Math.max(1, 0.0055*PS);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+}
+
+/* One droplet. The body is stretched by surface tension, but the specular
+   and rim are drawn unstretched so they stay round and crisp. */
+function drawDroplet(x, y, r, stretch, alpha, glint, warm){
+  if(r < 0.4 || alpha <= 0.01) return;
+  var sy = stretch, sx = 1/Math.sqrt(stretch);
+  var rx = r*sx, ry = r*sy;
+
+  // ---- body
+  ctx.save();
+  ctx.translate(x,y);
+  if(stretch !== 1) ctx.scale(sx, sy);
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(SPR.drop, -r, -r, r*2, r*2);
+  // refracted warm light from the bokeh behind
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = alpha*(0.20 + 0.24*warm);
+  var gr = r*0.70;
+  ctx.drawImage(SPR.glowGold, -gr, -gr + r*0.32, gr*2, gr*2);
+  ctx.restore();
+
+  // ---- rim light along the lower edge
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = alpha*0.34;
+  ctx.strokeStyle = 'rgba(196,230,248,1)';
+  ctx.lineWidth = Math.max(0.6, r*0.08);
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx*0.90, ry*0.90, 0, 0.30*Math.PI, 0.94*Math.PI);
+  ctx.stroke();
+
+  // ---- specular: the bright dot that makes it read as water
+  ctx.globalAlpha = alpha*(0.74 + 0.26*glint);
+  ctx.fillStyle = 'rgba(247,254,255,1)';
+  ctx.beginPath();
+  ctx.ellipse(x - rx*0.34, y - ry*0.36, Math.max(0.7, r*0.19), Math.max(0.6, r*0.15), -0.5, 0, TAU);
+  ctx.fill();
+  ctx.globalAlpha = alpha*0.40*(0.6+0.4*glint);
+  ctx.beginPath();
+  ctx.ellipse(x + rx*0.30, y + ry*0.20, Math.max(0.5, r*0.10), Math.max(0.4, r*0.08), 0.4, 0, TAU);
+  ctx.fill();
+
+  ctx.globalAlpha = 1;
+}
+
+function drawDroplets(p, yoff){
+  for(var i=0;i<p.droplets.length;i++){
+    var d = p.droplets[i];
+    var r = radiusFor(d.m)*0.72;
+    var x, y, a = 1, rr = r;
+    if(d.dead){
+      if(d.absorb <= 0 || d.absorb >= 1) continue;
+      var t = d.absorb;
+      var e = easeOutCubic(t);
+      x = lerp(d.ax, player.x, e)*W;
+      y = lerp(d.ay, player.y, e)*H + yoff;
+      rr = r*(1-e*0.85);
+      a = 1-e*0.6;
+    } else {
+      var sh = d.shiver;
+      x = (d.x + Math.sin(d.ph*2.6)*0.0022*sh)*W;
+      y = (d.y + Math.cos(d.ph*3.1)*0.0016*sh)*H + yoff;
+    }
+    if(y < -40 || y > H+40) continue;
+    var gl = 0.5 + 0.5*Math.sin(d.glint*1.7 + d.ph*0.3);
+    drawDroplet(x, y, rr, 1.06, a, gl*gl, warmth);
+  }
+}
+
+function drawPlayer(yoff){
+  var x = player.x*W, y = player.y*H + yoff;
+  var r = player.r;
+  if(r < 0.5) return;
+  // meniscus tail behind (above) the drop
+  var st = clamp((player.vy/VY_MAX), 0, 1);
+  if(st > 0.05 && player.alive){
+    ctx.save();
+    ctx.globalAlpha = 0.26*st;
+    ctx.fillStyle = 'rgba(150,205,236,1)';
+    ctx.beginPath();
+    ctx.moveTo(x - r*0.62, y - r*0.15);
+    ctx.quadraticCurveTo(x, y - r*(1.1 + 2.4*st), x + r*0.62, y - r*0.15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  // fading as the bead gives up the ghost
+  var alpha = player.alive ? 1 : clamp(0.3 + player.bead*0.7, 0, 1);
+
+  // faint contact glow so the drop reads on busy glass
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = (0.24 + 0.16*(1-clamp(player.m/M_MAX,0,1)))*alpha;
+  var gr = r*2.1;
+  ctx.drawImage(player.stalled ? SPR.glowGold : SPR.glowBlue, x-gr, y-gr, gr*2, gr*2);
+  ctx.restore();
+
+  drawDroplet(x, y, r, player.stretch, alpha, 1, warmth);
+
+  // stall ring
+  if(player.stalled && player.alive){
+    var pulse = 0.5 + 0.5*Math.sin(timeS*7.5);
+    ctx.save();
+    ctx.globalAlpha = 0.30 + 0.32*pulse;
+    ctx.strokeStyle = 'rgba(255,190,106,1)';
+    ctx.lineWidth = Math.max(1, r*0.10);
+    ctx.beginPath();
+    ctx.arc(x, y, r*(1.35 + 0.18*pulse), 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawSill(yoff){
+  var y = SILL_Y*H + yoff;
+  var hh = (1-SILL_Y)*H;
+  if(y > H+2 || y + hh < -2) return;
+  ctx.save();
+  var g = ctx.createLinearGradient(0, y, 0, y+hh);
+  g.addColorStop(0,    'rgba(28,40,56,0.92)');
+  g.addColorStop(0.14, 'rgba(18,28,42,0.96)');
+  g.addColorStop(1,    'rgba(8,14,24,1)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y, W, hh+2);
+  // lip highlight
+  ctx.fillStyle = 'rgba(174,214,238,0.30)';
+  ctx.fillRect(0, y, W, Math.max(1, 0.0035*PS));
+  ctx.fillStyle = 'rgba(255,198,124,0.14)';
+  ctx.fillRect(0, y + Math.max(1,0.0035*PS), W, Math.max(1, 0.0022*PS));
+  // hanging beads along the lip
+  ctx.globalAlpha = 0.5;
+  for(var i=0;i<9;i++){
+    var bx = ((i*0.113 + 0.05) % 1)*W;
+    var br = (0.006 + 0.004*Math.abs(Math.sin(i*2.7)))*PS;
+    ctx.fillStyle = 'rgba(150,200,228,0.55)';
+    ctx.beginPath();
+    ctx.arc(bx, y + br*0.55, br, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawParts(yoff){
+  ctx.globalCompositeOperation = 'lighter';
+  for(var i=0;i<PMAX;i++){
+    var p = parts[i];
+    if(!p.on) continue;
+    var t = clamp(p.life/p.max, 0, 1);
+    var x = p.x*W, y = p.y*H + yoff;
+    if(y < -30 || y > H+30) continue;
+    var r = p.r*PS;
+    var a, spr;
+    if(p.kind === 0){        // mist
+      a = 0.30*t*t; spr = SPR.glowBlue; r *= (1.6 - t*0.5);
+    } else if(p.kind === 1){ // splash
+      a = 0.55*t; spr = SPR.glowBlue; r *= 0.9;
+    } else if(p.kind === 2){ // steam
+      a = 0.30*t*t; spr = SPR.glowGold; r *= (1.7 - t*0.6);
+    } else {                 // spark
+      a = 0.75*t; spr = SPR.glowGold; r *= 0.8;
+    }
+    if(a < 0.004 || r < 0.3) continue;
+    ctx.globalAlpha = a;
+    ctx.drawImage(spr, x-r, y-r, r*2, r*2);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+}
+
+function drawPops(yoff){
+  var any = false;
+  for(var i=0;i<POPN;i++) if(pops[i].on){ any = true; break; }
+  if(!any) return;
+  ctx.save();
+  ctx.font = '600 ' + Math.round(clamp(0.030*PS, 10, 17)) + 'px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for(i=0;i<POPN;i++){
+    var p = pops[i];
+    if(!p.on) continue;
+    var t = clamp(p.life/p.max, 0, 1);
+    ctx.globalAlpha = t*0.9;
+    ctx.fillStyle = 'rgba(206,238,252,1)';
+    ctx.fillText(p.txt, p.x*W, p.y*H + yoff - (1-t)*10);
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+/* The player draws ON TOP of the sill so the drip over the lip is visible. */
+function drawPaneContents(p, yoff, withPlayer, withTrail){
+  drawDust(p, yoff);
+  drawGlare(p, yoff);
+  if(withTrail) drawTrail(p.trail, yoff);
+  drawDroplets(p, yoff);
+  drawSill(yoff);
+  if(withPlayer) drawPlayer(yoff);
+}
+
+var vignette = null, vignKey = -1;
+function vignetteGrad(){
+  var key = Math.round(W)*100000 + Math.round(H);
+  if(vignette && vignKey === key) return vignette;
+  vignKey = key;
+  var vg = ctx.createRadialGradient(W*0.5,H*0.48,Math.min(W,H)*0.32,W*0.5,H*0.5,Math.max(W,H)*0.78);
+  vg.addColorStop(0,'rgba(0,0,0,0)');
+  vg.addColorStop(1,'rgba(2,6,12,0.55)');
+  vignette = vg;
+  return vg;
+}
+
+function render(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  if(shake > 0.02) ctx.translate(shakeX, shakeY);
+
+  drawBackground();
+
+  var sliding = (STATE === 'slide' && oldPane);
+  if(sliding){
+    var e = easeInOutCubic(clamp(slideT/0.8, 0, 1));
+    drawPaneContents(oldPane, -e*H, false, true);
+    drawPaneContents(pane, (1-e)*H, false, false);
+    drawParts(-e*H);
+  } else if(pane){
+    drawPaneContents(pane, 0, true, true);
+    drawParts(0);
+    drawPops(0);
+  }
+
+  // ---- glare veil over everything (the light is IN the glass)
+  if(pane && !sliding && player.glare > 0.02){
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = player.glare*0.10;
+    ctx.fillStyle = 'rgba(255,196,120,1)';
+    ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.fillStyle = vignetteGrad();
+  ctx.fillRect(0,0,W,H);
+
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+
+/* =========================================================================
+   HUD
+   ========================================================================= */
+function updateHUD(){
+  if(score !== hudScore){ scoreEl.textContent = score; hudScore = score; }
+  if(pane && pane.n !== hudPane){ paneEl.textContent = pane.n; hudPane = pane.n; }
+  if(drunk !== hudDrunk){ drunkEl.textContent = drunk; hudDrunk = drunk; }
+
+  var v = clamp(player.m/M_MAX, 0, 1);
+  if(Math.abs(v - hudGauge) > 0.002){
+    gFill.style.transform = 'scaleX('+v.toFixed(4)+')';
+    gShine.style.transform = 'scaleX('+v.toFixed(4)+')';
+    hudGauge = v;
+  }
+  var cls = '';
+  if(player.m < M_STALL) cls = 'crit';
+  else if(player.m < M_STALL*1.45) cls = 'warn';
+  if(cls !== hudCls){
+    gaugeWrap.className = cls;
+    hudCls = cls;
+  }
+}
+
+/* =========================================================================
+   FLOW
+   ========================================================================= */
+function showScreens(){
+  startScreen.classList.toggle('hidden', STATE !== 'start');
+  pauseScreen.classList.toggle('hidden', STATE !== 'paused');
+  overScreen.classList.toggle('hidden', STATE !== 'over');
+  hudEl.classList.toggle('on', STATE === 'play' || STATE === 'clear' || STATE === 'slide' || STATE === 'dying' || (STATE==='paused' && prevState!=='start'));
+}
+
+function enterStart(){
+  STATE = 'start';
+  panes = 0; drunk = 0; score = 0;
+  warmth = 0;
+  pane = makePane(1);
+  oldPane = null;
+  clearParts(); clearPops();
+  shake = 0; shakeX = 0; shakeY = 0;
+  parallax = 0;
+  resetPlayer(rnd(96,118), rnd(0.25,0.75));
+  lastTrailX = player.x; lastTrailY = player.y; trailAcc = 0;
+  hudScore = hudPane = hudDrunk = -1; hudGauge = -1; hudCls = 'x';
+  showScreens();
+}
+
+function startGame(){
+  if(timeS < startGuard) return;
+  startGuard = timeS + 0.25;
+  SND.init();
+  SND.resume();
+  SND.start();
+  STATE = 'play';
+  panes = 0; drunk = 0; score = 0;
+  warmth = 0;
+  oldPane = null;
+  pane = makePane(1);
+  clearParts(); clearPops();
+  shake = 0; shakeX = 0; shakeY = 0;
+  parallax = 0;
+  wasWarn = false; warnCool = 0;
+  mistCool = 0; steamCool = 0;
+  resetPlayer(M_START, 0.5);
+  lastTrailX = player.x; lastTrailY = player.y; trailAcc = 0;
+  hudScore = hudPane = hudDrunk = -1; hudGauge = -1; hudCls = 'x';
+  overScreen.classList.add('hidden');
+  startScreen.classList.add('hidden');
+  pauseScreen.classList.add('hidden');
+  bMain.textContent = 'PANE 1';
+  bSub.textContent = pane.line;
+  bannerEl.classList.remove('show');
+  void bannerEl.offsetWidth;
+  bannerEl.classList.add('show');
+  showScreens();
+}
+var startGuard = 0;
+
+function doPause(){
+  if(STATE === 'paused') return;
+  if(STATE !== 'play' && STATE !== 'clear' && STATE !== 'slide' && STATE !== 'dying'){
+    SND.suspend();
+    return;
+  }
+  prevState = STATE;
+  STATE = 'paused';
+  SND.setSizzle(0, 1);
+  SND.suspend();
+  showScreens();
+}
+function doResume(){
+  if(STATE !== 'paused') { SND.resume(); return; }
+  STATE = prevState;
+  lastT = 0;
+  SND.resume();
+  showScreens();
+}
+
+/* =========================================================================
+   INPUT
+   ========================================================================= */
+/* The canvas is pinned to the viewport at 0,0 and sized W x H, so client
+   coords map straight through — no getBoundingClientRect in the hot path. */
+function pointerToTarget(clientX){
+  targetX = clamp(clientX/Math.max(1, W), 0.02, 0.98);
+}
+
+function primaryAction(){
+  SND.init();
+  SND.resume();
+  if(STATE === 'paused'){ doResume(); return; }
+  if(STATE === 'start'){ startGame(); return; }
+  if(STATE === 'over'){
+    if(timeS >= overReadyAt) startGame();
+    return;
+  }
+}
+
+wrapEl.addEventListener('pointerdown', function(e){
+  if(e.target === muteBtn) return;
+  pointerToTarget(e.clientX);
+  primaryAction();
+}, {passive:true});
+
+wrapEl.addEventListener('pointermove', function(e){
+  pointerToTarget(e.clientX);
+}, {passive:true});
+
+/* explicit touch handlers so we can preventDefault (no scroll / rubber-band) */
+wrapEl.addEventListener('touchstart', function(e){
+  if(e.target === muteBtn) return;
+  if(e.touches && e.touches.length){
+    e.preventDefault();
+    pointerToTarget(e.touches[0].clientX);
+    primaryAction();
+  }
+}, {passive:false});
+wrapEl.addEventListener('touchmove', function(e){
+  if(e.touches && e.touches.length){
+    e.preventDefault();
+    pointerToTarget(e.touches[0].clientX);
+  }
+}, {passive:false});
+wrapEl.addEventListener('touchend', function(e){ e.preventDefault(); }, {passive:false});
+document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
+
+function setKey(code, down){
+  if(code === 'ArrowLeft' || code === 'KeyA'){ keyL = down; }
+  else if(code === 'ArrowRight' || code === 'KeyD'){ keyR = down; }
+  keyDir = (keyR?1:0) - (keyL?1:0);
+}
+
+window.addEventListener('keydown', function(e){
+  var c = e.code;
+  if(c === 'ArrowLeft' || c === 'ArrowRight' || c === 'KeyA' || c === 'KeyD' ||
+     c === 'Space' || c === 'ArrowUp' || c === 'ArrowDown'){
+    e.preventDefault();
+  }
+  if(e.repeat) { setKey(c, true); return; }
+
+  if(c === 'KeyM'){ toggleMute(); return; }
+  if(c === 'Escape' || c === 'KeyP'){
+    if(STATE === 'paused') doResume(); else doPause();
+    return;
+  }
+  if(STATE === 'paused'){ doResume(); return; }
+  if(c === 'Space' || c === 'Enter' || c === 'NumpadEnter'){
+    SND.init(); SND.resume();
+    if(STATE === 'start') startGame();
+    else if(STATE === 'over' && timeS >= overReadyAt) startGame();
+    return;
+  }
+  setKey(c, true);
+}, {passive:false});
+
+window.addEventListener('keyup', function(e){ setKey(e.code, false); }, {passive:true});
+
+function toggleMute(){
+  SND.init();
+  SND.setMuted(!SND.muted);
+  muteBtn.textContent = SND.muted ? '♪ OFF' : '♪ ON';
+  muteBtn.classList.toggle('off', SND.muted);
+}
+muteBtn.addEventListener('click', function(e){
+  e.stopPropagation();
+  e.preventDefault();
+  toggleMute();
+});
+muteBtn.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+muteBtn.addEventListener('touchstart', function(e){ e.stopPropagation(); }, {passive:true});
+
+window.addEventListener('blur', doPause);
+window.addEventListener('focus', function(){
+  // a blur on a non-playing screen only suspends audio; give it back on return
+  if(STATE !== 'paused') SND.resume();
+});
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden) doPause(); else if(STATE !== 'paused') SND.resume();
+});
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 120); });
+
+/* =========================================================================
+   MAIN LOOP  (single rAF, never cancelled)
+   ========================================================================= */
+var lastT = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  if(!lastT){ lastT = now; return; }
+  var dt = (now - lastT)/1000;
+  lastT = now;
+  if(dt > 0.05) dt = 0.05;      // clamp so tab-switching can't teleport physics
+  if(dt <= 0) dt = 0.0001;
+
+  if(needRebuild) doRebuild();
+
+  if(STATE !== 'paused'){
+    timeS += dt;
+    updateRain(dt);
+
+    // warmth easing toward the current pane
+    var wTarget = pane ? pane.diff.warmth : 0;
+    warmth += (wTarget - warmth)*Math.min(1, dt*0.9);
+
+    // parallax follows the drop
+    var pxT = (player.x - 0.5)*2;
+    parallax += (pxT - parallax)*Math.min(1, dt*2.6);
+
+    if(STATE === 'start')       updateDemo(dt);
+    else if(STATE === 'play')   updatePlay(dt);
+    else if(STATE === 'clear')  updateClear(dt);
+    else if(STATE === 'slide')  updateSlide(dt);
+    else if(STATE === 'dying')  updateDying(dt);
+    else if(STATE === 'over'){
+      updateGlares(pane, dt);
+      trailUpdate(pane.trail, dt);
+    }
+
+    updateParts(dt);
+    updatePops(dt);
+
+    if(shake > 0.02){
+      shake *= Math.pow(0.0016, dt);
+      shakeX = rnd(-shake, shake);
+      shakeY = rnd(-shake, shake)*0.7;
+    } else { shake = 0; shakeX = 0; shakeY = 0; }
+
+    if(STATE !== 'play') SND.setSizzle(0, dt);
+  }
+
+  render();
+  updateHUD();
+}
+
+/* =========================================================================
+   BOOT
+   ========================================================================= */
+buildSprites();
+buildBokeh();
+buildRain();
+resize();
+doRebuild();
+enterStart();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
