@@ -1,0 +1,1839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="CONTIGUOUS - defrag a dying hard disk. Stitch fragmented files into contiguous runs before thrash maxes out.">
+<title>CONTIGUOUS</title>
+<style>
+  :root{
+    --bg:#0a0e14;
+    --bg2:#070a10;
+    --panel:rgba(10,16,22,.92);
+    --cy:#6ff2df;
+    --cy2:#39c9b8;
+    --grn:#7dff9b;
+    --amb:#ffd166;
+    --red:#ff5d5d;
+    --ink:#d6f2ee;
+    --dim:#5d7a80;
+    --dim2:#38505a;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:var(--bg);color:var(--ink);
+    font-family:var(--mono);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+    font-variant-numeric:tabular-nums;
+  }
+  #wrap{
+    position:fixed;inset:0;display:flex;flex-direction:column;
+    padding:max(4px,env(safe-area-inset-top)) max(5px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom)) max(5px,env(safe-area-inset-left));
+    background:
+      radial-gradient(120% 90% at 50% 0%, #101823 0%, var(--bg) 55%, var(--bg2) 100%);
+  }
+
+  /* ---------------- HUD ---------------- */
+  #hud{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:3px 4px 4px;min-height:34px;
+  }
+  .brand{
+    font-size:13px;letter-spacing:.26em;color:var(--cy);
+    text-shadow:0 0 12px rgba(111,242,223,.45);white-space:nowrap;
+  }
+  .brand b{color:#bffff4;font-weight:400;}
+  .stat{display:flex;flex-direction:column;line-height:1.05;min-width:0;}
+  .lbl{font-size:8px;letter-spacing:.18em;color:var(--dim);white-space:nowrap;}
+  .val{font-size:15px;color:var(--ink);letter-spacing:.04em;white-space:nowrap;}
+  #score{color:var(--cy);text-shadow:0 0 12px rgba(111,242,223,.3);transition:transform .09s ease-out;transform-origin:0 50%;}
+  #score.pop{transform:scale(1.22);}
+  #shiftv{color:var(--amb);}
+  #freev.low{color:var(--red);}
+  .thr{flex:1 1 auto;min-width:64px;max-width:320px;}
+  .thr .lbl{display:flex;justify-content:space-between;gap:6px;}
+  .thr .lbl b{font-weight:400;color:var(--dim);}
+  #thrOuter{
+    margin-top:3px;height:9px;border:1px solid rgba(111,242,223,.22);border-radius:3px;
+    background:rgba(255,255,255,.035);overflow:hidden;position:relative;
+  }
+  #thrBar{
+    height:100%;width:0%;border-radius:2px;
+    background:linear-gradient(90deg,#3fe0c0,#9dff7a 45%,#ffd166 70%,#ff5d5d 100%);
+    background-size:320px 100%;
+    transition:width .12s linear;
+  }
+  #thrOuter.hot{border-color:rgba(255,93,93,.75);box-shadow:0 0 14px rgba(255,93,93,.35);}
+  #thrOuter.hot #thrBar{animation:thrpulse .55s ease-in-out infinite;}
+  @keyframes thrpulse{0%,100%{filter:brightness(1);}50%{filter:brightness(1.55);}}
+  #mute,#pausebtn{
+    flex:0 0 auto;width:30px;height:30px;border-radius:7px;cursor:pointer;
+    background:rgba(255,255,255,.05);border:1px solid rgba(111,242,223,.24);
+    color:var(--cy);font-family:var(--mono);font-size:14px;line-height:1;padding:0;
+  }
+  #pausebtn{font-size:10px;letter-spacing:1px;}
+  #mute.off{color:var(--dim2);border-color:rgba(255,255,255,.1);}
+  #mute:active,#pausebtn:active{background:rgba(111,242,223,.18);}
+
+  /* ------------- shift bar ------------- */
+  #shiftbar{flex:0 0 auto;height:3px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden;margin:0 4px;}
+  #shiftfill{height:100%;width:0%;background:linear-gradient(90deg,rgba(255,209,102,.55),rgba(255,209,102,.95));}
+
+  /* ------------- queue ------------- */
+  #queue{
+    flex:0 0 auto;display:flex;align-items:center;gap:6px;
+    height:28px;padding:0 4px;overflow:hidden;
+  }
+  #qlbl{font-size:8px;letter-spacing:.18em;color:var(--dim);white-space:nowrap;}
+  .chip{
+    display:none;align-items:center;gap:6px;
+    height:21px;padding:0 7px;border-radius:5px;white-space:nowrap;
+    border:1px solid rgba(111,242,223,.3);background:rgba(111,242,223,.07);
+    font-size:10px;letter-spacing:.09em;color:var(--cy);position:relative;overflow:hidden;
+  }
+  .chip.on{display:flex;}
+  .chip i{position:absolute;left:0;bottom:0;height:2px;background:var(--cy);width:0%;}
+  .chip.wait{border-color:rgba(255,93,93,.75);background:rgba(255,93,93,.1);color:#ffb3b3;animation:chipflash .45s steps(2,end) infinite;}
+  .chip.wait i{background:var(--red);}
+  @keyframes chipflash{0%{opacity:1;}50%{opacity:.42;}100%{opacity:1;}}
+
+  /* ------------- stage ------------- */
+  #stage{flex:1 1 auto;position:relative;min-height:0;}
+  canvas#cv{position:absolute;left:0;top:0;display:block;touch-action:none;}
+
+  /* ------------- foot ------------- */
+  #foot{
+    flex:0 0 auto;height:17px;display:flex;justify-content:space-between;gap:8px;
+    padding:0 5px;font-size:9px;letter-spacing:.12em;color:var(--dim);overflow:hidden;white-space:nowrap;
+  }
+  #info{overflow:hidden;text-overflow:ellipsis;}
+  #info.warn{color:var(--amb);}
+  #best{flex:0 0 auto;color:var(--dim2);}
+
+  /* ------------- overlays ------------- */
+  #ov{position:absolute;inset:0;z-index:20;pointer-events:none;}
+  .panel{
+    position:absolute;inset:0;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;text-align:center;
+    padding:18px 16px;pointer-events:auto;overflow-y:auto;
+    background:radial-gradient(80% 70% at 50% 45%, rgba(8,13,18,.9), rgba(5,8,12,.97));
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  }
+  .panel.on{display:flex;animation:fadein .22s ease-out;}
+  @keyframes fadein{from{opacity:0;}to{opacity:1;}}
+  .title{
+    font-size:clamp(26px,9vw,54px);letter-spacing:.2em;color:var(--cy);line-height:1;
+    text-shadow:0 0 26px rgba(111,242,223,.4),0 0 60px rgba(111,242,223,.12);
+  }
+  .sub{font-size:10px;letter-spacing:.28em;color:var(--dim);}
+  .rules{
+    display:flex;flex-direction:column;gap:7px;max-width:430px;
+    font-size:clamp(10px,2.7vw,12px);line-height:1.5;color:var(--ink);letter-spacing:.05em;
+  }
+  .rules div{display:flex;gap:8px;text-align:left;}
+  .rules span.n{color:var(--cy2);flex:0 0 auto;}
+  .k{color:var(--grn);}
+  .kb{color:var(--amb);}
+  .btn{
+    font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;
+    color:#012;background:linear-gradient(180deg,#8ffbe8,#3fc9b6);
+    border:1px solid rgba(150,255,240,.8);border-radius:9px;
+    padding:14px 30px;cursor:pointer;
+    box-shadow:0 0 24px rgba(111,242,223,.25);
+    transition:transform .08s ease,filter .16s ease;
+  }
+  .btn:active{transform:scale(.96);}
+  .btn:hover{filter:brightness(1.1);}
+  .tiny{font-size:9px;letter-spacing:.16em;color:var(--dim2);max-width:420px;line-height:1.7;}
+  .cause{font-size:clamp(20px,7vw,38px);letter-spacing:.16em;color:var(--red);text-shadow:0 0 24px rgba(255,93,93,.4);line-height:1.1;}
+  .why{font-size:11px;letter-spacing:.08em;color:var(--dim);max-width:380px;line-height:1.6;}
+  .bigscore{font-size:clamp(30px,11vw,58px);color:var(--cy);line-height:1;text-shadow:0 0 26px rgba(111,242,223,.35);}
+  .scorerow{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;}
+  .sc{display:flex;flex-direction:column;gap:3px;}
+  .sc .lbl{font-size:8px;letter-spacing:.2em;}
+  .sc .v{font-size:17px;color:var(--ink);}
+
+  /* banner + toast */
+  #banner{
+    position:absolute;left:0;right:0;top:22%;text-align:center;z-index:15;
+    pointer-events:none;opacity:0;transition:opacity .3s ease;
+  }
+  #banner.on{opacity:1;}
+  #bt1{font-size:clamp(20px,6.5vw,40px);letter-spacing:.18em;color:var(--amb);text-shadow:0 0 26px rgba(255,209,102,.45);}
+  #bt2{margin-top:7px;font-size:11px;letter-spacing:.2em;color:var(--grn);}
+  #bt3{margin-top:4px;font-size:9px;letter-spacing:.2em;color:var(--dim);}
+  #toast{
+    position:absolute;left:50%;transform:translateX(-50%);bottom:8%;z-index:15;
+    font-size:10px;letter-spacing:.16em;color:#ffd0d0;pointer-events:none;
+    border:1px solid rgba(255,93,93,.5);background:rgba(40,8,10,.8);
+    padding:6px 12px;border-radius:6px;opacity:0;transition:opacity .22s ease;
+  }
+  #toast.on{opacity:1;}
+
+  @media (max-width:480px){
+    .brand{display:none;}
+    .val{font-size:13px;}
+    #hud{gap:8px;}
+  }
+  @media (max-height:430px){
+    #queue{height:24px;}
+    #hud{min-height:30px;}
+    .rules{gap:5px;}
+    .panel{gap:8px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header id="hud">
+    <div class="brand"><b>CONTIGUOUS</b></div>
+    <div class="stat"><span class="lbl">MB SERVED</span><span class="val" id="score">0</span></div>
+    <div class="stat"><span class="lbl">SHIFT</span><span class="val" id="shiftv">1</span></div>
+    <div class="stat"><span class="lbl">FREE</span><span class="val" id="freev">280</span></div>
+    <div class="stat thr">
+      <span class="lbl">THRASH <b id="thrpct">0%</b></span>
+      <div id="thrOuter"><div id="thrBar"></div></div>
+    </div>
+    <button id="pausebtn" title="pause (P)">&#10073;&#10073;</button>
+    <button id="mute" title="mute (M)">&#9835;</button>
+  </header>
+  <div id="shiftbar"><div id="shiftfill"></div></div>
+  <div id="queue"><span id="qlbl">WRITE QUEUE</span></div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="banner"><div id="bt1"></div><div id="bt2"></div><div id="bt3"></div></div>
+    <div id="toast"></div>
+    <div id="ov">
+      <div class="panel" id="pStart">
+        <div class="title">CONTIGUOUS</div>
+        <div class="sub">DEFRAG OR DIE &middot; DISK SHIFT SIMULATOR</div>
+        <div class="rules">
+          <div><span class="n">1</span><span>Tap a <b class="kb">fragment</b>, then tap a <b class="k">green slot</b> to move it. Dragging works too.</span></div>
+          <div><span class="n">2</span><span>Whole files drain <b class="k">fast</b>, score MB, and free their sectors. Fragments crawl.</span></div>
+          <div><span class="n">3</span><span>Don't let the disk fill. Don't let <b style="color:#ff5d5d">THRASH</b> max out.</span></div>
+        </div>
+        <button class="btn" id="startBtn">Spin up</button>
+        <div class="tiny">P / ESC pause &middot; M mute &middot; R restart &middot; ENTER start<br><span id="bestStart"></span></div>
+      </div>
+      <div class="panel" id="pPause">
+        <div class="title" style="font-size:clamp(22px,7vw,42px)">PAUSED</div>
+        <div class="sub">HEAD PARKED</div>
+        <button class="btn" id="resumeBtn">Resume</button>
+        <div class="tiny">P / ESC to resume</div>
+      </div>
+      <div class="panel" id="pOver">
+        <div class="cause" id="ovCause">HEAD CRASH</div>
+        <div class="why" id="ovWhy"></div>
+        <div class="bigscore" id="ovScore">0</div>
+        <div class="sub">MB SERVED</div>
+        <div class="scorerow">
+          <div class="sc"><span class="lbl">SHIFTS CLEARED</span><span class="v" id="ovShift">0</span></div>
+          <div class="sc"><span class="lbl">BEST MB</span><span class="v" id="ovBest">0</span></div>
+          <div class="sc"><span class="lbl">BEST SHIFT</span><span class="v" id="ovBestShift">0</span></div>
+        </div>
+        <button class="btn" id="againBtn">Reformat &amp; retry</button>
+        <div class="tiny">R to restart</div>
+      </div>
+    </div>
+  </div>
+  <div id="foot"><span id="info">TAP A FRAGMENT TO BEGIN</span><span id="best"></span></div>
+</div>
+<script>
+(function(){
+'use strict';
+
+/* ===================================================================== *
+ *  CONTIGUOUS — a disk-defrag arcade game.
+ *  One file, no external requests, no storage. Canvas + WebAudio.
+ * ===================================================================== */
+
+/* ------------------------------ helpers ------------------------------ */
+var D = document;
+var el = function(id){ return D.getElementById(id); };
+function ri(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+function rf(a,b){ return a + Math.random()*(b-a); }
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function easeInOut(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function easeOut(t){ return 1-Math.pow(1-t,3); }
+
+/* ------------------------------ constants ---------------------------- */
+var NSEC = 280;                       // total sectors (20x14 / 14x20)
+var GRIDS = [{c:20,r:14},{c:14,r:20}];
+var MB_PER_SECTOR = 4;                // each sector = 4 MB
+var MAX_BAD = 44;
+
+// file hues: distinct in hue AND lightness, readable on near-black
+var HUES = [
+  {n:'CYN', hi:'#8ff6ff', mid:'#2fb9d8', lo:'#15495a', rgb:'80,230,255'},
+  {n:'AMB', hi:'#ffe49a', mid:'#dfa63a', lo:'#4a3a1c', rgb:'255,209,102'},
+  {n:'MAG', hi:'#ffa8e2', mid:'#d8479f', lo:'#4d1c3b', rgb:'255,140,215'},
+  {n:'LIM', hi:'#cdfb92', mid:'#7ec93c', lo:'#2a491d', rgb:'170,245,120'},
+  {n:'ORG', hi:'#ffb692', mid:'#e2662f', lo:'#4e2a20', rgb:'255,140,90'},
+  {n:'VIO', hi:'#cbbaff', mid:'#8a72e8', lo:'#2e2851', rgb:'180,160,255'},
+  {n:'WHT', hi:'#f3f9ff', mid:'#a3b3c4', lo:'#333d47', rgb:'230,240,255'}
+];
+var FNAME = ['IMG','LOG','DB','TMP','SYS','VID','WAV','DOC','BAK','IDX','MAP','TXT','BIN','RAW','ISO','CFG','SWP','JRN'];
+var FEXT  = ['DAT','BIN','LOG','TMP','RAW','SYS','IDX','BAK','CHK'];
+
+/* ------------------------------ audio -------------------------------- */
+var A = { ctx:null, master:null, noise:null, muted:false, ready:false };
+
+function audioInit(){
+  if(A.ctx){
+    if(A.ctx.state === 'suspended'){ try{ A.ctx.resume(); }catch(e){} }
+    return;
+  }
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return;
+  try{ A.ctx = new AC(); }catch(e){ return; }
+  var c = A.ctx;
+  A.master = c.createGain();
+  A.master.gain.value = A.muted ? 0 : 0.25;
+  if(c.createDynamicsCompressor){
+    var comp = c.createDynamicsCompressor();
+    try{ comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.18; }catch(e){}
+    A.master.connect(comp); comp.connect(c.destination);
+  } else {
+    A.master.connect(c.destination);
+  }
+  var sr = c.sampleRate, len = Math.floor(sr*0.6);
+  var buf = c.createBuffer(1, len, sr), d = buf.getChannelData(0);
+  for(var i=0;i<len;i++) d[i] = Math.random()*2-1;
+  A.noise = buf;
+  A.ready = true;
+  if(c.state === 'suspended'){ try{ c.resume(); }catch(e){} }
+}
+function aOK(){ return A.ready && !A.muted && A.ctx && A.ctx.state === 'running'; }
+function aNow(){ return A.ctx.currentTime; }
+
+function blip(f0,f1,dur,peak,type,delay,lp){
+  if(!aOK()) return;
+  var c = A.ctx, t0 = aNow() + (delay||0);
+  var o = c.createOscillator(), g = c.createGain(), last = g;
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(f0, t0);
+  if(f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20,f1), t0+dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(peak, t0 + Math.min(0.018, dur*0.3));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g);
+  if(lp){
+    var f = c.createBiquadFilter(); f.type='lowpass'; f.frequency.value = lp;
+    g.connect(f); last = f;
+  }
+  last.connect(A.master);
+  o.start(t0); o.stop(t0 + dur + 0.03);
+}
+function noiseBurst(dur,peak,ftype,freq,q,delay,sweepTo){
+  if(!aOK()) return;
+  var c = A.ctx, t0 = aNow() + (delay||0);
+  var s = c.createBufferSource(); s.buffer = A.noise; s.loop = true;
+  var f = c.createBiquadFilter(); f.type = ftype || 'bandpass';
+  f.frequency.setValueAtTime(freq, t0);
+  if(sweepTo) f.frequency.exponentialRampToValueAtTime(Math.max(30,sweepTo), t0+dur);
+  f.Q.value = q || 1;
+  var g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(peak, t0 + Math.min(0.008, dur*0.3));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  s.connect(f); f.connect(g); g.connect(A.master);
+  s.start(t0, Math.random()*0.4); s.stop(t0 + dur + 0.03);
+}
+function sSeek(){ noiseBurst(0.032, 0.085, 'bandpass', rf(1500,3400), 9); }
+function sClick(){ blip(720, 900, 0.05, 0.075, 'triangle'); }
+function sQueued(){ blip(520, 620, 0.05, 0.055, 'square', 0, 1800); }
+function sThunk(){ blip(340, 240, 0.07, 0.06, 'triangle'); noiseBurst(0.03,0.03,'lowpass',1200,1); }
+function sBuzz(){ blip(150, 78, 0.17, 0.13, 'square', 0, 900); noiseBurst(0.1, 0.045, 'lowpass', 700, 1); }
+function sMerge(){ blip(523, 784, 0.13, 0.06, 'triangle'); }
+function sChime(){
+  var f = [659.25, 880, 1174.66];
+  for(var i=0;i<f.length;i++){ blip(f[i], f[i], 0.24, 0.075, 'sine', i*0.055); blip(f[i]*2, f[i]*2, 0.14, 0.022, 'triangle', i*0.055); }
+}
+function sComplete(){
+  blip(120, 52, 0.2, 0.16, 'sine');
+  noiseBurst(0.09, 0.075, 'lowpass', 620, 1);
+  var f = [987.77, 1318.5, 1567.98, 2093];
+  for(var i=0;i<f.length;i++) blip(f[i], f[i], 0.1, 0.05, 'square', 0.07 + i*0.052, 4200);
+}
+function sWrite(){ blip(300, 214, 0.06, 0.045, 'sine'); noiseBurst(0.035, 0.03, 'highpass', 2200, 1); }
+function sBad(){ noiseBurst(0.16, 0.08, 'bandpass', 420, 3); blip(210, 96, 0.16, 0.055, 'square'); }
+function sAlarm(v){
+  var p = 0.05 + 0.06*v;
+  blip(520, 520, 0.085, p, 'sawtooth', 0, 2600);
+  blip(742, 742, 0.085, p, 'sawtooth', 0.1, 2600);
+}
+function sShiftClear(){
+  var f = [523.25, 659.25, 783.99, 1046.5];
+  for(var i=0;i<f.length;i++){ blip(f[i], f[i], 0.22, 0.08, 'triangle', i*0.085); blip(f[i]/2, f[i]/2, 0.24, 0.035, 'sine', i*0.085); }
+  noiseBurst(0.3, 0.03, 'highpass', 3000, 1, 0.05);
+}
+function sOver(){
+  blip(140, 34, 1.15, 0.2, 'sine');
+  blip(92, 28, 0.95, 0.13, 'triangle');
+  noiseBurst(0.85, 0.12, 'lowpass', 1400, 1, 0, 80);
+  noiseBurst(0.25, 0.09, 'bandpass', 900, 2, 0.02);
+}
+function toggleMute(){
+  A.muted = !A.muted;
+  if(A.master){
+    try{
+      A.master.gain.cancelScheduledValues(aNow());
+      A.master.gain.setTargetAtTime(A.muted?0:0.25, aNow(), 0.02);
+    }catch(e){ A.master.gain.value = A.muted?0:0.25; }
+  }
+  var b = el('mute');
+  b.classList.toggle('off', A.muted);
+  b.innerHTML = A.muted ? '&#9834;&#10007;' : '&#9835;';
+}
+
+/* ------------------------------ dom refs ----------------------------- */
+var cv = el('cv');
+var ctx = cv.getContext('2d', {alpha:false});
+var stage = el('stage');
+var eScore = el('score'), eShift = el('shiftv'), eFree = el('freev');
+var eThrBar = el('thrBar'), eThrOuter = el('thrOuter'), eThrPct = el('thrpct');
+var eShiftFill = el('shiftfill'), eInfo = el('info'), eBest = el('best');
+var eBanner = el('banner'), eBT1 = el('bt1'), eBT2 = el('bt2'), eBT3 = el('bt3');
+var eToast = el('toast');
+var pStart = el('pStart'), pPause = el('pPause'), pOver = el('pOver');
+
+// write-queue chips (pooled)
+var qWrap = el('queue');
+var chips = [];
+(function(){
+  for(var i=0;i<4;i++){
+    var c = D.createElement('div');
+    c.className = 'chip';
+    var s = D.createElement('span'); s.className='ct';
+    var b = D.createElement('i');
+    c.appendChild(s); c.appendChild(b);
+    qWrap.appendChild(c);
+    chips.push({root:c, txt:s, bar:b});
+  }
+})();
+
+/* ------------------------------ layout ------------------------------- */
+var VW=300, VH=300, dpr=1, cvLeft=0, cvTop=0;
+var C=20, R=14, cs=20, gap=3, ox=0, oy=0, gw=0, gh=0;
+var vign=null, scan=null;
+
+function buildScan(){
+  var c = D.createElement('canvas');
+  c.width = 1; c.height = 3;
+  var g = c.getContext('2d');
+  g.fillStyle = 'rgba(0,0,0,0.30)';
+  g.fillRect(0,2,1,1);
+  g.fillStyle = 'rgba(0,0,0,0.10)';
+  g.fillRect(0,1,1,1);
+  scan = ctx.createPattern(c, 'repeat');
+}
+function buildVignette(){
+  var cx = VW/2, cy = VH/2, r = Math.max(VW,VH)*0.78;
+  var g = ctx.createRadialGradient(cx, cy, r*0.32, cx, cy, r);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.72, 'rgba(0,0,0,0.28)');
+  g.addColorStop(1, 'rgba(0,0,0,0.68)');
+  vign = g;
+}
+function layoutGrid(){
+  var pad = VW < 380 ? 4 : 8;
+  var best = null;
+  for(var i=0;i<GRIDS.length;i++){
+    var g = GRIDS[i];
+    var s = Math.min((VW - pad*2)/g.c, (VH - pad*2)/g.r);
+    if(!best || s > best.s) best = {s:s, c:g.c, r:g.r};
+  }
+  C = best.c; R = best.r;
+  cs = Math.max(6, Math.floor(best.s*1000)/1000);
+  gw = cs*C; gh = cs*R;
+  ox = Math.round((VW-gw)/2*10)/10;
+  oy = Math.round((VH-gh)/2*10)/10;
+  gap = clamp(cs*0.16, 1.4, 5);
+}
+function resize(){
+  var w = Math.max(140, stage.clientWidth|0), h = Math.max(140, stage.clientHeight|0);
+  dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
+  VW = w; VH = h;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  cv.style.width = w+'px'; cv.style.height = h+'px';
+  layoutGrid(); buildVignette(); buildScan(); refreshRect();
+}
+
+// sector index -> pixel
+function sx(i){ return ox + (i % C)*cs; }
+function sy(i){ return oy + ((i / C)|0)*cs; }
+function cellCX(i){ return sx(i) + cs/2; }
+function cellCY(i){ return sy(i) + cs/2; }
+
+/* ------------------------------ state -------------------------------- */
+var cells = new Int16Array(NSEC);     // 0 free, -1 bad, >0 fileId
+var flash = new Float32Array(NSEC);   // per-sector flash 0..1.8
+var files = new Map();                // id -> file
+var order = [];                       // stable draw order of file ids
+var nextId = 1;
+
+var state = 'menu';                   // menu | play | break | over
+var paused = false;
+var overCause = '';
+var T = 0;                            // global time (s)
+var score = 0, shift = 1, shiftTime = 56, shiftLen = 56;
+var thrash = 0, freeCount = NSEC, badCount = 0;
+var bestScore = 0, bestShift = 0, shiftsCleared = 0;
+
+var writeQ = [];                      // {size, lead, wait, id}
+var writeTimer = 6, wInterval = 5.6, wLead = 2.8, sizeMin = 3, sizeMax = 5, burstP = 0;
+var tolerance = 2.4, thrK = 1.1;
+var badTimer = 99;
+var alarmT = 0;
+var hintId = 0, hintDone = false;
+
+var sel = null;                       // {fid, src, len}
+var validRuns = [];                   // flattened [start,len,...]
+var freeRuns = [];                    // flattened [start,len,...]
+var hoverCell = -1;
+var pending = null;                   // one queued move {fid,src,len,dst}
+var move = { active:false, fid:0, src:0, len:0, dst:0, t:0, dur:0, ph1:0, fc:0, fr:0, tick:0 };
+var headC = 0, headR = 0;             // head position in cell coords (float)
+var shakeMag = 0;
+var bannerT = 0, toastT = 0;
+var hudAcc = 1;
+var scratch = [];                     // reusable int array
+var runScratch = [];
+var wPreview = [];                    // preview cells for imminent write
+var flashScreen = 0;                  // white/red full-frame flash 0..1
+var flashCol = '255,255,255';
+
+/* ------------------------------ particles ---------------------------- */
+var PN = 300, parts = new Array(PN), pIdx = 0;
+for(var _i=0;_i<PN;_i++) parts[_i] = {a:0,x:0,y:0,vx:0,vy:0,l:0,ml:0,s:0,g:0,c:'255,255,255',sq:0};
+function spawn(x,y,n,rgb,spd,size,grav,sq){
+  for(var k=0;k<n;k++){
+    var p = parts[pIdx]; pIdx = (pIdx+1) % PN;
+    var a = Math.random()*Math.PI*2, v = rf(spd*0.35, spd);
+    p.a=1; p.x=x; p.y=y; p.vx=Math.cos(a)*v; p.vy=Math.sin(a)*v;
+    p.ml = rf(0.28,0.75); p.l = p.ml; p.s = rf(size*0.5,size); p.g = grav||0;
+    p.c = rgb; p.sq = sq?1:0;
+  }
+}
+var FTN = 16, ftexts = new Array(FTN), ftIdx = 0;
+for(var _j=0;_j<FTN;_j++) ftexts[_j] = {a:0,x:0,y:0,t:'',l:0,ml:0,c:'#fff',sz:12};
+function floatText(x,y,t,c,sz){
+  var f = ftexts[ftIdx]; ftIdx = (ftIdx+1) % FTN;
+  f.a=1; f.x=x; f.y=y; f.t=t; f.ml=1.15; f.l=f.ml; f.c=c||'#8ff6ff'; f.sz=sz||12;
+}
+function shake(m){ shakeMag = Math.min(14, shakeMag + m); }
+
+/* ------------------------------ grid utils --------------------------- */
+function recalcFree(){
+  // freeRuns is the PLAYER's view of the platter: a fragment in flight has already
+  // vacated its source and its landing zone is spoken for. freeCount stays literal.
+  freeRuns.length = 0;
+  var mv = move.active;
+  var fc = 0, bc = 0, s = -1;
+  for(var i=0;i<NSEC;i++){
+    var v = cells[i];
+    if(v === 0) fc++;
+    else if(v === -1) bc++;
+    var open;
+    if(v === 0) open = !(mv && i >= move.dst && i < move.dst+move.len);
+    else if(mv && v === move.fid && i >= move.src && i < move.src+move.len) open = true;
+    else open = false;
+    if(open){ if(s < 0) s = i; }
+    else if(s >= 0){ freeRuns.push(s, i-s); s = -1; }
+  }
+  if(s >= 0) freeRuns.push(s, NSEC-s);
+  freeCount = fc; badCount = bc;
+}
+function gridChanged(){ recalcFree(); if(sel) refreshValid(); computeWritePreview(); }
+
+function refreshValid(){
+  validRuns.length = 0;
+  if(!sel) return;
+  for(var i=0;i<freeRuns.length;i+=2){
+    if(freeRuns[i+1] >= sel.len) validRuns.push(freeRuns[i], freeRuns[i+1]);
+  }
+}
+// find the run of file `fid` containing index i
+function runAt(i, fid){
+  var s = i, e = i;
+  while(s > 0 && cells[s-1] === fid) s--;
+  while(e < NSEC-1 && cells[e+1] === fid) e++;
+  return {s:s, len:e-s+1};
+}
+// is sector i available from the player's point of view (see recalcFree)
+function openForPlayer(i){
+  var v = cells[i];
+  if(v === 0) return !(move.active && i >= move.dst && i < move.dst+move.len);
+  return !!(move.active && v === move.fid && i >= move.src && i < move.src+move.len);
+}
+function freeRunAt(i){
+  if(!openForPlayer(i)) return null;
+  for(var k=0;k<freeRuns.length;k+=2){
+    if(i >= freeRuns[k] && i < freeRuns[k]+freeRuns[k+1]) return {s:freeRuns[k], len:freeRuns[k+1]};
+  }
+  return null;
+}
+// would placing len blocks of fid at pos touch a sibling fragment?
+function mergesAt(pos, len, fid, exS, exLen){
+  var b = pos-1, a = pos+len;
+  if(b >= 0 && cells[b] === fid && !(b >= exS && b < exS+exLen)) return true;
+  if(a < NSEC && cells[a] === fid && !(a >= exS && a < exS+exLen)) return true;
+  return false;
+}
+// landing index inside a free run: first cells by default, end-aligned if that merges and start doesn't
+function anchorIn(rs, rlen, len, fid, exS, exLen){
+  var a = rs, z = rs + rlen - len;
+  if(z <= a) return a;
+  var ma = mergesAt(a, len, fid, exS, exLen);
+  var mz = mergesAt(z, len, fid, exS, exLen);
+  if(mz && !ma) return z;
+  return a;
+}
+function firstFit(size, out){
+  out.length = 0;
+  for(var i=0;i<NSEC && out.length<size;i++) if(cells[i] === 0) out.push(i);
+  return out.length === size;
+}
+function computeWritePreview(){
+  wPreview.length = 0;
+  if(state !== 'play' || !writeQ.length) return;
+  var w = writeQ[0];
+  if(w.wait || w.lead > 1.45) return;
+  firstFit(w.size, wPreview);
+}
+
+/* ------------------------------ files -------------------------------- */
+function recalcFile(f){
+  var b = f.blocks;
+  b.sort(numsort);
+  var rs = f.runs; rs.length = 0;
+  var s = b[0], p = b[0];
+  for(var i=1;i<b.length;i++){
+    var v = b[i];
+    if(v === p+1){ p = v; }
+    else { rs.push(s, p-s+1); s = v; p = v; }
+  }
+  rs.push(s, p-s+1);
+  f.frags = rs.length >> 1;
+}
+function numsort(a,b){ return a-b; }
+
+function makeFile(blocks){
+  var f = {
+    id: nextId++,
+    size: blocks.length,
+    blocks: blocks.slice(),
+    runs: [],
+    frags: 1,
+    hue: ri(0, HUES.length-1),
+    prog: 0,
+    base: 6.5 + blocks.length*0.55,
+    name: FNAME[ri(0,FNAME.length-1)] + (ri(0,1) ? '_'+String(ri(0,9999)) : '') + '.' + FEXT[ri(0,FEXT.length-1)],
+    pop: 0
+  };
+  // avoid same hue as an index-adjacent neighbour where possible
+  for(var tries=0; tries<3; tries++){
+    var clash = false;
+    for(var i=0;i<blocks.length;i++){
+      var b = blocks[i];
+      if(b>0 && cells[b-1]>0){ var n = files.get(cells[b-1]); if(n && n.hue===f.hue) clash = true; }
+      if(b<NSEC-1 && cells[b+1]>0){ var n2 = files.get(cells[b+1]); if(n2 && n2.hue===f.hue) clash = true; }
+    }
+    if(!clash) break;
+    f.hue = (f.hue + ri(1, HUES.length-1)) % HUES.length;
+  }
+  for(var k=0;k<blocks.length;k++){ cells[blocks[k]] = f.id; flash[blocks[k]] = 1.5; }
+  recalcFile(f);
+  files.set(f.id, f);
+  order.push(f.id);
+  return f;
+}
+function removeFile(f){
+  for(var i=0;i<f.blocks.length;i++){ cells[f.blocks[i]] = 0; flash[f.blocks[i]] = 1.6; }
+  files.delete(f.id);
+  var k = order.indexOf(f.id);
+  if(k >= 0) order.splice(k,1);
+  if(sel && sel.fid === f.id) clearSel();
+  if(move.active && move.fid === f.id) move.active = false;
+  if(pending && pending.fid === f.id) pending = null;
+}
+function fragExcess(){
+  var s = 0;
+  for(var i=0;i<order.length;i++){ var f = files.get(order[i]); if(f) s += f.frags - 1; }
+  return s;
+}
+function fragPressure(){
+  var s = 0;
+  for(var i=0;i<order.length;i++){
+    var f = files.get(order[i]);
+    if(f && f.frags > 1) s += (f.frags-1) * (1 + 0.06*f.size);
+  }
+  return s;
+}
+
+/* ------------------------------ selection ---------------------------- */
+function clearSel(){ sel = null; validRuns.length = 0; }
+function selectRun(i, fid){
+  var r = runAt(i, fid);
+  sel = {fid:fid, src:r.s, len:r.len};
+  refreshValid();
+  sClick();
+}
+
+/* ------------------------------ moves -------------------------------- */
+function startMoveAnim(fid, src, len, dst){
+  var f = files.get(fid);
+  if(!f) return false;
+  var scx = (src % C + (src+len-1) % C)/2, scy = (((src/C)|0) + (((src+len-1)/C)|0))/2;
+  var dcx = (dst % C + (dst+len-1) % C)/2, dcy = (((dst/C)|0) + (((dst+len-1)/C)|0))/2;
+  var d1 = Math.hypot(scx-headC, scy-headR), d2 = Math.hypot(dcx-scx, dcy-scy);
+  move.active = true; move.fid = fid; move.src = src; move.len = len; move.dst = dst;
+  move.t = 0;
+  move.dur = clamp(0.2 + (d1+d2)*0.012, 0.25, 0.45);
+  move.ph1 = move.dur * (d1 > 0.6 ? 0.34 : 0.14);
+  move.fc = headC; move.fr = headR; move.tick = 0;
+  gridChanged();   // player's free-run view now accounts for the in-flight fragment
+  return true;
+}
+function requestMove(fid, src, len, dst){
+  if(move.active){
+    pending = {fid:fid, src:src, len:len, dst:dst};
+    sQueued();
+    return 'queued';
+  }
+  startMoveAnim(fid, src, len, dst);
+  sThunk();
+  return 'go';
+}
+function commitMove(fid, src, len, dst){
+  var f = files.get(fid);
+  if(!f) return false;
+  if(dst < 0 || dst+len > NSEC) return false;
+  var i;
+  for(i=0;i<len;i++) if(cells[src+i] !== fid) return false;
+  for(i=0;i<len;i++) if(cells[dst+i] !== 0) return false;
+  var before = f.frags;
+  for(i=0;i<len;i++) cells[src+i] = 0;
+  for(i=0;i<len;i++) cells[dst+i] = fid;
+  var b = f.blocks;
+  for(i=0;i<b.length;i++) if(b[i] >= src && b[i] < src+len) b[i] = dst + (b[i]-src);
+  recalcFile(f);
+  for(i=0;i<len;i++) flash[dst+i] = 1.35;
+  gridChanged();
+  // The player may have selected another fragment (of this or any file) while the
+  // move was in flight; re-derive the selection from the grid so it can never dangle.
+  if(sel){
+    var sf = files.get(sel.fid);
+    if(!sf) clearSel();
+    else {
+      var base = (sel.fid === fid && sel.src >= src && sel.src < src+len) ? dst : sel.src;
+      if(cells[base] === sel.fid){
+        var r = runAt(base, sel.fid);
+        sel.src = r.s; sel.len = r.len;
+        refreshValid();
+      } else clearSel();
+    }
+  }
+  var hue = HUES[f.hue];
+  if(f.frags < before){
+    if(f.frags === 1){
+      var bonus = f.size * 2 * shift;
+      score += bonus;
+      thrash = Math.max(0, thrash - 3.5);
+      sChime();
+      for(i=0;i<f.blocks.length;i++) spawn(cellCX(f.blocks[i]), cellCY(f.blocks[i]), 5, hue.rgb, cs*3.2, cs*0.16, cs*1.2, 1);
+      floatText(cellCX(f.blocks[(f.size/2)|0]), cellCY(f.blocks[(f.size/2)|0]) - cs*0.6, 'CONTIGUOUS +'+bonus, hue.hi, 12);
+      f.pop = 1;
+      popScore();
+      if(!hintDone){ hintDone = true; hintId = 0; }
+    } else {
+      sMerge();
+      spawn(cellCX(dst), cellCY(dst), 8, hue.rgb, cs*2.4, cs*0.14, cs*0.8, 1);
+    }
+  } else {
+    spawn(cellCX(dst), cellCY(dst), 4, hue.rgb, cs*1.6, cs*0.12, cs*0.6, 1);
+  }
+  return true;
+}
+
+/* ------------------------------ writes ------------------------------- */
+function enqueueWrite(){
+  if(writeQ.length >= 4) return;
+  writeQ.push({ size: ri(sizeMin, sizeMax), lead: wLead, wait: 0 });
+}
+function tryPlaceHead(){
+  var w = writeQ[0];
+  if(freeCount < w.size) return false;
+  if(!firstFit(w.size, scratch)) return false;
+  var f = makeFile(scratch);
+  writeQ.shift();
+  gridChanged();
+  sWrite();
+  spawn(cellCX(f.blocks[0]), cellCY(f.blocks[0]), 5, HUES[f.hue].rgb, cs*1.8, cs*0.12, cs*0.5, 1);
+  if(f.frags > 1) floatText(cellCX(f.blocks[0]), cellCY(f.blocks[0]) - cs*0.5, 'FRAG x'+f.frags, '#ff9c6b', 10);
+  return true;
+}
+function updateWrites(dt){
+  writeTimer -= dt;
+  if(writeTimer <= 0){
+    enqueueWrite();
+    if(burstP > 0 && Math.random() < burstP){
+      enqueueWrite();
+      // sustained bursts late on: three requests at once can genuinely stall the queue
+      if(shift >= 6 && Math.random() < 0.4){ enqueueWrite(); toast('SUSTAINED WRITE BURST'); }
+    }
+    writeTimer = wInterval * rf(0.85, 1.15);
+  }
+  // tick lead times
+  for(var i=0;i<writeQ.length;i++){
+    if(writeQ[i].lead > 0) writeQ[i].lead -= dt;
+  }
+  // only the head of the queue may land (writes stay ordered like a real request queue)
+  var guard = 0;
+  while(writeQ.length && writeQ[0].lead <= 0 && guard++ < 6){
+    if(tryPlaceHead()) continue;
+    var w = writeQ[0];
+    w.wait += dt;
+    if(w.wait >= 8){ gameOver('WRITE FAILURE'); return; }
+    break;
+  }
+}
+
+/* ------------------------------ jobs --------------------------------- */
+var doneScratch = [];
+function updateJobs(dt){
+  doneScratch.length = 0;
+  for(var i=0;i<order.length;i++){
+    var f = files.get(order[i]);
+    if(!f) continue;
+    var fr = f.frags;
+    var rate = 1 / (f.base * (fr === 1 ? 1 : fr*Math.sqrt(fr)));
+    f.prog += rate * dt;
+    if(f.pop > 0) f.pop = Math.max(0, f.pop - dt*2.2);
+    if(f.prog >= 1) doneScratch.push(f.id);
+  }
+  for(var i=0;i<doneScratch.length;i++){
+    var f = files.get(doneScratch[i]);
+    if(f) completeFile(f);
+  }
+  if(doneScratch.length) gridChanged();
+}
+function completeFile(f){
+  var gain = f.size * MB_PER_SECTOR * shift;
+  score += gain;
+  popScore();
+  var hue = HUES[f.hue];
+  for(var i=0;i<f.blocks.length;i++){
+    spawn(cellCX(f.blocks[i]), cellCY(f.blocks[i]), 7, hue.rgb, cs*4.2, cs*0.2, cs*2.0, 1);
+  }
+  var mid = f.blocks[(f.size/2)|0];
+  floatText(cellCX(mid), cellCY(mid) - cs*0.4, '+'+gain+' MB', hue.hi, 13);
+  thrash = Math.max(0, thrash - 1.2);
+  sComplete();
+  shake(1.6);
+  flashScreen = Math.max(flashScreen, 0.16); flashCol = hue.rgb;
+  removeFile(f);
+}
+
+/* ------------------------------ thrash ------------------------------- */
+function updateThrash(dt){
+  var p = fragPressure();
+  var fullPen = freeCount < 30 ? (30-freeCount)*0.05 : 0;
+  var rate = (p - tolerance + fullPen) * thrK;
+  if(rate < -5) rate = -5;
+  thrash = clamp(thrash + rate*dt, 0, 100);
+  if(thrash >= 100){ gameOver('HEAD CRASH'); return; }
+  if(thrash > 70){
+    alarmT -= dt;
+    if(alarmT <= 0){
+      sAlarm((thrash-70)/30);
+      alarmT = 1.2 - ((thrash-70)/30)*0.8;
+    }
+  } else alarmT = 0;
+}
+
+/* ------------------------------ shifts ------------------------------- */
+function shiftLenFor(s){ return s === 1 ? 56 : (s === 2 ? 62 : 68); }
+function applyShiftParams(){
+  wInterval = Math.max(1.35, 5.6 - 0.55*(shift-1));
+  wLead = Math.max(1.5, 2.8 - 0.16*(shift-1));
+  sizeMin = shift < 4 ? 3 : (shift < 7 ? 4 : 5);
+  sizeMax = Math.min(10, 4 + shift);
+  tolerance = shift === 1 ? 2.4 : (shift === 2 ? 2.2 : Math.max(1.35, 2.2 - 0.12*(shift-2)));
+  thrK = 1.1 + 0.13*(shift-1);
+  burstP = shift >= 3 ? Math.min(0.45, 0.1*(shift-2)) : 0;
+  badTimer = shift >= 3 ? rf(10, 18) : 1e9;
+  shiftLen = shiftLenFor(shift);
+}
+function addBadSector(quiet){
+  if(badCount >= MAX_BAD || freeCount < 55) return false;
+  var tries = 0, i;
+  do {
+    i = ri(Math.floor(NSEC*0.12), NSEC-1);
+    tries++;
+  } while(cells[i] !== 0 && tries < 220);
+  if(cells[i] !== 0) return false;
+  // don't sabotage an in-flight or queued destination
+  if(move.active && i >= move.dst && i < move.dst+move.len) return false;
+  if(pending && i >= pending.dst && i < pending.dst+pending.len) return false;
+  cells[i] = -1;
+  flash[i] = 1.6;
+  gridChanged();
+  spawn(cellCX(i), cellCY(i), 9, '255,93,93', cs*2.6, cs*0.16, cs*0.6, 1);
+  if(!quiet){ sBad(); shake(1.2); toast('BAD SECTOR AT ' + pad4(i)); }
+  return true;
+}
+function pad4(n){ var s = '000'+n; return s.slice(-4); }
+
+function startBreak(){
+  state = 'break';
+  shiftsCleared = shift;
+  var breakLen = 3.6;
+  breakT = breakLen;
+  var ex = fragExcess(), clean = 0, tot = 0;
+  for(var bi=0;bi<order.length;bi++){
+    var bf = files.get(order[bi]);
+    if(!bf) continue;
+    tot++;
+    if(bf.frags === 1) clean++;
+  }
+  var bonus = Math.max(0, Math.round((80 + clean*22 - ex*26) * (0.6 + shift*0.25)));
+  score += bonus;
+  popScore();
+  thrash = Math.max(0, thrash * 0.7);
+  if(shift > bestShift) bestShift = shift;
+  if(score > bestScore) bestScore = score;
+  banner('SHIFT ' + shift + ' CLEAR', 'DEFRAG BONUS +' + bonus + ' MB',
+         clean + '/' + tot + ' FILES CONTIGUOUS' + (ex ? '  ·  ' + ex + ' STRAY FRAGMENT' + (ex>1?'S':'') : ''), 3.0);
+  sShiftClear();
+  shake(4.5);
+  flashScreen = 0.22; flashCol = '255,209,102';
+  // celebratory burst along the grid
+  for(var i=0;i<26;i++) spawn(ox + Math.random()*gw, oy + Math.random()*gh, 3, '255,209,102', cs*3, cs*0.15, cs*1.5, 1);
+}
+var breakT = 0;
+function nextShift(){
+  shift++;
+  applyShiftParams();
+  state = 'play';
+  shiftTime = shiftLen;
+  writeTimer = Math.min(writeTimer, 2.2);
+  if(shift >= 3){
+    var n = Math.min(3, shift-2);
+    for(var i=0;i<n;i++) addBadSector(i > 0);
+  }
+  banner('SHIFT ' + shift, 'WRITE CADENCE ' + wInterval.toFixed(1) + 's  ·  FILES UP TO ' + sizeMax + ' BLK',
+         shift >= 3 ? 'BAD SECTORS DETECTED' : '', 2.1);
+}
+
+/* ------------------------------ banner/toast ------------------------- */
+function banner(a,b,c,t){
+  eBT1.textContent = a || '';
+  eBT2.textContent = b || '';
+  eBT3.textContent = c || '';
+  eBanner.classList.add('on');
+  bannerT = t || 2;
+}
+function toast(msg){
+  eToast.textContent = msg;
+  eToast.classList.add('on');
+  toastT = 2.0;
+}
+
+/* ------------------------------ lifecycle ---------------------------- */
+function seedDisk(){
+  // Six pre-placed files; two split in an obvious one-move-fixable way.
+  var sizes = [5,4,6,4,7,5];
+  for(var i=sizes.length-1;i>0;i--){ var j=ri(0,i), t=sizes[i]; sizes[i]=sizes[j]; sizes[j]=t; }
+  var p = 2 + ri(0,3);
+  var plan = [];   // {size, blocks:[...]}
+  function seg(n){ var arr=[]; for(var k=0;k<n;k++) arr.push(p+k); p += n; return arr; }
+  function gapN(n){ p += n; }
+
+  var b1 = seg(sizes[0]);                     // F1 whole
+  gapN(2);                                    // exact 2-hole: walled by F1 and F2's head
+  var b2head = seg(sizes[1]-2);               // F2 head — its tail belongs in that hole
+  gapN(3 + ri(0,3));
+  var b3 = seg(sizes[2]);                     // F3 whole
+  var b2tail = seg(2);                        // F2 tail, stranded down-platter
+  gapN(5 + ri(0,4));
+  var b4 = seg(sizes[3]);                     // F4 whole
+  var b5head = seg(sizes[4]-2);               // F5 head
+  gapN(2);                                    // exact 2-hole: walled by F5's head and F6
+  var b6 = seg(sizes[5]);                     // F6 whole
+  gapN(4 + ri(0,4));
+  var b5tail = seg(2);                        // F5 tail, stranded down-platter
+
+  var made = [];
+  made.push(makeFile(b1));
+  var f2 = makeFile(b2head.concat(b2tail));
+  made.push(f2);
+  made.push(makeFile(b3));
+  made.push(makeFile(b4));
+  var f5 = makeFile(b5head.concat(b5tail));
+  made.push(f5);
+  made.push(makeFile(b6));
+  // whole files start part-drained so the first completion lands within seconds;
+  // the two split files start near zero so the player gets to rescue them first
+  for(var m=0;m<made.length;m++){
+    made[m].prog = made[m].frags > 1 ? rf(0.02, 0.10) : rf(0.10, 0.38);
+    flashSet(made[m], 0);
+  }
+  hintId = f2.id;
+  hintDone = false;
+  headC = (b1[0] % C); headR = ((b1[0]/C)|0);
+  gridChanged();
+}
+function flashSet(f, v){ for(var i=0;i<f.blocks.length;i++) flash[f.blocks[i]] = v; }
+
+function resetGame(){
+  cells.fill(0); flash.fill(0);
+  files.clear(); order.length = 0; nextId = 1;
+  score = 0; shift = 1; shiftsCleared = 0;
+  thrash = 0; freeCount = NSEC; badCount = 0;
+  writeQ.length = 0;
+  applyShiftParams();
+  shiftTime = shiftLen;
+  writeTimer = 6.0;
+  badTimer = 1e9;
+  alarmT = 0; breakT = 0;
+  clearSel(); pending = null;
+  move.active = false;
+  shakeMag = 0; flashScreen = 0;
+  bannerT = 0; toastT = 0;
+  eBanner.classList.remove('on'); eToast.classList.remove('on');
+  for(var i=0;i<PN;i++) parts[i].a = 0;
+  for(var j=0;j<FTN;j++) ftexts[j].a = 0;
+  hoverCell = -1;
+  ptr.down = false; ptr.drag = false; ptr.tapSel = false; ptr.suppress = false;
+  T = 0;
+  seedDisk();
+  hudAcc = 1;
+  syncHUD();
+}
+function startGame(){
+  audioInit();
+  resetGame();
+  state = 'play';
+  paused = false;
+  showPanel(null);
+  banner('SHIFT 1', 'STITCH THE STRAYS', 'TAP A FRAGMENT · TAP A GREEN SLOT', 2.6);
+  last = 0;
+}
+function gameOver(cause){
+  if(state === 'over') return;
+  state = 'over';
+  overCause = cause;
+  if(score > bestScore) bestScore = score;
+  if(shift > bestShift) bestShift = shift;
+  clearSel(); pending = null; move.active = false;
+  sOver();
+  shake(13);
+  flashScreen = 0.5; flashCol = '255,93,93';
+  for(var i=0;i<50;i++) spawn(ox + Math.random()*gw, oy + Math.random()*gh, 3, '255,93,93', cs*4, cs*0.2, cs*2.5, 1);
+  el('ovCause').textContent = cause;
+  el('ovWhy').textContent = cause === 'HEAD CRASH'
+    ? 'The thrash meter maxed out. Too many files scattered across too many fragments — the head seeked itself to death.'
+    : 'A write never landed. The platter filled up and the controller gave up waiting for free sectors.';
+  el('ovScore').textContent = score;
+  el('ovShift').textContent = shiftsCleared;
+  el('ovBest').textContent = bestScore;
+  el('ovBestShift').textContent = bestShift;
+  showPanel(pOver);
+  syncHUD();
+}
+function showPanel(p){
+  pStart.classList.remove('on'); pPause.classList.remove('on'); pOver.classList.remove('on');
+  if(p) p.classList.add('on');
+}
+function setPaused(v){
+  if(state !== 'play' && state !== 'break') return;
+  if(v === paused) return;
+  paused = v;
+  if(paused){ showPanel(pPause); }
+  else { showPanel(null); last = 0; audioInit(); }
+}
+
+/* ------------------------------ HUD --------------------------------- */
+var scorePopT = 0;
+function popScore(){ scorePopT = 0.1; eScore.classList.add('pop'); }
+function syncHUD(){
+  eScore.textContent = score;
+  eShift.textContent = shift;
+  eFree.textContent = freeCount;
+  eFree.classList.toggle('low', freeCount < 34);
+  var tp = Math.round(thrash);
+  eThrBar.style.width = tp + '%';
+  eThrPct.textContent = tp + '%';
+  eThrOuter.classList.toggle('hot', thrash > 70);
+  eShiftFill.style.width = (state === 'break' ? 100 : clamp((1 - shiftTime/shiftLen)*100, 0, 100)) + '%';
+  eBest.textContent = bestScore ? ('BEST ' + bestScore + ' MB · SH ' + bestShift) : '';
+
+  // queue chips
+  for(var i=0;i<chips.length;i++){
+    var ch = chips[i], w = writeQ[i];
+    if(!w || state === 'menu'){ ch.root.classList.remove('on'); continue; }
+    ch.root.classList.add('on');
+    var waiting = (i === 0 && w.lead <= 0);
+    ch.root.classList.toggle('wait', waiting && w.wait > 0.05);
+    var narrow = VW < 430;
+    if(waiting && w.wait > 0.05){
+      ch.txt.textContent = (narrow ? 'FULL ' : 'DISK FULL · ') + w.size + (narrow ? '' : ' BLK') + ' · ' + Math.max(0, 8-w.wait).toFixed(1) + 's';
+      ch.bar.style.width = clamp((1 - w.wait/8)*100, 0, 100) + '%';
+    } else {
+      ch.txt.textContent = (narrow ? 'W ' : 'WRITE ') + w.size + (narrow ? '' : ' BLK') + ' · ' + Math.max(0, w.lead).toFixed(1) + 's';
+      ch.bar.style.width = clamp((1 - w.lead/wLead)*100, 0, 100) + '%';
+    }
+  }
+
+  // info line
+  var msg;
+  if(state === 'menu') msg = 'TAP A FRAGMENT TO BEGIN';
+  else if(state === 'over') msg = overCause + ' — PRESS R TO REFORMAT';
+  else if(sel){
+    var f = files.get(sel.fid);
+    msg = f ? ('SEL ' + f.name + ' · ' + f.size + ' BLK · ' + f.frags + ' FRAG' + (f.frags>1?'S':'') + ' · ' + Math.round(f.prog*100) + '%' + (f.frags>1 ? '  → TAP A GREEN SLOT' : '  (CONTIGUOUS)')) : '';
+  }
+  else if(thrash > 70) msg = 'THRASH CRITICAL — MERGE FRAGMENTS NOW';
+  else if(freeCount < 40) msg = 'DISK NEARLY FULL — LET FILES DRAIN';
+  else {
+    var ex = fragExcess();
+    msg = ex ? (ex + ' STRAY FRAGMENT' + (ex>1?'S':'') + ' ON THE PLATTER') : 'DISK FULLY DEFRAGMENTED — NICE';
+  }
+  eInfo.textContent = msg;
+  eInfo.classList.toggle('warn', thrash > 70 || freeCount < 40);
+  el('bestStart').textContent = bestScore ? ('BEST THIS SESSION: ' + bestScore + ' MB, SHIFT ' + bestShift) : '';
+}
+
+/* ------------------------------ update ------------------------------ */
+function updateMoveAnim(dt){
+  if(!move.active) return;
+  move.t += dt;
+  move.tick -= dt;
+  if(move.tick <= 0){ sSeek(); move.tick = rf(0.026, 0.05); }
+  var scx = (move.src % C + (move.src+move.len-1) % C)/2;
+  var scy = (((move.src/C)|0) + (((move.src+move.len-1)/C)|0))/2;
+  var dcx = (move.dst % C + (move.dst+move.len-1) % C)/2;
+  var dcy = (((move.dst/C)|0) + (((move.dst+move.len-1)/C)|0))/2;
+  if(move.t < move.ph1){
+    var u = easeInOut(move.ph1 > 0 ? move.t/move.ph1 : 1);
+    headC = move.fc + (scx-move.fc)*u;
+    headR = move.fr + (scy-move.fr)*u;
+  } else {
+    var u2 = easeInOut(clamp((move.t-move.ph1)/Math.max(0.001, move.dur-move.ph1), 0, 1));
+    headC = scx + (dcx-scx)*u2;
+    headR = scy + (dcy-scy)*u2;
+    var mf = files.get(move.fid);
+    if(mf && Math.random() < 0.8){
+      var bi2 = ri(0, move.len-1);
+      var tx = sx(move.src+bi2) + (sx(move.dst+bi2)-sx(move.src+bi2))*u2 + cs/2;
+      var ty = sy(move.src+bi2) + (sy(move.dst+bi2)-sy(move.src+bi2))*u2 + cs/2;
+      spawn(tx, ty, 1, HUES[mf.hue].rgb, cs*0.7, cs*0.09, cs*0.4, 1);
+    }
+  }
+  if(move.t >= move.dur){
+    move.active = false;
+    var ok = commitMove(move.fid, move.src, move.len, move.dst);
+    if(!ok){
+      sBuzz();
+      toast('MOVE ABORTED — SECTORS TAKEN');
+      shake(1.2);
+      gridChanged();
+    }
+    headC = dcx; headR = dcy;
+    if(pending){
+      var pm = pending; pending = null;
+      var f = files.get(pm.fid);
+      if(f){
+        var good = true, i;
+        for(i=0;i<pm.len;i++) if(cells[pm.src+i] !== pm.fid) good = false;
+        for(i=0;i<pm.len;i++) if(cells[pm.dst+i] !== 0) good = false;
+        if(good) startMoveAnim(pm.fid, pm.src, pm.len, pm.dst);
+        else { sBuzz(); toast('QUEUED MOVE INVALIDATED'); }
+      }
+    }
+  }
+}
+function update(dt){
+  T += dt;
+  // decay visuals always
+  for(var i=0;i<NSEC;i++) if(flash[i] > 0) flash[i] = Math.max(0, flash[i] - dt*2.6);
+  for(var p=0;p<PN;p++){
+    var q = parts[p];
+    if(!q.a) continue;
+    q.l -= dt;
+    if(q.l <= 0){ q.a = 0; continue; }
+    q.vy += q.g*dt;
+    q.x += q.vx*dt; q.y += q.vy*dt;
+    q.vx *= (1 - 1.6*dt); q.vy *= (1 - 0.7*dt);
+  }
+  for(var t=0;t<FTN;t++){
+    var ft = ftexts[t];
+    if(!ft.a) continue;
+    ft.l -= dt;
+    if(ft.l <= 0){ ft.a = 0; continue; }
+    ft.y -= dt * cs * 0.9;
+  }
+  if(shakeMag > 0) shakeMag = Math.max(0, shakeMag - dt*shakeMag*7 - dt*2);
+  if(flashScreen > 0) flashScreen = Math.max(0, flashScreen - dt*1.6);
+  if(bannerT > 0){ bannerT -= dt; if(bannerT <= 0) eBanner.classList.remove('on'); }
+  if(toastT > 0){ toastT -= dt; if(toastT <= 0) eToast.classList.remove('on'); }
+  if(scorePopT > 0){ scorePopT -= dt; if(scorePopT <= 0) eScore.classList.remove('pop'); }
+
+  if(state === 'play' || state === 'break'){
+    updateMoveAnim(dt);
+    updateJobs(dt);
+    updateThrash(dt);
+    if(state === 'over') return;
+  }
+  if(state === 'play'){
+    updateWrites(dt);
+    if(state === 'over') return;
+    computeWritePreview();
+    if(shift >= 3){
+      badTimer -= dt;
+      if(badTimer <= 0){ addBadSector(false); badTimer = rf(11, 19); }
+    }
+    if(!hintDone){
+      var hf = files.get(hintId);
+      if(!hf || hf.frags === 1){
+        hintId = 0;
+        for(var hi=0;hi<order.length;hi++){
+          var cand = files.get(order[hi]);
+          if(cand && cand.frags > 1){ hintId = cand.id; break; }
+        }
+      }
+      if(!hintId || T > 28) hintDone = true;
+    }
+    shiftTime -= dt;
+    if(shiftTime <= 0){ shiftTime = 0; startBreak(); }
+  } else if(state === 'break'){
+    breakT -= dt;
+    if(breakT <= 0) nextShift();
+  }
+
+  hudAcc += dt;
+  if(hudAcc > 0.08){ hudAcc = 0; syncHUD(); }
+}
+
+/* ------------------------------ drawing ----------------------------- */
+function rrp(x,y,w,h,tl,tr,br,bl){
+  var m = Math.min(w,h)/2;
+  tl=Math.min(tl,m); tr=Math.min(tr,m); br=Math.min(br,m); bl=Math.min(bl,m);
+  ctx.beginPath();
+  ctx.moveTo(x+tl, y);
+  ctx.lineTo(x+w-tr, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+tr);
+  ctx.lineTo(x+w, y+h-br);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-br, y+h);
+  ctx.lineTo(x+bl, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-bl);
+  ctx.lineTo(x, y+tl);
+  ctx.quadraticCurveTo(x, y, x+tl, y);
+  ctx.closePath();
+}
+// Row-segment geometry for an index run, written into module scratch (no allocation).
+var _rx=0,_ry=0,_rw=0,_rh=0;
+function segRect(idx, n){
+  _rx = sx(idx) + gap/2; _ry = sy(idx) + gap/2;
+  _rw = n*cs - gap; _rh = cs - gap;
+}
+// stroke/fill every row-segment of a run with uniform radius (used for overlays)
+function pathRun(start, len, rad, fillStyle, strokeStyle, lw){
+  var idx = start, left = len;
+  while(left > 0){
+    var n = Math.min(left, C - (idx % C));
+    left -= n;
+    segRect(idx, n);
+    rrp(_rx, _ry, _rw, _rh, rad, rad, rad, rad);
+    if(fillStyle){ ctx.fillStyle = fillStyle; ctx.fill(); }
+    if(strokeStyle){ ctx.lineWidth = lw || 1; ctx.strokeStyle = strokeStyle; ctx.stroke(); }
+    idx += n;
+  }
+}
+
+function drawBase(){
+  var rad = Math.min(3.2, cs*0.22);
+  // free sectors + bad sectors
+  ctx.lineWidth = 1;
+  for(var i=0;i<NSEC;i++){
+    var v = cells[i];
+    if(v > 0) continue;
+    var x = sx(i)+gap/2, y = sy(i)+gap/2, w = cs-gap, h = cs-gap;
+    if(v === -1){
+      rrp(x,y,w,h,rad,rad,rad,rad);
+      ctx.fillStyle = 'rgba(60,14,18,0.95)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,93,93,0.42)';
+      ctx.stroke();
+      var m = w*0.28;
+      ctx.strokeStyle = 'rgba(255,93,93,0.75)';
+      ctx.beginPath();
+      ctx.moveTo(x+m, y+m); ctx.lineTo(x+w-m, y+h-m);
+      ctx.moveTo(x+w-m, y+m); ctx.lineTo(x+m, y+h-m);
+      ctx.stroke();
+    } else {
+      rrp(x,y,w,h,rad,rad,rad,rad);
+      ctx.fillStyle = 'rgba(255,255,255,0.030)';
+      ctx.fill();
+      if(cs > 13){
+        ctx.fillStyle = 'rgba(111,242,223,0.10)';
+        ctx.fillRect(x+w/2-0.5, y+h/2-0.5, 1, 1);
+      }
+      if(flash[i] > 0){
+        ctx.fillStyle = 'rgba(214,242,238,' + (0.30*Math.min(1,flash[i])) + ')';
+        ctx.fill();
+      }
+    }
+  }
+}
+function drawDest(){
+  var rad = Math.min(3.2, cs*0.22);
+  // queued move: show where it will land
+  if(pending){
+    ctx.setLineDash([2,3]);
+    ctx.lineDashOffset = -T*14;
+    pathRun(pending.dst, pending.len, rad, 'rgba(255,209,102,0.10)', 'rgba(255,209,102,0.7)', 1.2);
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+  }
+  if(!sel || !validRuns.length) return;
+  var pulse = 0.5 + 0.5*Math.sin(T*5.5);
+  var hv = -1;
+  if(hoverCell >= 0 && openForPlayer(hoverCell)){
+    for(var k=0;k<validRuns.length;k+=2){
+      if(hoverCell >= validRuns[k] && hoverCell < validRuns[k]+validRuns[k+1]){ hv = k; break; }
+    }
+  }
+  for(var i=0;i<validRuns.length;i+=2){
+    var rs = validRuns[i], rl = validRuns[i+1];
+    var isHv = (i === hv);
+    pathRun(rs, rl, rad,
+      isHv ? 'rgba(125,255,155,0.14)' : 'rgba(125,255,155,0.065)',
+      isHv ? 'rgba(125,255,155,0.55)' : 'rgba(125,255,155,0.22)', 1);
+    // landing ghost — exactly where the fragment will come to rest
+    var anc = anchorIn(rs, rl, sel.len, sel.fid, sel.src, sel.len);
+    var ghostA = isHv ? (0.30 + 0.16*pulse) : 0.12;
+    if(isHv){
+      ctx.setLineDash([3,2.4]);
+      ctx.lineDashOffset = -T*22;
+      pathRun(anc, sel.len, rad, 'rgba(125,255,155,' + ghostA.toFixed(3) + ')', 'rgba(180,255,200,0.95)', 1.4);
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
+    } else {
+      pathRun(anc, sel.len, rad, 'rgba(125,255,155,' + ghostA.toFixed(3) + ')', null, 1);
+    }
+  }
+}
+function drawWritePreview(){
+  if(!wPreview.length) return;
+  var a = 0.16 + 0.14*(0.5+0.5*Math.sin(T*9));
+  ctx.setLineDash([2,2]);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(214,242,238,' + a.toFixed(3) + ')';
+  for(var i=0;i<wPreview.length;i++){
+    var idx = wPreview[i];
+    var x = sx(idx)+gap/2, y = sy(idx)+gap/2;
+    rrp(x, y, cs-gap, cs-gap, 2,2,2,2);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+function drawFiles(){
+  var rad = Math.min(4.5, cs*0.3);
+  var smallRad = Math.min(1.6, cs*0.1);
+  for(var oi=0;oi<order.length;oi++){
+    var f = files.get(order[oi]);
+    if(!f) continue;
+    var hue = HUES[f.hue];
+    var served = f.prog * f.size;
+    var isMoving = move.active && move.fid === f.id;
+    var rs = f.runs;
+    var cb = 0;   // blocks of this file that precede the current run
+    for(var ri2=0;ri2<rs.length;ri2+=2){
+      var start = rs[ri2], len = rs[ri2+1];
+      var ghost = isMoving && start === move.src && len === move.len && move.t >= move.ph1;
+      var selRun = !!(sel && sel.fid === f.id && sel.src === start);
+      var pend = !!(pending && pending.fid === f.id && pending.src === start);
+      var idx = start, left = len, first = true;
+      while(left > 0){
+        var n = Math.min(left, C - (idx % C));
+        left -= n;
+        var lastSeg = (left === 0);
+        segRect(idx, n);
+        var rx = _rx, ry = _ry, rw = _rw, rh = _rh;
+        var tl = first ? rad : smallRad, bl = tl;
+        var tr = lastSeg ? rad : smallRad, br = tr;
+        if(ghost){
+          rrp(rx, ry, rw, rh, tl, tr, br, bl);
+          ctx.fillStyle = 'rgba(255,255,255,0.03)';
+          ctx.fill();
+          ctx.setLineDash([3,3]);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(' + hue.rgb + ',0.4)';
+          ctx.stroke();
+          ctx.setLineDash([]);
+          idx += n; first = false;
+          continue;
+        }
+        // body
+        rrp(rx, ry, rw, rh, tl, tr, br, bl);
+        ctx.fillStyle = hue.lo;
+        ctx.fill();
+        // job progress: brighter fill sweeping across the file's blocks in sector order
+        ctx.save();
+        ctx.clip();
+        var offset = idx - start;
+        ctx.fillStyle = hue.mid;
+        for(var k=0;k<n;k++){
+          var amt = clamp(served - cb - offset - k, 0, 1);
+          if(amt <= 0) break;
+          var bx = ox + ((idx+k) % C)*cs + gap/2;
+          ctx.fillRect(bx, ry, (cs-gap)*amt + (amt >= 1 ? gap : 0), rh);
+        }
+        ctx.restore();
+        // 1px inset bevel
+        rrp(rx+0.5, ry+0.5, rw-1, rh-1, tl, tr, br, bl);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(' + hue.rgb + ',0.55)';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(rx+tl, ry+1); ctx.lineTo(rx+rw-tr, ry+1);
+        ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+        ctx.stroke();
+        // sector hairlines inside a run
+        if(cs > 11 && n > 1){
+          ctx.strokeStyle = 'rgba(0,0,0,0.30)';
+          ctx.beginPath();
+          for(var s2=1;s2<n;s2++){
+            var lx = Math.round(ox + ((idx+s2) % C)*cs) + 0.5;
+            ctx.moveTo(lx, ry+1.5); ctx.lineTo(lx, ry+rh-1.5);
+          }
+          ctx.stroke();
+        }
+        // write / merge flash
+        var fl = 0;
+        for(var s3=0;s3<n;s3++) if(flash[idx+s3] > fl) fl = flash[idx+s3];
+        if(fl > 0){
+          rrp(rx, ry, rw, rh, tl, tr, br, bl);
+          ctx.fillStyle = 'rgba(255,255,255,' + (0.42*Math.min(1,fl)).toFixed(3) + ')';
+          ctx.fill();
+        }
+        if(f.pop > 0){
+          rrp(rx-1.5, ry-1.5, rw+3, rh+3, tl+1, tr+1, br+1, bl+1);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'rgba(' + hue.rgb + ',' + (0.85*f.pop).toFixed(3) + ')';
+          ctx.stroke();
+        }
+        if(pend){
+          rrp(rx-1, ry-1, rw+2, rh+2, tl, tr, br, bl);
+          ctx.setLineDash([2,3]);
+          ctx.lineWidth = 1.4;
+          ctx.strokeStyle = 'rgba(255,209,102,0.85)';
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        if(selRun){
+          rrp(rx-1.5, ry-1.5, rw+3, rh+3, tl+1, tr+1, br+1, bl+1);
+          ctx.setLineDash([4,3]);
+          ctx.lineDashOffset = -T*26;
+          ctx.lineWidth = 1.8;
+          ctx.strokeStyle = '#ffffff';
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.lineDashOffset = 0;
+        }
+        idx += n; first = false;
+      }
+      cb += len;
+    }
+    // fragment-count badge
+    if(f.frags > 1 && !isMoving){
+      var bidx = rs[0];
+      var bx2 = sx(bidx) + gap/2, by2 = sy(bidx) + gap/2;
+      if(cs >= 17){
+        var fsz = Math.max(7, Math.round(cs*0.36));
+        var lbl = '×' + f.frags;
+        ctx.fillStyle = 'rgba(6,9,13,0.7)';
+        ctx.fillRect(bx2+1, by2+1, fsz*lbl.length*0.62 + 3, fsz + 2);
+        ctx.font = fsz + 'px ' + MONO;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillStyle = 'rgba(255,150,100,1)';
+        ctx.fillText(lbl, bx2+2.5, by2+2);
+      } else {
+        ctx.fillStyle = 'rgba(255,140,90,0.95)';
+        for(var d=0;d<Math.min(4,f.frags);d++) ctx.fillRect(bx2+1.5+d*2.4, by2+1.5, 1.6, 1.6);
+      }
+    }
+    // first-move hint ring on a stranded fragment
+    if(!hintDone && hintId === f.id && f.frags > 1 && state === 'play' && !move.active){
+      var lastRun = rs[rs.length-2], llen = rs[rs.length-1];
+      segRect(lastRun, Math.min(llen, C - lastRun % C));
+      var pu = 0.5 + 0.5*Math.sin(T*4.2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,' + (0.3+0.5*pu).toFixed(3) + ')';
+      rrp(_rx-3-2*pu, _ry-3-2*pu, _rw+6+4*pu, _rh+6+4*pu, 6,6,6,6);
+      ctx.stroke();
+      if(cs > 14){
+        ctx.font = Math.max(8, Math.round(cs*0.42)) + 'px ' + MONO;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.45+0.55*pu).toFixed(3) + ')';
+        ctx.fillText('TAP', _rx + _rw/2, _ry - 5 - 2*pu);
+      }
+    }
+  }
+}
+function drawFlying(){
+  if(!move.active || move.t < move.ph1) return;
+  var f = files.get(move.fid);
+  if(!f) return;
+  var hue = HUES[f.hue];
+  var u = easeInOut(clamp((move.t-move.ph1)/Math.max(0.001, move.dur-move.ph1), 0, 1));
+  var rad = Math.min(4.5, cs*0.3);
+  var w = cs-gap, h = cs-gap;
+  ctx.save();
+  ctx.shadowColor = 'rgba(' + hue.rgb + ',0.85)';
+  ctx.shadowBlur = Math.max(4, cs*0.35);
+  for(var i=0;i<move.len;i++){
+    var a = move.src+i, b = move.dst+i;
+    var x = sx(a) + (sx(b)-sx(a))*u + gap/2;
+    var y = sy(a) + (sy(b)-sy(a))*u + gap/2;
+    rrp(x, y, w, h, rad, rad, rad, rad);
+    ctx.fillStyle = hue.mid;
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hue.hi;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawHead(){
+  var hx = ox + (headC+0.5)*cs, hy = oy + (headR+0.5)*cs;
+  var act = move.active;
+  var a = act ? 0.9 : 0.42 + 0.12*Math.sin(T*2.4);
+  // sweep lines
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(111,242,223,' + (act?0.16:0.075) + ')';
+  ctx.beginPath();
+  ctx.moveTo(ox, hy); ctx.lineTo(ox+gw, hy);
+  ctx.moveTo(hx, oy); ctx.lineTo(hx, oy+gh);
+  ctx.stroke();
+  // arm from right edge
+  ctx.strokeStyle = 'rgba(111,242,223,' + (act?0.34:0.16) + ')';
+  ctx.lineWidth = Math.max(1, cs*0.07);
+  ctx.beginPath();
+  ctx.moveTo(ox+gw+ (VW-(ox+gw))*0.5, oy+gh*0.5);
+  ctx.lineTo(hx, hy);
+  ctx.stroke();
+  // marker
+  var s = cs*0.46;
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.strokeStyle = 'rgba(111,242,223,' + a.toFixed(3) + ')';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-s, -s*0.45); ctx.lineTo(-s, -s); ctx.lineTo(-s*0.45, -s);
+  ctx.moveTo(s*0.45, -s); ctx.lineTo(s, -s); ctx.lineTo(s, -s*0.45);
+  ctx.moveTo(s, s*0.45); ctx.lineTo(s, s); ctx.lineTo(s*0.45, s);
+  ctx.moveTo(-s*0.45, s); ctx.lineTo(-s, s); ctx.lineTo(-s, s*0.45);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(150,255,240,' + (act?0.95:0.5) + ')';
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(1.2, cs*0.09), 0, 6.2832);
+  ctx.fill();
+  ctx.restore();
+}
+function drawParts(){
+  for(var i=0;i<PN;i++){
+    var p = parts[i];
+    if(!p.a) continue;
+    var k = p.l/p.ml;
+    ctx.fillStyle = 'rgba(' + p.c + ',' + (k*0.9).toFixed(3) + ')';
+    var s = p.s * (0.35 + k*0.65);
+    if(p.sq) ctx.fillRect(p.x-s/2, p.y-s/2, s, s);
+    else { ctx.beginPath(); ctx.arc(p.x, p.y, s/2, 0, 6.2832); ctx.fill(); }
+  }
+}
+function drawFTexts(){
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for(var i=0;i<FTN;i++){
+    var f = ftexts[i];
+    if(!f.a) continue;
+    var k = f.l/f.ml;
+    ctx.globalAlpha = clamp(k*1.5, 0, 1);
+    ctx.font = Math.round(Math.max(9, f.sz * (cs/22 > 0.7 ? cs/22 : 0.7))) + 'px ' + MONO;
+    ctx.fillStyle = f.c;
+    ctx.fillText(f.t, f.x, f.y);
+    ctx.globalAlpha = 1;
+  }
+}
+function drawFrame(){
+  // grid border + corner brackets
+  ctx.strokeStyle = 'rgba(111,242,223,0.14)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(ox-2.5, oy-2.5, gw+5, gh+5);
+  var L = Math.min(18, cs*1.1);
+  ctx.strokeStyle = 'rgba(111,242,223,0.5)';
+  ctx.lineWidth = 1.6;
+  var x0 = ox-3, y0 = oy-3, x1 = ox+gw+3, y1 = oy+gh+3;
+  ctx.beginPath();
+  ctx.moveTo(x0+L, y0); ctx.lineTo(x0, y0); ctx.lineTo(x0, y0+L);
+  ctx.moveTo(x1-L, y0); ctx.lineTo(x1, y0); ctx.lineTo(x1, y0+L);
+  ctx.moveTo(x0+L, y1); ctx.lineTo(x0, y1); ctx.lineTo(x0, y1-L);
+  ctx.moveTo(x1-L, y1); ctx.lineTo(x1, y1); ctx.lineTo(x1, y1-L);
+  ctx.stroke();
+}
+var MONO = 'ui-monospace, Menlo, Monaco, Consolas, monospace';
+
+function render(){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // background
+  ctx.fillStyle = '#080b11';
+  ctx.fillRect(0, 0, VW, VH);
+  ctx.save();
+  if(shakeMag > 0.05){
+    ctx.translate(rf(-shakeMag, shakeMag), rf(-shakeMag, shakeMag));
+  }
+  if(state !== 'menu'){
+    drawFrame();
+    drawBase();
+    drawDest();
+    drawWritePreview();
+    drawFiles();
+    drawFlying();
+    drawHead();
+    drawParts();
+    drawFTexts();
+  } else {
+    // idle attract: faint grid
+    ctx.strokeStyle = 'rgba(111,242,223,0.07)';
+    ctx.lineWidth = 1;
+    for(var i=0;i<NSEC;i++){
+      var x = sx(i)+gap/2, y = sy(i)+gap/2;
+      rrp(x, y, cs-gap, cs-gap, 2,2,2,2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  if(flashScreen > 0){
+    ctx.fillStyle = 'rgba(' + flashCol + ',' + (flashScreen*0.5).toFixed(3) + ')';
+    ctx.fillRect(0, 0, VW, VH);
+  }
+  if(thrash > 70 && state !== 'menu'){
+    var a = (thrash-70)/30;
+    ctx.fillStyle = 'rgba(255,60,60,' + (0.05*a*(0.5+0.5*Math.sin(T*7))).toFixed(3) + ')';
+    ctx.fillRect(0, 0, VW, VH);
+  }
+  // CRT
+  if(scan){
+    ctx.fillStyle = scan;
+    ctx.fillRect(0, 0, VW, VH);
+  }
+  if(vign){
+    ctx.fillStyle = vign;
+    ctx.fillRect(0, 0, VW, VH);
+  }
+}
+
+/* ------------------------------ input ------------------------------- */
+var ptr = {down:false, id:-1, sx:0, sy:0, drag:false, tapSel:false, suppress:false};
+function refreshRect(){
+  var r = cv.getBoundingClientRect();
+  cvLeft = r.left; cvTop = r.top;
+}
+function cellFromEvent(e){
+  var x = e.clientX - cvLeft, y = e.clientY - cvTop;
+  var slop = Math.max(0, 12 - cs*0.4);
+  var fc = (x - ox)/cs, fr = (y - oy)/cs;
+  var c = Math.floor(fc), rr2 = Math.floor(fr);
+  if(c < 0 && x > ox - slop) c = 0;
+  if(c >= C && x < ox+gw+slop) c = C-1;
+  if(rr2 < 0 && y > oy - slop) rr2 = 0;
+  if(rr2 >= R && y < oy+gh+slop) rr2 = R-1;
+  if(c < 0 || c >= C || rr2 < 0 || rr2 >= R) return -1;
+  return rr2*C + c;
+}
+function tryDest(cell){
+  if(!sel) return false;
+  if(!openForPlayer(cell)) return false;
+  var fr2 = freeRunAt(cell);
+  if(!fr2 || fr2.len < sel.len) return false;
+  var anc = anchorIn(fr2.s, fr2.len, sel.len, sel.fid, sel.src, sel.len);
+  var f = files.get(sel.fid);
+  if(!f) { clearSel(); return false; }
+  requestMove(sel.fid, sel.src, sel.len, anc);
+  clearSel();
+  hoverCell = -1;
+  return true;
+}
+function onDown(e){
+  audioInit();
+  if(state === 'menu' || state === 'over') return;
+  if(paused){ setPaused(false); return; }
+  e.preventDefault();
+  if(ptr.down) return;
+  refreshRect();   // one layout read per gesture keeps hit-testing honest after any reflow
+  ptr.down = true; ptr.id = e.pointerId; ptr.sx = e.clientX; ptr.sy = e.clientY;
+  ptr.drag = false; ptr.tapSel = false; ptr.suppress = false;
+  if(cv.setPointerCapture){ try{ cv.setPointerCapture(e.pointerId); }catch(err){} }
+  var cell = cellFromEvent(e);
+  hoverCell = cell;
+  if(cell < 0) return;
+  var v = cells[cell];
+  if(v > 0){
+    if(move.active && v === move.fid && cell >= move.src && cell < move.src+move.len){
+      // that fragment is already in the air — nothing to grab
+      sBuzz();
+      ptr.suppress = true;
+      return;
+    }
+    if(sel && sel.fid === v && cell >= sel.src && cell < sel.src+sel.len){
+      // tap the selection again to drop it
+      clearSel();
+      ptr.suppress = true;
+      sThunk();
+    } else {
+      selectRun(cell, v);
+      ptr.tapSel = true;
+    }
+  }
+}
+function onMove(e){
+  var cell = cellFromEvent(e);
+  if(!ptr.down){
+    if(e.pointerType === 'mouse'){ hoverCell = cell; }
+    return;
+  }
+  e.preventDefault();
+  hoverCell = cell;
+  if(!ptr.drag){
+    var dx = e.clientX - ptr.sx, dy = e.clientY - ptr.sy;
+    if(dx*dx + dy*dy > 64) ptr.drag = true;
+  }
+}
+function onUp(e){
+  if(!ptr.down){ return; }
+  e.preventDefault();
+  var cell = cellFromEvent(e);
+  var wasDrag = ptr.drag, sup = ptr.suppress;
+  ptr.down = false; ptr.drag = false; ptr.tapSel = false; ptr.suppress = false;
+  if(cv.releasePointerCapture){ try{ cv.releasePointerCapture(e.pointerId); }catch(err){} }
+  if(state !== 'play' && state !== 'break') return;
+  if(sup) return;
+  if(cell < 0){
+    if(wasDrag && sel){ sBuzz(); }
+    return;
+  }
+  var v = cells[cell];
+  if(v > 0){
+    if(wasDrag && sel && !(cells[cell] === sel.fid && cell >= sel.src && cell < sel.src+sel.len)){
+      // dragged onto occupied space
+      sBuzz();
+    }
+    return;
+  }
+  if(!sel){
+    if(v === -1 && !wasDrag) sBuzz();
+    return;
+  }
+  if(!tryDest(cell)){
+    sBuzz();
+    shake(0.6);
+  }
+  if(e.pointerType !== 'mouse') hoverCell = -1;
+}
+function onCancel(e){
+  ptr.down = false; ptr.drag = false; ptr.tapSel = false; ptr.suppress = false;
+  if(cv.releasePointerCapture && e && e.pointerId != null){ try{ cv.releasePointerCapture(e.pointerId); }catch(err){} }
+}
+cv.addEventListener('pointerdown', onDown, {passive:false});
+cv.addEventListener('pointermove', onMove, {passive:false});
+cv.addEventListener('pointerup', onUp, {passive:false});
+cv.addEventListener('pointercancel', onCancel, {passive:false});
+cv.addEventListener('pointerleave', function(e){ if(!ptr.down && e.pointerType === 'mouse') hoverCell = -1; });
+cv.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+cv.addEventListener('touchstart', function(e){ e.preventDefault(); }, {passive:false});
+cv.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+cv.addEventListener('dragstart', function(e){ e.preventDefault(); });
+
+D.addEventListener('keydown', function(e){
+  var k = e.key;
+  if(k === 'm' || k === 'M'){ audioInit(); toggleMute(); return; }
+  if(state === 'menu'){
+    if(k === 'Enter' || k === ' ' || k === 'Spacebar'){ e.preventDefault(); startGame(); }
+    return;
+  }
+  if(state === 'over'){
+    if(k === 'r' || k === 'R' || k === 'Enter' || k === ' '){ e.preventDefault(); startGame(); }
+    return;
+  }
+  if(k === 'p' || k === 'P' || k === 'Escape'){ e.preventDefault(); audioInit(); setPaused(!paused); return; }
+  if(k === 'r' || k === 'R'){ e.preventDefault(); startGame(); return; }
+  if(k === ' ' || k === 'Spacebar'){ e.preventDefault(); if(sel){ clearSel(); sThunk(); } }
+});
+
+// state guards keep a pointerdown + click pair from starting twice
+el('startBtn').addEventListener('click', function(){ if(state === 'menu') startGame(); });
+el('againBtn').addEventListener('click', function(){ if(state === 'over') startGame(); });
+pStart.addEventListener('pointerdown', function(){ if(state === 'menu') startGame(); });
+el('resumeBtn').addEventListener('click', function(e){ e.stopPropagation(); setPaused(false); });
+pPause.addEventListener('pointerdown', function(){ setPaused(false); });
+el('mute').addEventListener('click', function(e){ e.stopPropagation(); audioInit(); toggleMute(); });
+el('pausebtn').addEventListener('click', function(e){ e.stopPropagation(); audioInit(); setPaused(!paused); });
+
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 120); });
+window.addEventListener('blur', function(){ setPaused(true); });
+D.addEventListener('visibilitychange', function(){ if(D.hidden) setPaused(true); });
+
+/* ------------------------------ main loop --------------------------- */
+var last = 0;
+function frame(ts){
+  if(!last) last = ts;
+  var dt = (ts - last)/1000;
+  last = ts;
+  if(dt > 0.05) dt = 0.05;
+  if(dt < 0) dt = 0;
+  if(paused){
+    // frozen: no sim, no timers, no particles — just keep the frame on screen
+    render();
+    requestAnimationFrame(frame);
+    return;
+  }
+  if(state !== 'menu'){
+    update(dt);
+  } else {
+    // attract screen: only cosmetics advance
+    T += dt;
+    if(shakeMag > 0) shakeMag = Math.max(0, shakeMag - dt*shakeMag*7 - dt*2);
+    if(flashScreen > 0) flashScreen = Math.max(0, flashScreen - dt*1.6);
+    for(var p=0;p<PN;p++){
+      var q = parts[p];
+      if(!q.a) continue;
+      q.l -= dt;
+      if(q.l <= 0){ q.a = 0; continue; }
+      q.vy += q.g*dt; q.x += q.vx*dt; q.y += q.vy*dt;
+      q.vx *= (1 - 1.6*dt); q.vy *= (1 - 0.7*dt);
+    }
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------ boot -------------------------------- */
+resize();
+recalcFree();
+showPanel(pStart);
+syncHUD();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
