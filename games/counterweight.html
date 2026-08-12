@@ -105,10 +105,12 @@
   .chev i:nth-child(2){opacity:.7}.chev i:nth-child(3){opacity:.45}.chev i:nth-child(4){opacity:.7}
   h1{
     font-family:var(--deco);
-    margin:0 0 6px;font-size:clamp(25px,7.6vw,46px);font-weight:700;
-    letter-spacing:.2em;color:#fff3dd;
+    margin:0 0 6px;font-size:clamp(21px,6.4vw,36px);font-weight:700;
+    letter-spacing:.14em;color:#fff3dd;
     text-shadow:0 0 26px rgba(217,164,65,.35),0 3px 0 rgba(0,0,0,.4);
-    line-height:1.02;
+    line-height:1.06;
+    /* single unbreakable word — JS shrinks it further if a fallback font runs wide */
+    white-space:nowrap;overflow:visible;
   }
   h2{
     font-family:var(--deco);
@@ -202,10 +204,14 @@
   /* ---------------- pause / hint ---------------- */
   #pause .panel{width:min(330px,90vw);}
   #hint{
-    position:absolute;left:50%;bottom:calc(2px + max(0px,env(safe-area-inset-bottom)));transform:translateX(-50%);
-    z-index:6;pointer-events:none;text-align:center;width:92%;
-    font-size:11.5px;color:rgba(246,230,205,.62);text-shadow:0 2px 10px rgba(0,0,0,.9);
-    opacity:0;transition:opacity .7s ease;line-height:1.5;
+    position:absolute;left:50%;top:0;transform:translateX(-50%);
+    z-index:6;pointer-events:none;text-align:center;
+    max-width:min(90%,430px);
+    padding:6px 15px;border-radius:999px;
+    background:rgba(11,6,9,.88);border:1px solid rgba(217,164,65,.32);
+    box-shadow:0 5px 20px rgba(0,0,0,.65);
+    font-size:11.5px;color:rgba(246,230,205,.8);
+    opacity:0;transition:opacity .7s ease;line-height:1.45;
   }
   #hint.on{opacity:1;}
   #flash{position:absolute;inset:0;z-index:4;pointer-events:none;background:#e2564c;opacity:0;}
@@ -261,7 +267,7 @@
   <div class="ov" id="start">
     <div class="panel">
       <div class="chev"><i></i><i></i><i></i><i></i></div>
-      <h1>COUNTERWEIGHT</h1>
+      <h1><span id="titleTxt">COUNTERWEIGHT</span></h1>
       <div class="rule"></div>
       <p class="prem">Two lift cabs of the Hotel Meridian hang from one cable.<br>Raise one and the other must fall. You have one lever.</p>
       <div class="diag">
@@ -583,7 +589,7 @@ var L = {
   shaftAX:0, shaftBX:0, shaftACX:0, shaftBCX:0,
   midX:0, wheelR:0, wheelY:0,
   cabW:0, cabH:0,
-  conX:0, conY:0, conW:0, conH:0,
+  conX:0, conY:0, conW:0, conH:0, hudH:0,
   leverX:0, leverY:0, leverH:0,
   dialAX:0, dialBX:0, dialY:0, dialR:0,
   gGap:0
@@ -634,6 +640,7 @@ function layout(){
   var hudH = 0;
   try{ hudH = hudEl.getBoundingClientRect().height || 0; }catch(e){ hudH = 0; }
   if(!hudH || hudH < 30) hudH = Math.min(90, H*0.13);
+  L.hudH = hudH;
 
   var sab = 0;
   try{ sab = sabEl.getBoundingClientRect().height || 0; }catch(e){ sab = 0; }
@@ -676,7 +683,6 @@ function layout(){
   L.conY = H - conH - 2 - sab;
   L.conX = Math.max(8, (W - Math.min(W-16, 620))/2);
   L.conW = Math.min(W-16, 620);
-  hintEl.style.bottom = Math.round(H - L.conY + 7) + 'px';
 
   var pad = L.conH*0.14;
   L.leverH = L.conH - pad*2 - 10;
@@ -689,7 +695,63 @@ function layout(){
   L.dialBX = L.leverX + L.conW*0.10 + dialSpace*0.72;
 
   buildGradients();
+  fitTitle();
+  placeHint();
   needBg = true;
+}
+
+/* The title is one unbreakable word; system-font fallbacks vary a lot in width,
+   so measure and shrink until it actually fits the panel. */
+var titleTxt = document.getElementById('titleTxt');
+var titleEl = titleTxt ? titleTxt.parentNode : null;
+function titleWidth(){
+  try{ return titleTxt.getBoundingClientRect().width; }catch(e){ return 0; }
+}
+function fitTitle(){
+  if(!titleEl || !titleTxt) return;
+  titleEl.style.fontSize = '';
+  var avail = titleEl.clientWidth;
+  if(avail <= 0) return;
+  var fs = 32;
+  try{ fs = parseFloat(getComputedStyle(titleEl).fontSize) || 32; }catch(e){}
+  var guard = 0;
+  while(titleWidth() > avail - 1 && fs > 11 && guard++ < 90){
+    fs -= 1;
+    titleEl.style.fontSize = fs + 'px';
+  }
+}
+
+/* Drop the hint into whichever gap is actually empty: below the building,
+   above it, or (last resort) across the roof house — never over the plinth sign. */
+function placeHint(){
+  hintEl.style.maxWidth = '';
+  var hw = hintEl.offsetWidth || 260;
+  var hh = hintEl.offsetHeight || 28;
+  var bldTop = L.by, bldBot = L.by + L.bh;
+  var margin = L.bx - 14;
+  var cx = L.W/2, y;
+  if(margin >= 150 && hw > margin){
+    // narrow it down and see if it can live beside the hotel after all
+    hintEl.style.maxWidth = Math.floor(margin) + 'px';
+    hw = hintEl.offsetWidth; hh = hintEl.offsetHeight;
+    if(hw > margin){ hintEl.style.maxWidth = ''; hw = hintEl.offsetWidth; hh = hintEl.offsetHeight; }
+  }
+  if(margin >= 150 && hw <= margin){
+    // wide screen: park it in the empty margin beside the hotel
+    cx = L.bx/2;
+    y = bldTop + L.bh*0.40 - hh/2;
+  } else {
+    hintEl.style.maxWidth = '';
+    hw = hintEl.offsetWidth; hh = hintEl.offsetHeight;
+    var gapB = L.conY - bldBot;
+    var gapT = bldTop - L.hudH;
+    if(gapB >= hh + 10)      y = bldBot + (gapB - hh)/2;
+    else if(gapT >= hh + 10) y = L.hudH + (gapT - hh)/2;
+    else                     y = bldTop + Math.max(3, L.roofH*0.42 - hh/2);
+  }
+  y = clamp(y, L.hudH + 2, Math.max(L.hudH + 2, L.conY - hh - 3));
+  hintEl.style.left = Math.round(cx) + 'px';
+  hintEl.style.top = Math.round(y) + 'px';
 }
 
 function surfaceY(p){ return L.floorsBottom - (p-1)*L.fh; }
@@ -822,6 +884,7 @@ function startShift(n){
   G.hintT = (n===1) ? 9.0 : 0;
   if(n===1){
     hintEl.textContent = 'Drag up / down anywhere — or ↑ ↓ — to drive the shared cable.';
+    placeHint();
     hintEl.classList.add('on');
   } else {
     hintEl.classList.remove('on');
