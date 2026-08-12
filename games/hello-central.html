@@ -311,6 +311,14 @@ function sndSpark(){
   noiseBurst(t, 0.07, 0.13, 'bandpass', rand(2600,4600), 2.4);
   noiseBurst(t+0.04, 0.05, 0.08, 'highpass', 3200, 1);
 }
+function sndMercy(){
+  if (!A.ready) return;
+  var t = now()+0.001;
+  tone('triangle', 587.33, 587.33, t, 0.24, 0.075);
+  tone('triangle', 880.00, 880.00, t+0.09, 0.34, 0.075);
+  tone('sine',    1174.7, 1174.7, t+0.18, 0.44, 0.045);
+  noiseBurst(t+0.18, 0.16, 0.03, 'bandpass', 5200, 2.6);
+}
 function sndTrunkDone(){
   if (!A.ready) return;
   var t=now()+0.001;
@@ -423,6 +431,7 @@ var CORD_COLORS = [
   {name:'teal',    dark:'#0d2a2b', mid:'#1c4e50', lite:'#357476'}
 ];
 
+var MERCY_RUN = 10;     // calls connected without a mis-plug that buy back one complaint
 var NCORDS = 6;
 var NJACK = 24;
 var TRUNK = 24;          // jack index of the trunk
@@ -982,6 +991,8 @@ var G = {
   particles:[],
   floats:[],
   toast:'', toastT:0,
+  goodRun:0,
+  pipClearT:0, pipClearIdx:-1,
   prog:0,
   ldUnlocked:false
 };
@@ -1048,7 +1059,9 @@ function dustBurst(x,y){
   addParticle(x,y,0,0,0.28,rand(9,14),1,2,0);
 }
 function addFloat(x,y,text,col){
-  G.floats.push({x:x,y:y,t:0,life:1.1,text:text,col:col||'#f0d79c'});
+  // floats rise ~26px; keep them out of the trunk band so they never sit on its label
+  var minY = L.gridY + 34;
+  G.floats.push({x:clamp(x, 60, W-60), y:max(y, minY), t:0, life:1.1, text:text, col:col||'#f0d79c'});
 }
 function toast(msg){ G.toast=msg; G.toastT=1.7; }
 function shake(a){ G.shake = max(G.shake, a); G.shakeT = 0.34; bumpAll(a*0.5); }
@@ -1057,17 +1070,17 @@ function shake(a){ G.shake = max(G.shake, a); G.shakeT = 0.34; bumpAll(a*0.5); }
    CALLS
    ============================================================ */
 function difficulty(){
-  return clamp(G.t/ (SHIFT_LEN*0.86), 0, 1);
+  return clamp(G.t / SHIFT_LEN, 0, 1);
 }
 function spawnInterval(){
   var p = G.prog;
-  return lerp(3.6, 1.65, p) * rand(0.80, 1.22);
+  return lerp(3.6, 2.35, p) * rand(0.84, 1.20);
 }
 function maxConcurrent(){
-  return 2 + floor(G.prog*2.0);   // 2 .. 4
+  return 2 + floor(G.prog*1.4);   // 2 .. 3 ringing at once
 }
 function patienceFor(){
-  return lerp(12.5, 7.2, G.prog);
+  return lerp(12.5, 10.0, G.prog);
 }
 
 function idleJacks(){
@@ -1143,12 +1156,27 @@ function connectCall(cl, cord, ei){
   G.connected++;
   G.streak++;
   if (G.streak > G.bestStreak) G.bestStreak = G.streak;
+  G.goodRun++;
+  var mercy = false;
+  if (G.goodRun >= MERCY_RUN && G.complaints > 0){ G.goodRun -= MERCY_RUN; mercy = true; }
+  else if (G.goodRun > MERCY_RUN*2){ G.goodRun = MERCY_RUN*2; }   // bank at most two nights' goodwill
   var jf = L.jacks[cl.from], jt = L.jacks[cl.to];
   addFloat((jf.x+jt.x)/2, (jf.y+jt.y)/2 - 14, '+'+pts, cl.ld?'#ffd98a':'#f0e2bd');
   if (bonusHalf) addFloat((jf.x+jt.x)/2, (jf.y+jt.y)/2 + 4, 'PROMPT', 'rgba(180,225,180,.85)');
   dustBurst(jf.x, jf.y); dustBurst(jt.x, jt.y);
   sndChunk();
   G.jackFlash[cl.from] = 1; G.jackFlash[cl.to] = 1;
+  if (mercy){
+    G.complaints--;
+    G.pipClearIdx = G.complaints;
+    G.pipClearT = 1;
+    sndMercy();
+    addFloat(jf.x, jf.y - clamp(L.jr*1.5, 22, 38), 'COMPLAINT WITHDRAWN', 'rgba(163,216,150,0.96)');
+    for (var mp=0; mp<10; mp++){
+      var ma = rand(0,TAU), ms = rand(20,70);
+      addParticle(L.mute.x - L.mute.r*3, L.topH*0.5, cos(ma)*ms, sin(ma)*ms, rand(0.4,0.8), rand(1,2.2), 1, 0, -40);
+    }
+  }
   if (cl.ld){ cl.state='dial'; cl.dialT=2.0; cl.dialClick=0; }
   else startTalk(cl);
 }
@@ -1163,6 +1191,7 @@ function endCall(cl, kind){
   } else {
     G.complaints++;
     G.streak = 0;
+    G.spawnTimer = max(G.spawnTimer, 2.2);   // a moment to catch up
     sndHangup();
     G.jackFlash[cl.from] = -1;
     G.flash = max(G.flash, 0.5);
@@ -1196,6 +1225,7 @@ function wrongPlug(c, ei, a, b){
   G.flash = max(G.flash, 0.62);
   G.jackFlash[c.ends[ei].jack] = -1;
   G.streak = 0;
+  G.goodRun = 0;
   var cl = callRingingAt(a) || callRingingAt(b);
   if (cl){ cl.patience = max(0.35, cl.patience - 2.0); }
   addFloat(L.jacks[c.ends[ei].jack].x, L.jacks[c.ends[ei].jack].y - 16, 'WRONG PARTY', '#e2705f');
@@ -1500,6 +1530,7 @@ function update(dt){
   if (G.shakeT>0){ G.shakeT-=dt; if (G.shakeT<=0){ G.shake=0; } else { G.shake *= (1-min(1,dt*4.2)); } }
   G.flash = max(0, G.flash - dt*2.1);
   if (G.toastT>0) G.toastT -= dt;
+  if (G.pipClearT>0){ G.pipClearT = max(0, G.pipClearT - dt*1.15); if (G.pipClearT===0) G.pipClearIdx=-1; }
   for (var k=0;k<=NJACK;k++){
     var v = G.jackFlash[k];
     if (v>0) G.jackFlash[k] = max(0, v - dt*2.4);
@@ -1543,14 +1574,20 @@ function update(dt){
       if (cl.patience<=0){
         // caller gives up
         if (cl.cord) releaseCord(cl.cord, true);
-        // release any plug seated in the caller's jack
+        // the operator's cord for this caller goes back on the rack whole,
+        // so a dead plug never strands itself in somebody else's jack
         for (var z=0;z<NCORDS;z++){
           var cz=cords[z];
-          for (var ze=0;ze<2;ze++){
-            if (cz.ends[ze].mode==='jack' && cz.ends[ze].jack===cl.from && !cordActive(cz)){
-              unseatPlug(cz, ze, true);
-              if (cz.ends[0].mode!=='jack' && cz.ends[1].mode!=='jack' && cz.ends[0].mode!=='hand' && cz.ends[1].mode!=='hand') releaseCord(cz, true);
-            }
+          if (cordActive(cz)) continue;
+          var serving = (cz.ends[0].mode==='jack' && cz.ends[0].jack===cl.from) ||
+                        (cz.ends[1].mode==='jack' && cz.ends[1].jack===cl.from);
+          if (!serving) continue;
+          if (cz.ends[0].mode==='hand' || cz.ends[1].mode==='hand'){
+            // player still holds one end: only pull the dead one
+            if (cz.ends[0].mode==='jack' && cz.ends[0].jack===cl.from) unseatPlug(cz, 0, true);
+            if (cz.ends[1].mode==='jack' && cz.ends[1].jack===cl.from) unseatPlug(cz, 1, true);
+          } else {
+            releaseCord(cz, true);
           }
         }
         endCall(cl, 'hangup');
@@ -2015,6 +2052,27 @@ function drawHUD(c){
     c.strokeStyle = filled?'rgba(255,190,160,0.7)':'rgba(214,176,110,0.34)';
     c.lineWidth=1;
     c.beginPath(); c.arc(x,y,pipR,0,TAU); c.stroke();
+    if (i===G.pipClearIdx && G.pipClearT>0){
+      var pc = G.pipClearT, gr = 1-pc;
+      c.save();
+      c.globalAlpha = pc;
+      c.fillStyle = 'rgba(226,96,74,'+(pc*0.85).toFixed(3)+')';
+      c.beginPath(); c.arc(x,y,pipR*(1-gr*0.7),0,TAU); c.fill();
+      c.strokeStyle = 'rgba(178,226,164,'+(pc*0.9).toFixed(3)+')';
+      c.lineWidth = max(1.2, pipR*0.42*pc);
+      c.beginPath(); c.arc(x,y,pipR*(1+gr*2.4),0,TAU); c.stroke();
+      c.restore();
+    }
+  }
+
+  // goodwill ledger: progress toward wiping one complaint
+  if (G.complaints>0 || G.goodRun>0){
+    var barW = gapP*4, barX = startX - pipR, barY = midY + pipR + 5.5;
+    c.fillStyle='rgba(0,0,0,0.5)';
+    c.fillRect(barX, barY, barW, 2);
+    var frac = clamp(G.goodRun/MERCY_RUN, 0, 1);
+    c.fillStyle = frac>=1 ? 'rgba(178,226,164,0.95)' : 'rgba(214,176,110,0.75)';
+    c.fillRect(barX, barY, barW*frac, 2);
   }
 
   // mute bell
@@ -2135,7 +2193,7 @@ function showStart(){
       '<li>A jack lights and rings. Its tag shows who they want &mdash; <b>drag from the ringing jack to that party\'s jack</b>.</li>'+
       '<li>Cords are real rope. Grab one anywhere along its length to <b>re-drape it</b> &mdash; crossed cords cause static and cut calls off.</li>'+
       '<li>Gold calls want another city. Plug them into the <b>TRUNK</b> jack and let it dial. Double points.</li>'+
-      '<li>Five complaints and you are dismissed. Reach midnight and the night is yours.</li>'+
+      '<li>Five complaints and you are dismissed &mdash; but ten calls connected without a mis-plug wipes one off the book.</li>'+
     '</ol>'+
     '<button class="btn" id="btnStart" type="button">Begin shift</button>'+
     '<p class="hint">P pauses &middot; drag with mouse or finger</p>',
@@ -2230,6 +2288,7 @@ function resetGame(){
   G.t=0; G.score=0; G.connected=0; G.streak=0; G.bestStreak=0; G.complaints=0;
   G.spawnTimer=2.0; G.shake=0; G.shakeT=0; G.flash=0; G.prog=0; G.ldUnlocked=false;
   G.particles.length=0; G.floats.length=0; G.toast=''; G.toastT=0;
+  G.pipClearT=0; G.pipClearIdx=-1; G.goodRun=0;
   for (var k=0;k<=NJACK;k++){ G.jackFlash[k]=0; plugAt[k]=0; }
   for (var z=0;z<ctTimer.length;z++) ctTimer[z]=0;
   drag.active=false; drag.cord=null; drag.mode=''; drag.end=-1; drag.id=-1; drag.hoverJack=-1;
