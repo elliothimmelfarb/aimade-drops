@@ -1,0 +1,2624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="BONSPIEL - a curling game where the shot starts when you let go. Aim, set your weight, then sweep like mad to steer the stone home.">
+<title>BONSPIEL</title>
+<style>
+  :root{
+    --ice:#e9f4fb;
+    --ink:#eaf3fb;
+    --dim:#8ba4bd;
+    --dimmer:#61788f;
+    --frost:#bfe4f7;
+    --cyan:#79d2f2;
+    --red:#e5483c;
+    --redlit:#ff6a5c;
+    --gold:#f2c230;
+    --goldlit:#ffd95e;
+    --wood:#7a5433;
+    --deep:#070d18;
+    --deep2:#0d1727;
+    --panel:rgba(11,21,36,.72);
+    --line:rgba(140,190,225,.18);
+    --ui: ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ease: cubic-bezier(.2,.8,.3,1);
+    --pop: cubic-bezier(.2,1.7,.4,1);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:#070d18;color:var(--ink);
+    font-family:var(--ui);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#070d18;}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+  #vig{position:absolute;inset:0;z-index:3;pointer-events:none;
+    background:radial-gradient(128% 92% at 50% 46%,rgba(0,0,0,0) 40%,rgba(2,6,14,.5) 100%);}
+
+  /* ============ HUD ============ */
+  #hud{position:absolute;inset:0;z-index:5;pointer-events:none;
+    opacity:0;transition:opacity .5s var(--ease);}
+  #hud.on{opacity:1;}
+  .row{position:absolute;display:flex;align-items:flex-start;gap:10px;}
+  #topL{left:max(11px,env(safe-area-inset-left));top:max(10px,env(safe-area-inset-top));flex-direction:column;gap:7px;}
+  #topR{right:max(11px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));flex-direction:column;align-items:flex-end;gap:8px;}
+
+  .lbl{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim);line-height:1;}
+  .pill{display:flex;align-items:center;gap:8px;padding:7px 11px;border-radius:11px;
+    background:var(--panel);box-shadow:inset 0 0 0 1px var(--line),0 4px 18px rgba(0,0,0,.3);
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);}
+  #endpill{flex-direction:column;align-items:flex-start;gap:5px;}
+  #endnum{font-size:15px;font-weight:800;letter-spacing:.02em;line-height:1;color:#fff;}
+  #endnum small{font-size:9px;font-weight:700;color:var(--dim);letter-spacing:.16em;margin-left:4px;}
+
+  /* stones remaining */
+  .stonerow{display:flex;align-items:center;gap:9px;}
+  .srgroup{display:flex;align-items:center;gap:3px;}
+  .sr{width:11px;height:11px;border-radius:50%;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.16);
+    transition:opacity .35s var(--ease),transform .35s var(--pop);}
+  .sr.p{background:linear-gradient(160deg,#ff7466,#c9352b);}
+  .sr.a{background:linear-gradient(160deg,#ffdf72,#d9a212);}
+  .sr.spent{opacity:.17;transform:scale(.6);}
+
+  /* turn banner */
+  #turn{position:absolute;left:50%;transform:translateX(-50%);top:max(10px,env(safe-area-inset-top));
+    display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;}
+  #turnv{font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;
+    padding:6px 13px;border-radius:9px;background:var(--panel);
+    box-shadow:inset 0 0 0 1px var(--line),0 4px 18px rgba(0,0,0,.3);
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    transition:color .35s var(--ease),box-shadow .35s var(--ease);white-space:nowrap;}
+  #turnv.you{color:var(--redlit);box-shadow:inset 0 0 0 1px rgba(255,106,92,.4),0 4px 22px rgba(200,50,40,.22);}
+  #turnv.foe{color:var(--goldlit);box-shadow:inset 0 0 0 1px rgba(255,217,94,.36),0 4px 22px rgba(200,160,20,.18);}
+
+  /* buttons */
+  .btn{width:32px;height:32px;padding:0;border:0;border-radius:10px;cursor:pointer;pointer-events:auto;
+    background:var(--panel);box-shadow:inset 0 0 0 1px var(--line);
+    color:#cfe4f5;display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    transition:background .18s ease,transform .12s var(--pop),color .18s ease;
+    -webkit-appearance:none;appearance:none;}
+  .btn:hover{background:rgba(30,58,96,.7);color:#fff;}
+  .btn:active{transform:scale(.88);}
+  .btn svg{display:block;}
+  .btn .alt{display:none;}
+  .btn.alt .alt{display:block;}
+  .btn.alt .pri{display:none;}
+  #btnrow{display:flex;gap:7px;}
+
+  /* ============ linescore ============ */
+  #score{pointer-events:none;}
+  #score table{border-collapse:collapse;font-variant-numeric:tabular-nums;}
+  #score th,#score td{padding:0;text-align:center;}
+  #score .nm{text-align:left;padding-right:9px;font-size:10px;font-weight:800;letter-spacing:.1em;white-space:nowrap;}
+  #score .nm i{font-style:normal;display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:-1px;
+    box-shadow:inset 0 0 0 1.4px rgba(255,255,255,.18);}
+  #score .pnm i{background:linear-gradient(160deg,#ff7466,#c9352b);}
+  #score .anm i{background:linear-gradient(160deg,#ffdf72,#d9a212);}
+  #score .pnm{color:var(--redlit);}
+  #score .anm{color:var(--goldlit);}
+  #score .hd td,#score .hd th{font-size:8.5px;letter-spacing:.12em;color:var(--dimmer);padding-bottom:3px;font-weight:700;}
+  #score .e{width:19px;height:19px;font-size:11px;font-weight:700;color:#dce9f5;
+    border-left:1px solid rgba(140,190,225,.13);position:relative;}
+  #score .e.cur{background:rgba(120,190,240,.1);}
+  #score .e.blank{color:var(--dimmer);}
+  #score .tot{width:26px;font-size:13px;font-weight:800;color:#fff;
+    border-left:1px solid rgba(140,190,225,.28);}
+  #score .ham{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--frost);
+    box-shadow:0 0 6px rgba(190,230,250,.8);vertical-align:1px;}
+  #score .hamcell{width:14px;border:0;}
+
+  /* ============ bottom control deck ============ */
+  #deck{position:absolute;left:50%;transform:translateX(-50%);
+    bottom:max(12px,env(safe-area-inset-bottom));
+    width:min(94vw,460px);display:flex;flex-direction:column;align-items:center;gap:9px;
+    pointer-events:none;}
+
+  #coach{font-size:11.5px;font-weight:600;letter-spacing:.01em;color:var(--frost);
+    background:rgba(12,26,44,.8);padding:7px 13px;border-radius:9px;text-align:center;
+    box-shadow:inset 0 0 0 1px rgba(140,200,240,.2);max-width:100%;
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    opacity:0;transform:translateY(7px);transition:opacity .45s var(--ease),transform .45s var(--ease);}
+  #coach.on{opacity:1;transform:none;}
+
+  /* Deck panels share one fixed-height slab and are stacked on top of each
+     other, so switching phase cross-fades in place instead of reflowing. */
+  #panels{position:relative;width:100%;height:130px;}
+  #aimgroup,#sweeppanel{position:absolute;left:0;right:0;bottom:0;
+    opacity:0;transform:translateY(8px);visibility:hidden;
+    transition:opacity .3s var(--ease),transform .3s var(--ease),visibility 0s linear .3s;}
+  #aimgroup.on,#sweeppanel.on{opacity:1;transform:none;visibility:visible;transition-delay:0s;}
+  #aimgroup{display:flex;flex-direction:column;gap:9px;}
+
+  /* handle chooser */
+  #handles{display:flex;gap:8px;width:100%;pointer-events:auto;}
+  .hbtn{flex:1 1 0;min-width:0;padding:9px 6px 8px;border:0;border-radius:12px;cursor:pointer;
+    background:rgba(11,21,36,.74);box-shadow:inset 0 0 0 1px var(--line);
+    color:var(--dim);font-family:var(--ui);
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    transition:background .2s ease,color .2s ease,box-shadow .25s var(--ease),transform .12s var(--pop);
+    -webkit-appearance:none;appearance:none;}
+  .hbtn .gl{font-size:17px;line-height:1;font-weight:700;}
+  .hbtn .tx{font-size:8.5px;letter-spacing:.15em;font-weight:800;text-transform:uppercase;}
+  .hbtn .sb{font-size:8px;letter-spacing:.06em;color:var(--dimmer);text-transform:uppercase;}
+  .hbtn:active{transform:scale(.96);}
+  .hbtn.sel{color:#fff;background:rgba(24,52,86,.85);
+    box-shadow:inset 0 0 0 1.5px rgba(140,215,250,.6),0 0 20px rgba(90,180,230,.2);}
+  .hbtn.sel .sb{color:var(--frost);}
+
+  /* weight meter */
+  #meterhdr{position:relative;height:11px;}
+  #btnlbl{position:absolute;bottom:0;transform:translateX(-50%);white-space:nowrap;
+    font-size:7.5px;letter-spacing:.16em;text-transform:uppercase;color:rgba(214,242,255,.85);}
+  #btnlbl::after{content:"";position:absolute;left:50%;bottom:-4px;width:1px;height:4px;
+    background:rgba(255,255,255,.85);}
+  #meterwrap{width:100%;pointer-events:none;transition:opacity .3s var(--ease);}
+  #meterwrap.dim{opacity:.5;}
+  #meter{position:relative;height:30px;border-radius:9px;overflow:hidden;
+    background:rgba(6,13,24,.8);box-shadow:inset 0 0 0 1px var(--line),inset 0 2px 8px rgba(0,0,0,.5);}
+  #meter .band{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    font-size:8px;font-weight:800;letter-spacing:.11em;color:rgba(255,255,255,.5);text-transform:uppercase;
+    border-right:1px solid rgba(0,0,0,.32);overflow:hidden;white-space:nowrap;}
+  #meter .band.draw{color:rgba(255,255,255,.92);}
+  #meter .btn-mark{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,255,255,.92);
+    box-shadow:0 0 8px rgba(255,255,255,.85);}
+  #needle{position:absolute;left:0;top:0;bottom:0;width:3px;margin-left:-1.5px;border-radius:2px;
+    background:#fff;box-shadow:0 0 12px rgba(255,255,255,.95),0 0 26px rgba(150,220,255,.6);
+    will-change:transform;}
+  #meterlbl{display:flex;justify-content:space-between;align-items:baseline;margin-top:5px;padding:0 2px;}
+  #wname{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#fff;
+    transition:color .2s ease;}
+  #whint{font-size:9.5px;letter-spacing:.06em;color:var(--dim);}
+
+  /* sweep panel */
+  #sweeppanel{pointer-events:none;}
+  #sweepcall{text-align:center;font-size:15px;font-weight:900;letter-spacing:.26em;text-transform:uppercase;
+    color:#fff;margin-bottom:7px;text-shadow:0 0 20px rgba(120,210,255,.6);
+    transition:transform .1s var(--pop),opacity .2s ease,color .2s ease;}
+  #sweepcall.hot{color:#c9f0ff;transform:scale(1.07);}
+  #sweepcall.spent{color:#ff8a72;}
+  .barwrap{display:flex;align-items:center;gap:8px;}
+  .barwrap .bl{font-size:8px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;width:52px;flex:0 0 auto;}
+  .bar{position:relative;flex:1 1 auto;height:9px;border-radius:6px;overflow:hidden;
+    background:rgba(6,13,24,.8);box-shadow:inset 0 0 0 1px var(--line),inset 0 2px 6px rgba(0,0,0,.5);}
+  .bar .fill{position:absolute;left:0;top:0;bottom:0;width:100%;border-radius:6px;transform-origin:0 50%;
+    will-change:transform;}
+  #stamfill{background:linear-gradient(90deg,#4fb9e8,#a8e6ff 70%,#fff);box-shadow:0 0 12px rgba(120,215,255,.5);
+    transition:background .3s linear;}
+  #stambar.low #stamfill{background:linear-gradient(90deg,#e8663f,#ffb08a);box-shadow:0 0 12px rgba(255,130,90,.55);}
+  #scrubfill{background:linear-gradient(90deg,#8be0ff,#ffffff);box-shadow:0 0 14px rgba(160,230,255,.7);}
+
+  /* ============ overlays ============ */
+  .screen{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;
+    padding:20px;text-align:center;opacity:0;pointer-events:none;visibility:hidden;
+    transition:opacity .4s ease,visibility 0s linear .4s;}
+  .screen.on{opacity:1;pointer-events:auto;visibility:visible;transition:opacity .45s ease,visibility 0s linear 0s;}
+  .screen::before{content:"";position:absolute;inset:0;
+    background:radial-gradient(125% 88% at 50% 40%,rgba(6,14,28,.62),rgba(3,7,16,.9));
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);}
+  .card{position:relative;max-width:430px;width:100%;
+    transform:translateY(14px) scale(.975);opacity:0;
+    transition:transform .55s var(--ease),opacity .5s ease;}
+  .screen.on .card{transform:none;opacity:1;transition-delay:.06s;}
+
+  h1{margin:0;font-size:clamp(38px,12vw,62px);font-weight:900;letter-spacing:.13em;line-height:1;
+    background:linear-gradient(175deg,#ffffff 8%,#bfe4f7 52%,#6ea7cc 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 3px 26px rgba(120,200,255,.3));}
+  .tag{margin:9px 0 0;font-size:10px;letter-spacing:.34em;text-transform:uppercase;color:var(--cyan);opacity:.9;}
+  .rule{height:1px;margin:17px auto;width:64px;background:linear-gradient(90deg,transparent,rgba(160,215,245,.55),transparent);}
+  .body{font-size:13px;line-height:1.62;color:#c2d6e8;margin:0 0 14px;text-align:left;}
+  .body b{color:#fff;font-weight:700;}
+  .body .rd{color:var(--redlit);font-weight:700;}
+  .body .yl{color:var(--goldlit);font-weight:700;}
+
+  .keys{display:flex;flex-direction:column;gap:6px;margin:0 0 16px;text-align:left;}
+  .krow{display:flex;align-items:baseline;gap:9px;font-size:11px;color:var(--dim);line-height:1.45;}
+  .krow .k{flex:0 0 auto;min-width:74px;font-size:8.5px;font-weight:800;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--frost);padding-top:1px;}
+  .krow em{font-style:normal;color:#dbe8f4;}
+  kbd{font-family:var(--mono);font-size:10px;background:rgba(120,180,220,.13);color:#dbeaf7;
+    padding:1.5px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(150,205,240,.22);white-space:nowrap;}
+
+  .bigbtn{margin-top:4px;padding:14px 30px;border:0;border-radius:14px;cursor:pointer;
+    font-family:var(--ui);font-size:13px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;
+    color:#04121e;background:linear-gradient(170deg,#e7f7ff,#8ecbe8);
+    box-shadow:0 8px 28px rgba(110,190,235,.32),inset 0 1px 0 rgba(255,255,255,.85);
+    transition:transform .14s var(--pop),box-shadow .22s ease;-webkit-appearance:none;appearance:none;}
+  .bigbtn:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(110,190,235,.42),inset 0 1px 0 rgba(255,255,255,.85);}
+  .bigbtn:active{transform:scale(.96);}
+  .subbtn{margin-top:11px;padding:9px 18px;border:0;border-radius:10px;cursor:pointer;
+    font-family:var(--ui);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--dim);background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line);
+    transition:color .2s ease,background .2s ease,transform .12s var(--pop);-webkit-appearance:none;appearance:none;}
+  .subbtn:hover{color:#fff;background:rgba(255,255,255,.1);}
+  .subbtn:active{transform:scale(.95);}
+
+  /* end-of-end card */
+  #endres{font-size:clamp(26px,8vw,40px);font-weight:900;letter-spacing:.04em;line-height:1.05;margin:0;}
+  #endres.p{color:var(--redlit);text-shadow:0 0 34px rgba(230,80,65,.4);}
+  #endres.a{color:var(--goldlit);text-shadow:0 0 34px rgba(240,200,60,.34);}
+  #endres.b{color:#b9cfe2;}
+  #endsub{margin:10px 0 0;font-size:12px;color:var(--dim);letter-spacing:.05em;line-height:1.6;}
+  #endsub b{color:#e7f2fb;font-weight:700;}
+  #endscoreholder{margin:20px auto 4px;display:flex;justify-content:center;}
+
+  /* game over */
+  #gohead{font-size:clamp(30px,10vw,52px);font-weight:900;letter-spacing:.1em;line-height:1;margin:0;}
+  #gohead.win{background:linear-gradient(175deg,#fff,#ffd98a 60%,#e0a33c);-webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 3px 26px rgba(240,190,90,.32));}
+  #gohead.lose{background:linear-gradient(175deg,#e8f3fb,#9fb8cc 60%,#67839a);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  #gohead.tie{background:linear-gradient(175deg,#f2f9ff,#b7d5ea 60%,#7fa3bd);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  #goflav{margin:11px 0 0;font-size:12.5px;color:#c2d6e8;line-height:1.6;letter-spacing:.02em;}
+  #gostats{margin:17px 0 0;display:flex;justify-content:center;gap:22px;flex-wrap:wrap;}
+  .stat{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .stat .v{font-size:19px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;line-height:1;}
+  .stat .l{font-size:8px;letter-spacing:.17em;text-transform:uppercase;color:var(--dimmer);}
+
+  /* pause */
+  #pausecard .ic{font-size:34px;margin-bottom:8px;}
+  h2.ttl{margin:0;font-size:20px;font-weight:900;letter-spacing:.19em;text-transform:uppercase;color:#fff;}
+
+  /* wide layout: move linescore into the left gutter */
+  #score{position:absolute;left:max(11px,env(safe-area-inset-left));
+    bottom:max(12px,env(safe-area-inset-bottom));
+    padding:10px 12px;border-radius:12px;background:var(--panel);
+    box-shadow:inset 0 0 0 1px var(--line),0 6px 22px rgba(0,0,0,.32);
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    transition:opacity .4s var(--ease);}
+  /* Narrow: the top chrome stacks into three centred rows instead of fighting
+     for the same line — end pill + buttons, then the turn banner, then the
+     linescore, which on wide screens lives down in the left gutter. */
+  body.narrow #turn{top:calc(max(10px,env(safe-area-inset-top)) + 50px);}
+  body.narrow #score{left:50%;transform:translateX(-50%);bottom:auto;
+    top:calc(max(10px,env(safe-area-inset-top)) + 86px);padding:7px 9px;}
+  body.narrow #score .e{width:16px;height:16px;font-size:10px;}
+  body.narrow #score .tot{width:22px;font-size:12px;}
+  body.narrow #score .nm{font-size:9px;padding-right:6px;}
+
+  /* deck sits above the linescore on narrow screens; nothing else to do */
+  @media (max-height:520px){
+    #coach{display:none;}
+    #deck{gap:6px;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+  <div id="vig"></div>
+
+  <div id="hud">
+    <div class="row" id="topL">
+      <div class="pill" id="endpill">
+        <div id="endnum">END 1 <small>OF 3</small></div>
+        <div class="stonerow">
+          <div class="srgroup" id="srP"></div>
+          <div class="srgroup" id="srA"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="turn"><div id="turnv" class="you">Your throw</div></div>
+
+    <div class="row" id="topR">
+      <div id="btnrow">
+        <button class="btn" id="bMute" aria-label="Mute">
+          <svg class="pri" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+          <svg class="alt" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
+        </button>
+        <button class="btn" id="bPause" aria-label="Pause">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        </button>
+        <button class="btn" id="bRestart" aria-label="Restart match">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="score"></div>
+
+    <div id="deck">
+      <div id="coach"></div>
+
+      <!-- the aim controls and the sweep readout occupy the same slab of screen,
+           cross-fading between phases so nothing ever jumps -->
+      <div id="panels">
+        <div id="aimgroup">
+          <div id="meterwrap">
+            <div id="meterhdr"><span id="btnlbl">Button</span></div>
+            <div id="meter"></div>
+            <div id="meterlbl"><div id="wname">Guard</div><div id="whint">Hold &amp; release</div></div>
+          </div>
+          <div id="handles">
+            <button class="hbtn sel" id="hIn"><span class="gl">&#8630;</span><span class="tx">In-turn</span><span class="sb">curls left</span></button>
+            <button class="hbtn" id="hOut"><span class="gl">&#8631;</span><span class="tx">Out-turn</span><span class="sb">curls right</span></button>
+          </div>
+        </div>
+
+        <div id="sweeppanel">
+          <div id="sweepcall">Sweep!</div>
+          <div class="barwrap" style="margin-bottom:5px">
+            <div class="bl">Vigour</div>
+            <div class="bar" id="scrubbar"><div class="fill" id="scrubfill"></div></div>
+          </div>
+          <div class="barwrap">
+            <div class="bl">Stamina</div>
+            <div class="bar" id="stambar"><div class="fill" id="stamfill"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ START ============ -->
+  <div class="screen on" id="scStart">
+    <div class="card">
+      <h1>BONSPIEL</h1>
+      <p class="tag">The shot starts when you let go</p>
+      <div class="rule"></div>
+      <p class="body">
+        Three ends, four stones a side. You throw <b class="rd">red</b>, the skip across the ice throws
+        <b class="yl">yellow</b>. Set your broom where you want the stone to travel, pick a handle, then
+        <b>hold to charge the weight meter</b> and release. From that instant the stone is out of your hands
+        &mdash; all you have left is the broom. <b>Scrub like mad to sweep:</b> sweeping melts the pebble so the
+        stone runs farther and curls less. Under-sweep and it curls wide and dies short. Your sweepers tire,
+        so spend them where it counts.
+      </p>
+      <div class="keys">
+        <div class="krow"><span class="k">Mouse / touch</span><em>Move to set the broom &middot; press &amp; hold for weight &middot; release to throw &middot; then scrub anywhere to sweep</em></div>
+        <div class="krow"><span class="k">Keyboard</span><em><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> aim &middot; <kbd>Z</kbd>/<kbd>X</kbd> handle &middot; hold <kbd>Space</kbd> for weight &middot; mash <kbd>&larr;</kbd><kbd>&rarr;</kbd> or <kbd>A</kbd><kbd>D</kbd> to sweep</em></div>
+        <div class="krow"><span class="k">Scoring</span><em>Only the side nearest the button scores &mdash; one point per stone closer than the best opposing stone.</em></div>
+      </div>
+      <button class="bigbtn" id="bPlay">Throw first stone</button>
+    </div>
+  </div>
+
+  <!-- ============ END OF END ============ -->
+  <div class="screen" id="scEnd">
+    <div class="card">
+      <p class="tag" id="endtag">End 1 complete</p>
+      <h2 id="endres" class="p">You score 2</h2>
+      <p id="endsub"></p>
+      <div id="endscoreholder"></div>
+      <button class="bigbtn" id="bNext">Next end</button>
+    </div>
+  </div>
+
+  <!-- ============ GAME OVER ============ -->
+  <div class="screen" id="scOver">
+    <div class="card">
+      <p class="tag" id="gotag">Final</p>
+      <h1 id="gohead" class="win">WIN</h1>
+      <p id="goflav"></p>
+      <div id="goscoreholder" style="margin:20px auto 0;display:flex;justify-content:center"></div>
+      <div id="gostats"></div>
+      <button class="bigbtn" id="bAgain" style="margin-top:22px">Rematch</button>
+    </div>
+  </div>
+
+  <!-- ============ PAUSE ============ -->
+  <div class="screen" id="scPause">
+    <div class="card" id="pausecard">
+      <div class="ic">&#10074;&#10074;</div>
+      <h2 class="ttl">Paused</h2>
+      <p class="body" style="text-align:center;margin-top:12px;color:var(--dim)">The ice will keep.</p>
+      <button class="bigbtn" id="bResume">Resume</button><br>
+      <button class="subbtn" id="bQuit">Restart match</button>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+/* ============================================================================
+   BONSPIEL
+   A curling game. Units are FEET and SECONDS throughout the simulation;
+   rendering converts with a single `scale` (screen px per foot).
+
+   Sheet layout (y grows AWAY from the thrower, up the screen):
+     y =   0   hack / release point
+     y =  12   near tee line
+     y =  33   near hog line
+     y = 105   far hog line
+     y = 126   far tee line  <- button, centre of the house
+     y = 132   far back line
+   ============================================================================ */
+
+/* ---------- geometry (feet) ---------- */
+const SHEET_HW  = 7.0833;   // half width, 14'2"
+const STONE_R   = 0.4792;   // 11.5" diameter stone
+const STONE_D   = STONE_R * 2;
+const HACK_Y    = 0;
+const NEAR_TEE  = 12;
+const NEAR_HOG  = 33;
+const FAR_HOG   = 105;
+const TEE_Y     = 126;
+const BACK_Y    = 132;
+const BOARD_Y   = 139;
+const HOUSE_R   = 6.0;      // 12-foot ring
+const R8        = 4.0;
+const R4        = 2.0;
+const R_BUTTON  = 0.5;
+const SIDE_LIM  = SHEET_HW - STONE_R;   // centre beyond this => touching the boards
+const BACK_LIM  = BACK_Y + STONE_R;     // fully past the back line
+const HOG_LIM   = FAR_HOG + STONE_R;    // must fully cross the far hog line
+const IN_HOUSE  = HOUSE_R + STONE_R;    // touching the 12-foot counts
+
+/* ---------- physics ---------- */
+const FRIC_A   = 3.2;    // base deceleration            (ft/s^2)
+const FRIC_B   = 9.0;    // low-speed "bite" numerator
+const FRIC_V0  = 1.1;    // low-speed softening
+const CURL_K   = 5.6;    // lateral acceleration strength
+const CURL_VC  = 1.1;    // curl speed shape
+const CURL_VF  = 0.5;    // fade so the stone doesn't crab as it dies
+const SWEEP_A  = 0.08;   // sweeping shaves this much off the base friction
+const SWEEP_B  = 0.60;   // ...and this much off the low-speed bite (the real prize)
+const SWEEP_C  = 0.72;   // sweeping kills this much curl
+const STOP_V   = 0.10;   // below this the stone is at rest
+const RESTIT   = 0.94;   // stone-on-stone restitution
+const MAX_SUB  = 0.19;   // max travel per collision substep (ft) - < stone diameter
+const PHYS_DT  = 1 / 120;
+
+/* ---------- weight meter mapping (power 0..1 -> intended stop distance ft) ---------- */
+const ZONES = [
+  { p0: 0.00, p1: 0.14, d0: 66,  d1: 106, name: 'Light',   key: 'hog',  col: '#4a2a2e' },
+  { p0: 0.14, p1: 0.36, d0: 106, d1: 120, name: 'Guard',   key: 'gd',   col: '#1d3b57' },
+  { p0: 0.36, p1: 0.62, d0: 120, d1: 134, name: 'Draw',    key: 'draw', col: '#1c5c53' },
+  { p0: 0.62, p1: 0.76, d0: 134, d1: 158, name: 'Hack',    key: 'hack', col: '#5c4620' },
+  { p0: 0.76, p1: 1.00, d0: 158, d1: 300, name: 'Takeout', key: 'to',   col: '#5e2622' },
+];
+const P_BUTTON = 0.36 + 0.26 * (TEE_Y - 120) / 14;   // ~0.471
+
+/* ---------- teams ---------- */
+const T_P = 0, T_A = 1;
+const STONES_PER_SIDE = 4;
+const REG_ENDS = 3;
+const MAX_EXTRA = 4;
+
+/* ---------- palette ---------- */
+const COL = {
+  iceHi:   '#f2fafd',
+  iceLo:   '#cfe4f0',
+  iceEdge: '#b7d3e3',
+  ring12:  '#3f86c4',
+  ring8:   '#f4fbff',
+  ring4:   '#cf3b34',
+  button:  '#f6fbff',
+  lineD:   '#2b4c66',
+  wood:    '#6d4a2c',
+  woodHi:  '#8d6440',
+  pR:      '#d8362c', pRhi: '#ff7a68', pRlo: '#8e1c15',
+  pA:      '#e8b81c', pAhi: '#ffe27a', pAlo: '#9a7404',
+};
+
+/* ---------- small utils ---------- */
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp  = (a, b, t) => a + (b - a) * t;
+const smoothstep = (t) => t * t * (3 - 2 * t);
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const easeOutBack = (t) => { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const TAU = Math.PI * 2;
+
+/* deterministic-ish rng we can seed for stone speckle */
+function mulberry(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let _gaussSpare = null;
+function gauss() {
+  if (_gaussSpare !== null) { const v = _gaussSpare; _gaussSpare = null; return v; }
+  let u, v, s;
+  do { u = Math.random() * 2 - 1; v = Math.random() * 2 - 1; s = u * u + v * v; } while (s >= 1 || s === 0);
+  const m = Math.sqrt(-2 * Math.log(s) / s);
+  _gaussSpare = v * m;
+  return u * m;
+}
+/* frame-rate independent exponential smoothing */
+const approach = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-rate * dt));
+
+function distToButton(s) { const dx = s.x, dy = s.y - TEE_Y; return Math.sqrt(dx * dx + dy * dy); }
+
+/* ============================================================================
+   AUDIO  - everything synthesized, built lazily on the first user gesture.
+   ========================================================================= */
+const Audio_ = {
+  ctx: null, master: null, ready: false, muted: false,
+  noiseBuf: null,
+  rumble: null, rumbleGain: null, rumbleFilt: null,
+  swish: null, swishGain: null, swishFilt: null,
+  _lastKnock: 0,
+
+  init() {
+    if (this.ctx) { this.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try {
+      const ctx = new AC();
+      this.ctx = ctx;
+      const master = ctx.createGain();
+      master.gain.value = this.muted ? 0 : 0.9;
+      master.connect(ctx.destination);
+      this.master = master;
+
+      // white noise buffer, reused by everything
+      const len = Math.floor(ctx.sampleRate * 2);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this.noiseBuf = buf;
+
+      // running-stone rumble
+      const rs = ctx.createBufferSource(); rs.buffer = buf; rs.loop = true;
+      const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 150; rf.Q.value = 3.2;
+      const rg = ctx.createGain(); rg.gain.value = 0;
+      rs.connect(rf); rf.connect(rg); rg.connect(master); rs.start();
+      this.rumble = rs; this.rumbleGain = rg; this.rumbleFilt = rf;
+
+      // sweeping swish
+      const ss = ctx.createBufferSource(); ss.buffer = buf; ss.loop = true;
+      const sf = ctx.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 2600; sf.Q.value = 0.85;
+      const sg = ctx.createGain(); sg.gain.value = 0;
+      ss.connect(sf); sf.connect(sg); sg.connect(master); ss.start();
+      this.swish = ss; this.swishGain = sg; this.swishFilt = sf;
+
+      this.ready = true;
+      this.resume();
+    } catch (e) { this.ctx = null; this.ready = false; }
+  },
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) {} }
+  },
+  setMuted(m) {
+    this.muted = m;
+    if (this.master && this.ctx) {
+      const t = this.ctx.currentTime;
+      this.master.gain.cancelScheduledValues(t);
+      this.master.gain.setTargetAtTime(m ? 0 : 0.9, t, 0.04);
+    }
+  },
+  /* continuous beds, called every frame */
+  bed(speed, sweepAmt) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    const sp = clamp(speed / 30, 0, 1.3);
+    const g = sp > 0.02 ? 0.16 * Math.pow(sp, 0.7) : 0;
+    this.rumbleGain.gain.setTargetAtTime(g, t, 0.06);
+    this.rumbleFilt.frequency.setTargetAtTime(70 + sp * 210, t, 0.08);
+    const sw = clamp(sweepAmt, 0, 1);
+    this.swishGain.gain.setTargetAtTime(sw * 0.1, t, 0.035);
+    this.swishFilt.frequency.setTargetAtTime(1700 + sw * 2600, t, 0.05);
+  },
+  silenceBeds() {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    this.rumbleGain.gain.setTargetAtTime(0, t, 0.09);
+    this.swishGain.gain.setTargetAtTime(0, t, 0.05);
+  },
+  knock(v) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (t - this._lastKnock < 0.022) return;
+    this._lastKnock = t;
+    const amp = clamp(v, 0.06, 1);
+    // granite click: filtered noise burst
+    const s = ctx.createBufferSource(); s.buffer = this.noiseBuf;
+    s.playbackRate.value = 1.4;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass';
+    f.frequency.value = 900 + 1500 * amp; f.Q.value = 1.1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.5 * amp, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.10 + 0.13 * amp);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t, Math.random() * 1.5); s.stop(t + 0.34);
+    // body thump
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(210 - 70 * amp, t);
+    o.frequency.exponentialRampToValueAtTime(58, t + 0.2);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(0.34 * amp, t + 0.006);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(og); og.connect(this.master);
+    o.start(t); o.stop(t + 0.34);
+  },
+  crowd(intensity, warm) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const amp = clamp(intensity, 0, 1);
+    const dur = 1.1 + amp * 0.9;
+    const s = ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass';
+    f.Q.value = 1.5;
+    const base = warm ? 380 : 520;
+    f.frequency.setValueAtTime(base, t);
+    f.frequency.linearRampToValueAtTime(base + 380 * amp, t + dur * 0.42);
+    f.frequency.linearRampToValueAtTime(base * 0.8, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.17 * amp, t + dur * 0.34);
+    g.gain.linearRampToValueAtTime(0.11 * amp, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t, Math.random()); s.stop(t + dur + 0.05);
+  },
+  tick(freq, vol) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'square';
+    o.frequency.value = freq || 880;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime((vol || 0.05), t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + 0.09);
+  },
+  whoosh() {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const s = ctx.createBufferSource(); s.buffer = this.noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(240, t);
+    f.frequency.exponentialRampToValueAtTime(1500, t + 0.3);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.13, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t, Math.random()); s.stop(t + 0.46);
+  },
+};
+/* ============================================================================
+   PHYSICS
+   One shared step function drives both the live game and every headless
+   simulation the AI runs, so the AI is never playing a different sport.
+   ========================================================================= */
+
+function newStone() {
+  return {
+    id: 0, team: T_P, x: 0, y: 0, vx: 0, vy: 0,
+    handle: 0,      // +1 clockwise (curls right), -1 anticlockwise (curls left), 0 = no rotation
+    rot: 0, spin: 0,
+    out: false, outT: 0, outWhy: '',
+    struck: false,  // has it touched another stone this shot
+    thrown: false,
+    hitFlash: 0,
+  };
+}
+
+function copyStone(dst, src) {
+  dst.id = src.id; dst.team = src.team; dst.x = src.x; dst.y = src.y;
+  dst.vx = src.vx; dst.vy = src.vy; dst.handle = src.handle;
+  dst.rot = src.rot; dst.spin = src.spin;
+  dst.out = src.out; dst.outT = src.outT; dst.outWhy = src.outWhy;
+  dst.struck = src.struck; dst.thrown = src.thrown; dst.hitFlash = 0;
+  return dst;
+}
+
+/* ---- deceleration & curl -------------------------------------------------- */
+function decelAt(v, sweep) {
+  return FRIC_A * (1 - SWEEP_A * sweep) + (FRIC_B * (1 - SWEEP_B * sweep)) / (v + FRIC_V0);
+}
+function curlAccelAt(v, sweep) {
+  const a = CURL_K * v / ((v + CURL_VC) * (v + CURL_VC));
+  return a * (v / (v + CURL_VF)) * (1 - SWEEP_C * sweep);
+}
+
+/* Marks stones that have left the field of play. Returns true if any changed. */
+function applyOutRules(arr) {
+  let changed = false;
+  for (let i = 0; i < arr.length; i++) {
+    const s = arr[i];
+    if (s.out) continue;
+    if (s.y > BACK_LIM) { s.out = true; s.outWhy = 'back'; s.outT = 0; changed = true; }
+    else if (s.x > SIDE_LIM || s.x < -SIDE_LIM) { s.out = true; s.outWhy = 'side'; s.outT = 0; changed = true; }
+  }
+  return changed;
+}
+
+/* Elastic equal-mass collisions along the line of centres. */
+function resolveCollisions(arr, onHit) {
+  const n = arr.length;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < n; i++) {
+      const a = arr[i]; if (a.out) continue;
+      for (let j = i + 1; j < n; j++) {
+        const b = arr[j]; if (b.out) continue;
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d2 = dx * dx + dy * dy;
+        const minD = STONE_D;
+        if (d2 >= minD * minD) continue;
+        let d = Math.sqrt(d2);
+        if (d < 1e-6) {           // perfectly coincident: shove apart deterministically
+          dx = (a.id <= b.id) ? 1e-3 : -1e-3; dy = 0; d = 1e-3;
+        }
+        const nx = dx / d, ny = dy / d;
+        // separate
+        const overlap = (minD - d) * 0.5 + 1e-5;
+        a.x -= nx * overlap; a.y -= ny * overlap;
+        b.x += nx * overlap; b.y += ny * overlap;
+        // Contact is contact: flag it before any impulse test, otherwise a stone
+        // that merely kisses a guard and settles would still be called for the
+        // hog line. A struck stone also loses its rotation, so it no longer curls.
+        a.struck = true; b.struck = true;
+        a.handle = 0; b.handle = 0;
+        // relative approach speed along the normal
+        const rvx = a.vx - b.vx, rvy = a.vy - b.vy;
+        const approachV = rvx * nx + rvy * ny;
+        if (approachV <= 0) continue;               // already separating
+        const jimp = (1 + RESTIT) * approachV * 0.5; // equal masses
+        a.vx -= jimp * nx; a.vy -= jimp * ny;
+        b.vx += jimp * nx; b.vy += jimp * ny;
+        if (onHit) onHit(a, b, approachV, (a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+      }
+    }
+  }
+}
+
+/**
+ * Advance the world by dt.
+ * sweepOn: index of the stone being swept (-1 for none), sweepAmt: 0..1
+ * Returns true if anything is still moving.
+ */
+function stepStones(arr, dt, sweepIdx, sweepAmt, onHit) {
+  const n = arr.length;
+  let maxV = 0, moving = false;
+
+  for (let i = 0; i < n; i++) {
+    const s = arr[i];
+    if (s.out) continue;
+    const v = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+    if (v < STOP_V) { s.vx = 0; s.vy = 0; s.spin = 0; continue; }
+    moving = true;
+    const sw = (i === sweepIdx) ? sweepAmt : 0;
+    const ux = s.vx / v, uy = s.vy / v;
+
+    let nv = v - decelAt(v, sw) * dt;
+    if (nv < 0) nv = 0;
+    s.vx = ux * nv; s.vy = uy * nv;
+
+    if (s.handle !== 0) {
+      const lat = curlAccelAt(v, sw) * s.handle;
+      // perpendicular: for u=(0,1) this is (+1,0), i.e. clockwise handle curls right
+      s.vx += uy * lat * dt;
+      s.vy += -ux * lat * dt;
+      // The handle turns about 2.5 times over a draw, easing off with the stone
+      // and dying away completely in the last foot as the curl runs out.
+      s.spin = s.handle * (1.15 + 1.5 * clamp(v / 12, 0, 1)) * clamp(v / 0.6, 0, 1);
+    } else {
+      s.spin *= Math.exp(-1.8 * dt);
+    }
+    s.rot += s.spin * dt;
+    if (nv > maxV) maxV = nv;
+  }
+
+  if (!moving) return false;
+
+  let nSub = Math.ceil((maxV * dt) / MAX_SUB);
+  if (nSub < 1) nSub = 1; else if (nSub > 12) nSub = 12;
+  const sdt = dt / nSub;
+  for (let k = 0; k < nSub; k++) {
+    for (let i = 0; i < n; i++) {
+      const s = arr[i];
+      if (s.out || (s.vx === 0 && s.vy === 0)) continue;
+      s.x += s.vx * sdt; s.y += s.vy * sdt;
+    }
+    resolveCollisions(arr, onHit);
+    applyOutRules(arr);
+  }
+  return true;
+}
+
+/* ============================================================================
+   WEIGHT TABLE  -  power 0..1 maps to an intended stop distance, and we invert
+   the friction model once at boot to turn that distance into a launch speed.
+   ========================================================================= */
+const WT = { v: [], d: [] };
+(function buildWeightTable() {
+  for (let v0 = 10; v0 <= 62.0001; v0 += 0.2) {
+    let y = 0, v = v0;
+    const dt = 1 / 240;
+    for (let i = 0; i < 12000 && v >= STOP_V; i++) {
+      let nv = v - decelAt(v, 0) * dt;
+      if (nv < 0) nv = 0;
+      v = nv; y += v * dt;
+    }
+    WT.v.push(v0); WT.d.push(y);
+  }
+})();
+
+function distToV0(d) {
+  const D = WT.d, V = WT.v, n = D.length;
+  if (d <= D[0]) return V[0];
+  if (d >= D[n - 1]) return V[n - 1];
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (D[m] < d) lo = m; else hi = m; }
+  const t = (d - D[lo]) / (D[hi] - D[lo] || 1);
+  return lerp(V[lo], V[hi], t);
+}
+function powerToDist(p) {
+  p = clamp(p, 0, 1);
+  for (let i = 0; i < ZONES.length; i++) {
+    const z = ZONES[i];
+    if (p <= z.p1 || i === ZONES.length - 1) {
+      const t = (p - z.p0) / (z.p1 - z.p0);
+      return lerp(z.d0, z.d1, clamp(t, 0, 1));
+    }
+  }
+  return 126;
+}
+function distToPower(d) {
+  for (let i = 0; i < ZONES.length; i++) {
+    const z = ZONES[i];
+    if (d <= z.d1 || i === ZONES.length - 1) {
+      const t = (d - z.d0) / (z.d1 - z.d0);
+      return clamp(lerp(z.p0, z.p1, clamp(t, 0, 1)), 0, 1);
+    }
+  }
+  return P_BUTTON;
+}
+function zoneForPower(p) {
+  for (let i = 0; i < ZONES.length; i++) if (p <= ZONES[i].p1 || i === ZONES.length - 1) return ZONES[i];
+  return ZONES[0];
+}
+
+/* Give a stone its launch velocity from a broom target + power. */
+function launchStone(s, broomX, broomY, power, handle) {
+  const d = powerToDist(power);
+  const v0 = distToV0(d);
+  let dx = broomX, dy = broomY - HACK_Y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (!(len > 1e-4)) { dx = 0; dy = 1; }
+  else { dx /= len; dy /= len; }
+  s.vx = v0 * dx; s.vy = v0 * dy;
+  s.x = 0; s.y = HACK_Y;
+  s.handle = handle;
+  s.rot = 0; s.spin = handle * 2.2;
+  s.struck = false; s.thrown = true; s.out = false; s.outT = 0;
+}
+
+/* ============================================================================
+   HEADLESS SIMULATION (the AI's imagination)
+   ========================================================================= */
+const SIM_POOL = [];
+for (let i = 0; i < 12; i++) SIM_POOL.push(newStone());
+const SIM_THROWN = newStone();
+const SIM_ARR = [];
+
+function loadSim(live) {
+  SIM_ARR.length = 0;
+  for (let i = 0; i < live.length && i < SIM_POOL.length; i++) {
+    if (live[i].out) continue;
+    SIM_ARR.push(copyStone(SIM_POOL[SIM_ARR.length], live[i]));
+  }
+  return SIM_ARR;
+}
+
+/**
+ * Run a shot to completion headlessly.
+ * arr already contains the thrown stone at index `ti` with velocity set.
+ * sweepFn(y, v, t) -> 0..1
+ */
+function runSim(arr, ti, sweepFn) {
+  const dt = PHYS_DT;
+  let t = 0;
+  let probeX = NaN, probeSet = false;
+  for (let i = 0; i < 2400; i++) {
+    const s = arr[ti];
+    const sw = sweepFn ? sweepFn(s.y, Math.sqrt(s.vx * s.vx + s.vy * s.vy), t) : 0;
+    if (!stepStones(arr, dt, ti, sw, null)) break;
+    t += dt;
+  }
+  // hog-line rule on the delivered stone
+  const th = arr[ti];
+  if (!th.out && !th.struck && th.y < HOG_LIM) { th.out = true; th.outWhy = 'hog'; }
+  return t;
+}
+
+/* Empty-sheet ballistics used to solve aim/weight before checking the real board.
+   Every AI-side launch measures its broom at AIM_Y so the plan and the throw
+   describe the same line. */
+const AIM_Y = TEE_Y;
+const SOLO = [newStone()];
+function simSolo(broomX, power, handle, probeY) {
+  const s = SOLO[0];
+  s.out = false; s.struck = false; s.team = T_A; s.id = 99;
+  launchStone(s, broomX, AIM_Y, power, handle);
+  const dt = PHYS_DT;
+  let px = NaN, prevY = s.y, prevX = s.x;
+  for (let i = 0; i < 2400; i++) {
+    prevY = s.y; prevX = s.x;
+    if (!stepStones(SOLO, dt, 0, 0, null)) break;
+    if (isNaN(px) && probeY != null && prevY < probeY && s.y >= probeY) {
+      const t = (probeY - prevY) / ((s.y - prevY) || 1);
+      px = lerp(prevX, s.x, t);
+      break;              // a running shot only needs the crossing, not the rest position
+    }
+    if (s.out) break;
+  }
+  return { fx: s.x, fy: s.y, px: px, out: s.out };
+}
+
+/**
+ * Find the broom line + power that makes a stone come to rest on (tx,ty),
+ * or (for a running shot) cross y=ty at x=tx with speed left over.
+ */
+function solveAim(tx, ty, handle, running, extraDist) {
+  let power, broomX = tx - handle * 3.4;
+  if (running) power = distToPower(ty + (extraDist || 70));
+  else power = distToPower(ty);
+  for (let it = 0; it < 3; it++) {
+    const r = simSolo(broomX, power, handle, running ? ty : null);
+    if (running) {
+      if (isNaN(r.px)) { power = clamp(power + 0.05, 0, 1); continue; }
+      broomX += (tx - r.px) * 1.0;
+    } else {
+      broomX += (tx - r.fx) * 1.0;
+      const derr = ty - r.fy;
+      if (Math.abs(derr) > 0.15) {
+        const curD = powerToDist(power);
+        power = clamp(distToPower(curD + derr), 0.02, 1);
+      }
+    }
+    broomX = clamp(broomX, -SHEET_HW + 0.25, SHEET_HW - 0.25);
+  }
+  return { broomX, power, handle };
+}
+
+/* ============================================================================
+   BOARD EVALUATION  -  how much does the AI like this arrangement of stones?
+   ========================================================================= */
+function countPoints(arr) {
+  // returns {team, pts} for whoever is counting, pts 0 if house empty
+  let bestOther = Infinity, best = Infinity, bestTeam = -1;
+  const ds = [];
+  for (let i = 0; i < arr.length; i++) {
+    const s = arr[i]; if (s.out) continue;
+    const d = distToButton(s);
+    if (d <= IN_HOUSE) ds.push({ team: s.team, d });
+  }
+  if (!ds.length) return { team: -1, pts: 0, ds };
+  ds.sort((a, b) => a.d - b.d);
+  bestTeam = ds[0].team;
+  let pts = 0;
+  for (let i = 0; i < ds.length; i++) { if (ds[i].team !== bestTeam) break; pts++; }
+  return { team: bestTeam, pts, ds };
+}
+
+function evalBoard(arr, team, sit) {
+  const opp = 1 - team;
+  const cp = countPoints(arr);
+  let v = 0;
+  const signedPts = cp.team === team ? cp.pts : (cp.team === opp ? -cp.pts : 0);
+  v += signedPts * (sit.decisive ? 22 : 11);
+
+  if (cp.ds.length) {
+    // owning shot stone, and how tight it is
+    const close = Math.max(0, IN_HOUSE - cp.ds[0].d);
+    v += (cp.ds[0].team === team ? 1 : -1) * close * 0.7;
+  }
+
+  for (let i = 0; i < arr.length; i++) {
+    const s = arr[i];
+    if (s.out) continue;
+    if (s.y < HOG_LIM) continue;
+    const own = s.team === team;
+    const d = distToButton(s);
+    let w;
+    if (d <= IN_HOUSE) {
+      w = 2.6 - d * 0.16;                       // in the rings, closer is better
+    } else if (s.y > FAR_HOG && s.y < TEE_Y - HOUSE_R && Math.abs(s.x) < 3.4) {
+      w = sit.guardBias * (1.5 - Math.abs(s.x) * 0.18);   // a guard on the centre line
+    } else {
+      w = 0.25;                                  // still on the sheet, still a nuisance
+    }
+    v += own ? w : -w;
+  }
+
+  // if the AI wants an open house (it has hammer), penalise clutter it doesn't own
+  if (sit.wantsOpen) {
+    let clutter = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const s = arr[i];
+      if (s.out || s.team === team) continue;
+      if (s.y > HOG_LIM) clutter++;
+    }
+    v -= clutter * 1.5;
+  }
+  return v;
+}
+
+/* ============================================================================
+   AI SKIP
+   Generates candidate shots, simulates each on the real board, keeps the best.
+   Work is chunked so a long think never drops a frame.
+   ========================================================================= */
+const AI = {
+  cands: [], idx: 0, best: null, bestV: -Infinity, second: null, secondV: -Infinity,
+  sit: null, done: false,
+
+  begin(liveStones, sit) {
+    this.cands.length = 0; this.idx = 0;
+    this.best = null; this.bestV = -Infinity;
+    this.second = null; this.secondV = -Infinity;
+    this.sit = sit; this.done = false;
+
+    const opp = [], own = [];
+    for (let i = 0; i < liveStones.length; i++) {
+      const s = liveStones[i];
+      if (s.out || s.y < HOG_LIM) continue;
+      (s.team === T_A ? own : opp).push(s);
+    }
+    const C = this.cands;
+
+    // --- draws into the house (both handles: the line into a spot differs a lot)
+    const drawSpots = [
+      [0, TEE_Y], [0, TEE_Y - 1.7], [0, TEE_Y + 2.0],
+      [2.0, TEE_Y - 0.6], [-2.0, TEE_Y - 0.6],
+    ];
+    for (const [tx, ty] of drawSpots) {
+      C.push({ kind: 'draw', tx, ty, handle: -1 });
+      C.push({ kind: 'draw', tx, ty, handle: 1 });
+    }
+
+    // --- takeouts on the two most dangerous opposing stones
+    const sortedOpp = opp.slice().sort((a, b) => distToButton(a) - distToButton(b));
+    for (let i = 0; i < Math.min(2, sortedOpp.length); i++) {
+      const o = sortedOpp[i];
+      C.push({ kind: 'takeout', tx: o.x, ty: o.y, handle: -1, extra: 85, target: o.id });
+      C.push({ kind: 'takeout', tx: o.x, ty: o.y, handle: 1, extra: 85, target: o.id });
+      // heavier, and a nose clip that rolls the shooter away
+      C.push({ kind: 'takeout', tx: o.x, ty: o.y, handle: -1, extra: 155, target: o.id });
+      C.push({ kind: 'takeout', tx: o.x + 0.5, ty: o.y, handle: -1, extra: 100, target: o.id });
+    }
+
+    // --- guards
+    if (sit.wantsGuard) {
+      C.push({ kind: 'guard', tx: 0, ty: 113, handle: -1 });
+      C.push({ kind: 'guard', tx: 0, ty: 116.5, handle: 1 });
+      C.push({ kind: 'guard', tx: -1.0, ty: 114.5, handle: -1 });
+    }
+
+    // --- draw around the frontmost guard on the sheet
+    let frontGuard = null;
+    for (const g of own.concat(opp)) {
+      if (g.y > FAR_HOG && g.y < TEE_Y - 3 && Math.abs(g.x) < 3) {
+        if (!frontGuard || g.y < frontGuard.y) frontGuard = g;
+      }
+    }
+    if (frontGuard) {
+      C.push({ kind: 'draw', tx: frontGuard.x + 1.6, ty: TEE_Y - 0.5, handle: -1 });
+      C.push({ kind: 'draw', tx: frontGuard.x - 1.6, ty: TEE_Y - 0.5, handle: 1 });
+    }
+    if (!C.length) C.push({ kind: 'draw', tx: 0, ty: TEE_Y, handle: -1 });
+  },
+
+  /* process up to `budget` candidates; returns true when finished */
+  work(liveStones, budget) {
+    let n = 0;
+    while (this.idx < this.cands.length && n < budget) {
+      const c = this.cands[this.idx++]; n++;
+      const sol = solveAim(c.tx, c.ty, c.handle, c.kind === 'takeout', c.extra);
+      // simulate on the real board
+      const arr = loadSim(liveStones);
+      const th = SIM_THROWN;
+      th.id = -1; th.team = T_A; th.out = false; th.struck = false; th.thrown = true;
+      launchStone(th, sol.broomX, AIM_Y, sol.power, sol.handle);
+      arr.push(th);
+      const ti = arr.length - 1;
+      runSim(arr, ti, null);
+      let v = evalBoard(arr, T_A, this.sit);
+      // tiny preference for simpler shots so the AI isn't gratuitously fancy
+      if (c.kind === 'takeout') v += 0.25;
+      // The skip misreads the ice sometimes: judgement noise on top of execution
+      // noise, tightened in the last end so the finish feels sharper.
+      v += gauss() * (this.sit.isFinalEnd ? 1.5 : 2.5);
+      if (v > this.bestV) {
+        this.secondV = this.bestV; this.second = this.best;
+        this.bestV = v; this.best = { sol, c };
+      } else if (v > this.secondV) {
+        this.secondV = v; this.second = { sol, c };
+      }
+    }
+    if (this.idx >= this.cands.length) this.done = true;
+    return this.done;
+  },
+
+  pick() {
+    // occasionally the skip takes the second-best look
+    if (this.second && Math.random() < 0.2 && this.secondV > this.bestV - 5) return this.second;
+    return this.best;
+  },
+};
+/* ============================================================================
+   VIEW / CAMERA / RENDERING
+   ========================================================================= */
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d', { alpha: false });
+let VW = 0, VH = 0, DPR = 1;
+
+const VIEW_W = 16.4;                        // world feet that must always fit across
+const SPAN_AIM = 35;                        // house view
+const SPAN_MIN = 32, SPAN_MAX = 68;
+
+const cam = { cx: 0, cy: 118.5, span: SPAN_AIM, scale: 20, ox: 0, oy: 0 };
+const camT = { cx: 0, cy: 118.5, span: SPAN_AIM };
+let shake = 0, shakeX = 0, shakeY = 0;
+
+function camApply() {
+  const sc = Math.min(VW / VIEW_W, VH / cam.span);
+  cam.scale = sc;
+  cam.ox = VW * 0.5 - cam.cx * sc;
+  cam.oy = VH * 0.5 + cam.cy * sc;
+}
+const SX = (wx) => cam.ox + wx * cam.scale;
+const SY = (wy) => cam.oy - wy * cam.scale;
+const WX = (sx) => (sx - cam.ox) / cam.scale;
+const WY = (sy) => (cam.oy - sy) / cam.scale;
+
+function setCamTarget(lo, hi) {
+  let span = hi - lo;
+  let cy;
+  if (span > SPAN_MAX) { span = SPAN_MAX; cy = lo + span * 0.5; }
+  else if (span < SPAN_MIN) { span = SPAN_MIN; cy = hi - span * 0.5; }
+  else cy = (lo + hi) * 0.5;
+  camT.span = span; camT.cy = cy; camT.cx = 0;
+}
+/* Jump the camera to its target. Used on release: easing all the way from the
+   house down to the hack would burn the first second of the shot on a swoop,
+   so we cut instead and let the tracking take over from there. */
+function snapCam() {
+  cam.cx = camT.cx; cam.cy = camT.cy; cam.span = camT.span;
+  camApply();
+}
+
+/* ---------- textures ---------- */
+let pebblePat = null, pebbleTile = null;
+const PEB_PX = 192, PEB_FT = 7;             // one tile = 7 feet
+function buildPebble() {
+  // The tile itself never changes with viewport size, so pay for its 1400 dots
+  // once and only re-derive the pattern object when the context is reset.
+  if (pebbleTile) { pebblePat = ctx.createPattern(pebbleTile, 'repeat'); return; }
+  const c = document.createElement('canvas');
+  c.width = c.height = PEB_PX;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, PEB_PX, PEB_PX);
+  const r = mulberry(9137);
+  for (let i = 0; i < 1400; i++) {
+    const x = r() * PEB_PX, y = r() * PEB_PX;
+    const rad = 0.5 + r() * 1.5;
+    const a = 0.03 + r() * 0.09;
+    g.fillStyle = r() < 0.62 ? `rgba(255,255,255,${a})` : `rgba(120,160,190,${a * 0.8})`;
+    g.beginPath(); g.arc(x, y, rad, 0, TAU); g.fill();
+  }
+  // a few longer scratch marks from the ice-maker
+  for (let i = 0; i < 14; i++) {
+    const y = r() * PEB_PX;
+    g.strokeStyle = `rgba(255,255,255,${0.02 + r() * 0.03})`;
+    g.lineWidth = 0.6 + r();
+    g.beginPath(); g.moveTo(0, y); g.lineTo(PEB_PX, y + (r() - 0.5) * 6); g.stroke();
+  }
+  pebbleTile = c;
+  pebblePat = ctx.createPattern(c, 'repeat');
+}
+
+let stoneTex = null;
+const STEX = 160;
+function buildStoneTex() {
+  const c = document.createElement('canvas');
+  c.width = c.height = STEX;
+  const g = c.getContext('2d');
+  const cxp = STEX / 2, R = STEX / 2 - 3;
+  // granite body
+  const gr = g.createRadialGradient(cxp - R * 0.32, cxp - R * 0.36, R * 0.1, cxp, cxp, R);
+  gr.addColorStop(0, '#9aa3a8');
+  gr.addColorStop(0.42, '#767f86');
+  gr.addColorStop(0.82, '#565e66');
+  gr.addColorStop(1, '#3b4249');
+  g.fillStyle = gr;
+  g.beginPath(); g.arc(cxp, cxp, R, 0, TAU); g.fill();
+  // speckle
+  const r = mulberry(4242);
+  g.save(); g.beginPath(); g.arc(cxp, cxp, R, 0, TAU); g.clip();
+  for (let i = 0; i < 620; i++) {
+    const a = r() * TAU, rr = Math.sqrt(r()) * R;
+    const x = cxp + Math.cos(a) * rr, y = cxp + Math.sin(a) * rr;
+    const s = 0.5 + r() * 1.6;
+    const t = r();
+    g.fillStyle = t < 0.45 ? `rgba(230,236,240,${0.05 + r() * 0.16})`
+      : t < 0.8 ? `rgba(40,46,52,${0.05 + r() * 0.14})`
+        : `rgba(150,130,115,${0.04 + r() * 0.1})`;
+    g.beginPath(); g.arc(x, y, s, 0, TAU); g.fill();
+  }
+  g.restore();
+  // running band (the striking edge)
+  g.strokeStyle = 'rgba(28,33,38,.5)'; g.lineWidth = R * 0.1;
+  g.beginPath(); g.arc(cxp, cxp, R * 0.94, 0, TAU); g.stroke();
+  // top bevel highlight
+  g.strokeStyle = 'rgba(255,255,255,.34)'; g.lineWidth = R * 0.05;
+  g.beginPath(); g.arc(cxp, cxp, R * 0.86, Math.PI * 1.02, Math.PI * 1.72); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = R * 0.05;
+  g.beginPath(); g.arc(cxp, cxp, R * 0.86, Math.PI * 0.1, Math.PI * 0.72); g.stroke();
+  stoneTex = c;
+}
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  VW = w; VH = h;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.width = Math.max(1, Math.round(w * DPR));
+  cv.height = Math.max(1, Math.round(h * DPR));
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  buildPebble();                 // pattern belongs to this context state; cheap to rebuild
+  camApply();
+  // below this the bottom-left linescore would collide with the control deck
+  document.body.classList.toggle('narrow', w < 900);
+}
+
+/* ---------- particles ---------- */
+const PMAX = 300;
+const parts = [];
+for (let i = 0; i < PMAX; i++) parts.push({ live: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 1, r: 0, kind: 0, col: '' });
+let pHead = 0;
+function spawnPart(x, y, vx, vy, life, r, kind, col) {
+  for (let i = 0; i < PMAX; i++) {
+    const p = parts[(pHead + i) % PMAX];
+    if (!p.live) {
+      pHead = (pHead + i + 1) % PMAX;
+      p.live = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy;
+      p.t = 0; p.life = life; p.r = r; p.kind = kind; p.col = col || '';
+      return p;
+    }
+  }
+  return null;
+}
+function updateParts(dt) {
+  for (let i = 0; i < PMAX; i++) {
+    const p = parts[i]; if (!p.live) continue;
+    p.t += dt;
+    if (p.t >= p.life) { p.live = false; continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.kind === 2) {                      // confetti: screen-space, gravity
+      p.vy -= 260 * dt; p.vx *= 0.995;
+    } else {
+      p.vx *= Math.exp(-4.2 * dt); p.vy *= Math.exp(-4.2 * dt);
+    }
+  }
+}
+
+/* ---------- swept ice track ---------- */
+const TMAX = 190;
+const track = [];
+for (let i = 0; i < TMAX; i++) track.push({ live: false, x: 0, y: 0, t: 0, life: 1, w: 1, a: 1 });
+let tHead = 0;
+function addTrack(x, y, intensity) {
+  const p = track[tHead]; tHead = (tHead + 1) % TMAX;
+  p.live = true; p.x = x; p.y = y; p.t = 0;
+  p.life = 1.6 + intensity * 1.4; p.w = 0.42 + intensity * 0.5; p.a = 0.18 + intensity * 0.5;
+}
+function updateTrack(dt) {
+  for (let i = 0; i < TMAX; i++) {
+    const p = track[i]; if (!p.live) continue;
+    p.t += dt; if (p.t >= p.life) p.live = false;
+  }
+}
+function clearTrack() { for (let i = 0; i < TMAX; i++) track[i].live = false; }
+function clearParts() { for (let i = 0; i < PMAX; i++) parts[i].live = false; }
+
+/* ============================================================================
+   DRAW
+   ========================================================================= */
+function drawBackground() {
+  const g = ctx.createLinearGradient(0, 0, 0, VH);
+  g.addColorStop(0, '#0a1220');
+  g.addColorStop(0.55, '#070d18');
+  g.addColorStop(1, '#050912');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, VW, VH);
+}
+
+function drawSheet() {
+  const sc = cam.scale;
+  const x0 = SX(-SHEET_HW), x1 = SX(SHEET_HW);
+  // The sheet is 150-odd feet long, so in the house view its far end sits
+  // thousands of pixels off-screen. Clamp every fill to the viewport: it keeps
+  // the overdraw honest and, crucially, keeps the pebble rect finite.
+  const yA = Math.max(SY(BOARD_Y), -30);
+  const yB = Math.min(SY(-14), VH + 30);
+  const yH = yB - yA;
+  if (yH <= 0) return;
+
+  // --- side boards (warm wood)
+  const bw = Math.max(6, 1.35 * sc);
+  for (const side of [-1, 1]) {
+    const bx = side < 0 ? x0 - bw : x1;
+    const wg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    if (side < 0) { wg.addColorStop(0, '#3d2716'); wg.addColorStop(0.7, COL.wood); wg.addColorStop(1, COL.woodHi); }
+    else { wg.addColorStop(0, COL.woodHi); wg.addColorStop(0.3, COL.wood); wg.addColorStop(1, '#3d2716'); }
+    ctx.fillStyle = wg;
+    ctx.fillRect(bx, yA, bw, yH);
+    // plank seams, only for the planks actually on screen
+    ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    const yStart = Math.floor(WY(yB) / 8) * 8;
+    for (let y = yStart; y < WY(yA) + 8; y += 8) {
+      const sy = SY(y);
+      if (sy < yA || sy > yB) continue;
+      ctx.moveTo(bx, sy); ctx.lineTo(bx + bw, sy);
+    }
+    ctx.stroke();
+  }
+
+  // --- ice
+  const ig = ctx.createLinearGradient(x0, 0, x1, 0);
+  ig.addColorStop(0, COL.iceEdge);
+  ig.addColorStop(0.16, COL.iceLo);
+  ig.addColorStop(0.5, COL.iceHi);
+  ig.addColorStop(0.84, COL.iceLo);
+  ig.addColorStop(1, COL.iceEdge);
+  ctx.fillStyle = ig;
+  ctx.fillRect(x0, yA, x1 - x0, yH);
+
+  // Pebble speckle. Drawn in pattern space anchored to the world origin so the
+  // texture stays nailed to the ice as the camera moves; the fill rect is
+  // derived from the on-screen region, transformed back into that space.
+  if (pebblePat) {
+    const k = sc * PEB_FT / PEB_PX;
+    const ox = SX(0), oy = SY(0);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0, yA, x1 - x0, yH); ctx.clip();
+    ctx.translate(ox, oy);
+    ctx.scale(k, k);
+    ctx.fillStyle = pebblePat;
+    ctx.fillRect((x0 - ox) / k, (yA - oy) / k, (x1 - x0) / k, yH / k);
+    ctx.restore();
+  }
+
+  // --- house rings
+  const hx = SX(0), hy = SY(TEE_Y);
+  const ring = (r, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(hx, hy, r * sc, 0, TAU); ctx.fill(); };
+  ring(HOUSE_R, COL.ring12);
+  ring(R8, COL.ring8);
+  ring(R4, COL.ring4);
+  ring(R_BUTTON, COL.button);
+  // ring edges keep them crisp at any zoom
+  ctx.lineWidth = Math.max(1, sc * 0.045);
+  ctx.strokeStyle = 'rgba(20,50,80,.28)';
+  for (const r of [HOUSE_R, R8, R4, R_BUTTON]) { ctx.beginPath(); ctx.arc(hx, hy, r * sc, 0, TAU); ctx.stroke(); }
+
+  // --- lines
+  const lw = Math.max(1, sc * 0.055);
+  ctx.strokeStyle = COL.lineD;
+  ctx.lineWidth = lw;
+  ctx.beginPath();
+  // tee line
+  ctx.moveTo(x0, SY(TEE_Y)); ctx.lineTo(x1, SY(TEE_Y));
+  // back line
+  ctx.moveTo(x0, SY(BACK_Y)); ctx.lineTo(x1, SY(BACK_Y));
+  // near tee
+  ctx.moveTo(x0, SY(NEAR_TEE)); ctx.lineTo(x1, SY(NEAR_TEE));
+  // centre line
+  ctx.moveTo(hx, SY(NEAR_TEE - 4)); ctx.lineTo(hx, SY(BACK_Y));
+  ctx.stroke();
+
+  // hog lines are heavier and coloured
+  ctx.lineWidth = Math.max(2, sc * 0.18);
+  ctx.strokeStyle = '#1d5f8f';
+  ctx.beginPath();
+  ctx.moveTo(x0, SY(FAR_HOG)); ctx.lineTo(x1, SY(FAR_HOG));
+  ctx.moveTo(x0, SY(NEAR_HOG)); ctx.lineTo(x1, SY(NEAR_HOG));
+  ctx.stroke();
+
+  // hacks
+  ctx.fillStyle = '#2c4256';
+  const hkw = 0.42 * sc, hkh = 0.9 * sc;
+  ctx.fillRect(hx - 0.55 * sc - hkw, SY(HACK_Y) - hkh * 0.5, hkw, hkh);
+  ctx.fillRect(hx + 0.55 * sc, SY(HACK_Y) - hkh * 0.5, hkw, hkh);
+
+  // --- sheen: a soft diagonal gleam across whatever slice of ice is on screen
+  const sg = ctx.createLinearGradient(x0, yA, x1, yB);
+  sg.addColorStop(0, 'rgba(255,255,255,.1)');
+  sg.addColorStop(0.35, 'rgba(255,255,255,0)');
+  sg.addColorStop(0.72, 'rgba(255,255,255,.06)');
+  sg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(x0, yA, x1 - x0, yH);
+}
+
+/* Pre-baked alpha ramps: the track and particle loops run hundreds of times a
+   frame and building rgba() strings in there is pure garbage generation. */
+function alphaRamp(rgb) {
+  const a = new Array(33);
+  for (let i = 0; i <= 32; i++) a[i] = 'rgba(' + rgb + ',' + (i / 32).toFixed(3) + ')';
+  return a;
+}
+const RAMP_TRACK = alphaRamp('232,248,255');
+const RAMP_SPRAY = alphaRamp('248,253,255');
+const RAMP_CHIP = alphaRamp('96,104,112');
+const ramp = (r, a) => r[a <= 0 ? 0 : a >= 1 ? 32 : (a * 32) | 0];
+
+function drawTrack() {
+  const sc = cam.scale;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < TMAX; i++) {
+    const p = track[i]; if (!p.live) continue;
+    const k = 1 - p.t / p.life;
+    const a = p.a * k * k * 0.5;
+    if (a < 0.008) continue;
+    ctx.fillStyle = ramp(RAMP_TRACK, a);
+    ctx.beginPath();
+    ctx.arc(SX(p.x), SY(p.y), p.w * sc * (0.7 + 0.3 * k), 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawParts() {
+  const sc = cam.scale;
+  for (let i = 0; i < PMAX; i++) {
+    const p = parts[i]; if (!p.live) continue;
+    const k = 1 - p.t / p.life;
+    if (p.kind === 2) {                      // confetti (screen space)
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, k * 2.4);
+      ctx.translate(p.x, VH - p.y);
+      ctx.rotate(p.t * 7 + p.r);
+      ctx.fillStyle = p.col;
+      ctx.fillRect(-3.5, -2, 7, 4);
+      ctx.restore();
+      continue;
+    }
+    const a = k * (p.kind === 0 ? 0.85 : 0.7);
+    ctx.fillStyle = ramp(p.kind === 0 ? RAMP_SPRAY : RAMP_CHIP, a);
+    const r = p.r * sc * (p.kind === 0 ? (0.4 + 0.6 * k) : 1);
+    ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), Math.max(0.4, r), 0, TAU); ctx.fill();
+  }
+}
+
+function drawStoneShadows(stones) {
+  const sc = cam.scale;
+  ctx.save();
+  for (let i = 0; i < stones.length; i++) {
+    const s = stones[i];
+    let al = 1;
+    if (s.out) { al = Math.max(0, 1 - s.outT / 0.85); if (al <= 0) continue; }
+    ctx.globalAlpha = 0.3 * al;
+    ctx.fillStyle = '#26384a';
+    ctx.beginPath();
+    ctx.ellipse(SX(s.x) + 1.5, SY(s.y) + 0.16 * sc + 2, STONE_R * sc * 1.02, STONE_R * sc * 0.9, 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawStone(s) {
+  const sc = cam.scale;
+  const px = SX(s.x), py = SY(s.y);
+  const R = STONE_R * sc;
+  let al = 1, scl = 1;
+  if (s.out) {
+    const k = clamp(s.outT / 0.85, 0, 1);
+    al = 1 - k; scl = 1 - k * 0.35;
+    if (al <= 0) return;
+  }
+  ctx.save();
+  ctx.globalAlpha = al;
+  ctx.translate(px, py);
+  ctx.scale(scl, scl);
+  // granite
+  ctx.drawImage(stoneTex, -R, -R, R * 2, R * 2);
+
+  // handle
+  const hot = s.team === T_P;
+  const cMain = hot ? COL.pR : COL.pA;
+  const cHi = hot ? COL.pRhi : COL.pAhi;
+  const cLo = hot ? COL.pRlo : COL.pAlo;
+  ctx.rotate(s.rot);
+  // handle bolt ring
+  ctx.lineWidth = R * 0.15;
+  ctx.strokeStyle = cLo;
+  ctx.beginPath(); ctx.arc(0, 0, R * 0.5, 0, TAU); ctx.stroke();
+  ctx.lineWidth = R * 0.1;
+  ctx.strokeStyle = cMain;
+  ctx.beginPath(); ctx.arc(0, 0, R * 0.5, 0, TAU); ctx.stroke();
+  // grip bar
+  const bw = R * 0.9, bh = R * 0.26;
+  const bg = ctx.createLinearGradient(0, -bh, 0, bh);
+  bg.addColorStop(0, cHi); bg.addColorStop(0.5, cMain); bg.addColorStop(1, cLo);
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  if (ctx.roundRect) { ctx.roundRect(-bw, -bh, bw * 2, bh * 2, bh); }
+  else { ctx.rect(-bw, -bh, bw * 2, bh * 2); }
+  ctx.fill();
+  // gooseneck stem
+  ctx.fillStyle = cLo;
+  ctx.fillRect(-R * 0.09, -R * 0.5, R * 0.18, R * 0.34);
+  // centre bolt
+  ctx.fillStyle = '#e8eef2';
+  ctx.beginPath(); ctx.arc(0, 0, R * 0.15, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.3)';
+  ctx.beginPath(); ctx.arc(0, 0, R * 0.07, 0, TAU); ctx.fill();
+  ctx.restore();
+
+  // hit flash
+  if (s.hitFlash > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = s.hitFlash * 0.6 * al;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1.5, R * 0.16);
+    ctx.beginPath(); ctx.arc(px, py, R * (1 + (1 - s.hitFlash) * 0.55), 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* one animated sweeper: body + broom scrubbing across the ice */
+function drawSweeper(wx, wy, ang, side, vigour, phase, team) {
+  const sc = cam.scale;
+  const px = SX(wx), py = SY(wy);
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(-ang);                          // ang is world heading; screen y is flipped
+  const osc = Math.sin(phase) * (0.25 + vigour * 0.75);
+  const R = STONE_R * sc;
+
+  // broom head scrubbing ahead of the stone
+  const bx = side * (0.2 + osc * 0.5) * sc;
+  const by = -(0.55) * sc;
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(osc * 0.5);
+  // spray under the head
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.08 + vigour * 0.22).toFixed(3) + ')';
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 1.35, R * 0.62, 0, 0, TAU); ctx.fill();
+  // head
+  ctx.fillStyle = '#1b2b3c';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-R * 0.62, -R * 0.24, R * 1.24, R * 0.48, R * 0.16);
+  else ctx.rect(-R * 0.62, -R * 0.24, R * 1.24, R * 0.48);
+  ctx.fill();
+  ctx.fillStyle = team === T_P ? COL.pRhi : COL.pAhi;
+  ctx.fillRect(-R * 0.62, -R * 0.24, R * 1.24, R * 0.14);
+  ctx.restore();
+
+  // shaft up to the sweeper
+  const sxp = side * 0.95 * sc, syp = 1.0 * sc;
+  ctx.strokeStyle = '#c8d6e2';
+  ctx.lineWidth = Math.max(1.2, R * 0.13);
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(sxp, syp); ctx.stroke();
+
+  // body (top-down: shoulders + head)
+  ctx.save();
+  ctx.translate(sxp, syp);
+  ctx.rotate(osc * 0.22);
+  ctx.fillStyle = 'rgba(20,32,46,.32)';
+  ctx.beginPath(); ctx.ellipse(2, 3, R * 0.66, R * 0.5, 0, 0, TAU); ctx.fill();
+  const jg = ctx.createLinearGradient(0, -R * 0.6, 0, R * 0.6);
+  const j0 = team === T_P ? '#c9382e' : '#d6a512';
+  const j1 = team === T_P ? '#7e1c15' : '#7d5f06';
+  jg.addColorStop(0, j0); jg.addColorStop(1, j1);
+  ctx.fillStyle = jg;
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 0.62, R * 0.46, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#2a3642';
+  ctx.beginPath(); ctx.arc(0, -R * 0.1, R * 0.27, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.beginPath(); ctx.arc(-R * 0.07, -R * 0.17, R * 0.12, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawBroomTarget(wx, wy, handle, pulse) {
+  const sc = cam.scale;
+  const px = SX(wx), py = SY(wy);
+  ctx.save();
+  ctx.translate(px, py);
+  const R = STONE_R * sc;
+  // target ring
+  ctx.strokeStyle = 'rgba(255,255,255,.75)';
+  ctx.lineWidth = Math.max(1.2, R * 0.13);
+  ctx.setLineDash([R * 0.4, R * 0.4]);
+  ctx.beginPath(); ctx.arc(0, 0, R * (1.25 + pulse * 0.14), 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
+  // broom lying on the ice, angled
+  ctx.rotate(-0.42);
+  ctx.strokeStyle = '#e5eef6';
+  ctx.lineWidth = Math.max(1.4, R * 0.16);
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -R * 2.5); ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.fillStyle = '#16283a';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-R * 0.62, -R * 0.32, R * 1.24, R * 0.62, R * 0.18);
+  else ctx.rect(-R * 0.62, -R * 0.32, R * 1.24, R * 0.62);
+  ctx.fill();
+  ctx.fillStyle = handle > 0 ? '#7fd8f5' : '#7fd8f5';
+  ctx.fillRect(-R * 0.62, -R * 0.32, R * 1.24, R * 0.17);
+  ctx.restore();
+}
+
+function drawAimLine(bx, by, alpha) {
+  const sc = cam.scale;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = 'rgba(200,236,255,.62)';
+  ctx.lineWidth = Math.max(1, sc * 0.055);
+  ctx.setLineDash([sc * 0.55, sc * 0.65]);
+  ctx.lineDashOffset = -(perf.t * sc * 0.9) % (sc * 1.2);
+  ctx.beginPath();
+  ctx.moveTo(SX(0), SY(HACK_Y));
+  ctx.lineTo(SX(bx), SY(by));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+/* the classic curling "measure": a circle through the best opposing stone */
+function drawMeasure(radius, alpha) {
+  if (!(radius > 0) || radius > 60) return;
+  const sc = cam.scale;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = 'rgba(255,255,255,.9)';
+  ctx.lineWidth = Math.max(1, sc * 0.05);
+  ctx.setLineDash([sc * 0.3, sc * 0.35]);
+  ctx.beginPath(); ctx.arc(SX(0), SY(TEE_Y), radius * sc, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+/* ============================================================================
+   GAME
+   ========================================================================= */
+const perf = { t: 0 };
+
+const $ = (id) => document.getElementById(id);
+const elHud = $('hud'), elEndNum = $('endnum'), elSrP = $('srP'), elSrA = $('srA');
+const elTurn = $('turnv'), elScore = $('score'), elCoach = $('coach');
+const elAimGroup = $('aimgroup'), elMeterWrap = $('meterwrap'), elMeter = $('meter');
+const elNeedle = document.createElement('div');
+const elWName = $('wname'), elWHint = $('whint');
+const elSweep = $('sweeppanel'), elSweepCall = $('sweepcall');
+const elScrubFill = $('scrubfill'), elStamFill = $('stamfill'), elStamBar = $('stambar');
+const elHIn = $('hIn'), elHOut = $('hOut');
+const scStart = $('scStart'), scEnd = $('scEnd'), scOver = $('scOver'), scPause = $('scPause');
+
+const G = {
+  state: 'MENU', paused: false, pauseByBlur: false,
+  end: 0, extras: 0, ends: [], hammer: T_A,
+  order: [], shotIdx: 0,
+  stones: [], thrownIdx: -1, nextId: 1,
+  broomX: 0, broomY: 122, handle: -1,
+  power: 0, powerDir: 1,
+  scrub: 0, scrubIn: 0, stamina: 1, sweepEff: 0,
+  ptrAccum: 0, kbdImp: 0, lastSweepKey: '',
+  stateT: 0, settleT: 0, physAcc: 0,
+  aiThinkT: 0, aiShot: null, aiTarget: null, aiSweepT: 0, aiSweep: 0,
+  measure: 0, measureA: 0,
+  shots: 0, inPlay: 0, inHouse: 0,
+  tips: {},
+  lastEndResult: null,
+};
+
+/* ---------- HUD helpers ---------- */
+function buildMeter() {
+  elMeter.innerHTML = '';
+  for (const z of ZONES) {
+    const d = document.createElement('div');
+    d.className = 'band' + (z.key === 'draw' ? ' draw' : '');
+    d.style.left = (z.p0 * 100) + '%';
+    d.style.width = ((z.p1 - z.p0) * 100) + '%';
+    d.style.background = z.col;
+    d.textContent = (z.p1 - z.p0) > 0.12 ? z.name : '';
+    elMeter.appendChild(d);
+  }
+  const bm = document.createElement('div');
+  bm.className = 'btn-mark';
+  bm.style.left = (P_BUTTON * 100) + '%';
+  elMeter.appendChild(bm);
+  const bl = $('btnlbl');
+  if (bl) bl.style.left = (P_BUTTON * 100) + '%';
+  elNeedle.id = 'needle';
+  elMeter.appendChild(elNeedle);
+}
+let meterW = 300;
+function measureMeter() { meterW = elMeter.clientWidth || 300; }
+
+function scoreHTML(big) {
+  const nEnds = Math.max(REG_ENDS, G.ends.length, G.end + 1);
+  let h = '<table><tr class="hd"><td></td><td class="hamcell"></td>';
+  for (let i = 0; i < nEnds; i++) h += '<td class="e">' + (i < REG_ENDS ? (i + 1) : 'X') + '</td>';
+  h += '<td class="tot">T</td></tr>';
+  const rows = [
+    { nm: 'YOU', cls: 'pnm', key: 'p', team: T_P },
+    { nm: 'SKIP', cls: 'anm', key: 'a', team: T_A },
+  ];
+  for (const r of rows) {
+    let tot = 0;
+    h += '<tr><td class="nm ' + r.cls + '"><i></i>' + r.nm + '</td>';
+    h += '<td class="hamcell">' + (G.hammer === r.team && G.state !== 'OVER' ? '<span class="ham"></span>' : '') + '</td>';
+    for (let i = 0; i < nEnds; i++) {
+      const e = G.ends[i];
+      const cur = (i === G.end && G.state !== 'OVER');
+      if (e) {
+        tot += e[r.key];
+        const blank = (e.p === 0 && e.a === 0);
+        h += '<td class="e' + (blank ? ' blank' : '') + '">' + (blank ? '–' : e[r.key]) + '</td>';
+      } else {
+        h += '<td class="e' + (cur ? ' cur' : '') + '">&middot;</td>';
+      }
+    }
+    h += '<td class="tot">' + tot + '</td></tr>';
+  }
+  h += '</table>';
+  return h;
+}
+function totals() {
+  let p = 0, a = 0;
+  for (const e of G.ends) { p += e.p; a += e.a; }
+  return { p, a };
+}
+function refreshScore() {
+  elScore.innerHTML = scoreHTML();
+}
+function refreshHud() {
+  const isExtra = G.end >= REG_ENDS;
+  elEndNum.innerHTML = isExtra
+    ? 'EXTRA END <small>' + (G.extras > 1 ? '#' + G.extras : 'SUDDEN DEATH') + '</small>'
+    : 'END ' + (G.end + 1) + ' <small>OF ' + REG_ENDS + '</small>';
+  // stones remaining
+  const left = [STONES_PER_SIDE, STONES_PER_SIDE];
+  for (let i = 0; i < G.shotIdx && i < G.order.length; i++) left[G.order[i]]--;
+  const build = (el, team, cls) => {
+    if (el.childElementCount !== STONES_PER_SIDE) {
+      el.innerHTML = '';
+      for (let i = 0; i < STONES_PER_SIDE; i++) {
+        const d = document.createElement('div'); d.className = 'sr ' + cls; el.appendChild(d);
+      }
+    }
+    for (let i = 0; i < STONES_PER_SIDE; i++) {
+      el.children[i].classList.toggle('spent', i >= left[team]);
+    }
+  };
+  build(elSrP, T_P, 'p'); build(elSrA, T_A, 'a');
+  refreshScore();
+}
+function setTurn(txt, who) {
+  elTurn.textContent = txt;
+  elTurn.classList.toggle('you', who === T_P);
+  elTurn.classList.toggle('foe', who === T_A);
+}
+function setPanels() {
+  const s = G.state;
+  const aim = (s === 'AIM' || s === 'CHARGE');
+  elAimGroup.classList.toggle('on', aim);
+  elMeterWrap.classList.toggle('dim', s === 'AIM');
+  elSweep.classList.toggle('on', s === 'RUN');
+  if (aim) measureMeter();
+}
+function showTip(key, text) {
+  if (G.tips[key]) return;
+  G.tips[key] = true;
+  elCoach.textContent = text;
+  elCoach.classList.add('on');
+  clearTimeout(showTip._t);
+  showTip._t = setTimeout(() => elCoach.classList.remove('on'), 5200);
+}
+function hideTip() { elCoach.classList.remove('on'); }
+
+function screen(el, on) { el.classList.toggle('on', !!on); }
+function hideAllScreens() { screen(scStart, 0); screen(scEnd, 0); screen(scOver, 0); screen(scPause, 0); }
+
+/* ---------- state ---------- */
+function setState(s) {
+  G.state = s;
+  G.stateT = 0;
+  // any transition kills stale sweep input so it can never leak between phases
+  G.ptrAccum = 0; G.kbdImp = 0; G.lastSweepKey = '';
+  if (s !== 'RUN') { G.scrub = 0; G.scrubIn = 0; G.sweepEff = 0; }
+  setPanels();
+}
+
+/* ---------- match / end lifecycle ---------- */
+function resetMatch() {
+  G.end = 0; G.extras = 0; G.ends = [];
+  G.hammer = T_A;                 // player throws first in end 1, so the AI holds hammer
+  G.stones.length = 0; G.thrownIdx = -1; G.nextId = 1;
+  G.shots = 0; G.inPlay = 0; G.inHouse = 0;
+  G.tips = {};
+  G.measure = 0; G.measureA = 0;
+  G.stamina = 1; G.power = 0; G.powerDir = 1;
+  G.handle = -1; G.broomX = 0; G.broomY = 122;
+  G.aiShot = null; G.aiTarget = null;
+  G.lastEndResult = null;
+  G.physAcc = 0; G.trackT = 0; G.sweepPhase = 0;
+  G.endCardShown = true;          // no end in progress
+  G.scrub = 0; G.scrubIn = 0; G.sweepEff = 0;
+  G.ptrAccum = 0; G.kbdImp = 0; G.lastSweepKey = '';
+  G.aiSweep = 0; G.aiSweepT = 0;
+  ptr.down = false; ptr.consumed = false; ptr.moved = 0;
+  clearParts(); clearTrack();
+  shake = 0;
+  updateHandleBtns();
+  startEnd(0);
+}
+function startEnd(e) {
+  G.end = e;
+  if (e >= REG_ENDS) G.extras = e - REG_ENDS + 1;
+  G.stones.length = 0; G.thrownIdx = -1;
+  G.shotIdx = 0;
+  G.measure = 0; G.measureA = 0;
+  G.order.length = 0;
+  const first = 1 - G.hammer;
+  for (let i = 0; i < STONES_PER_SIDE * 2; i++) G.order.push(i % 2 === 0 ? first : G.hammer);
+  clearParts(); clearTrack();
+  G.stamina = 1;
+  setCamTarget(FAR_HOG - 4, BACK_Y + 4);
+  snapCam();                      // start each end already looking at the house
+  refreshHud();
+  nextShot();
+}
+function nextShot() {
+  G.thrownIdx = -1;
+  if (G.shotIdx >= G.order.length) { scoreEnd(); return; }
+  refreshHud();
+  const team = G.order[G.shotIdx];
+  if (team === T_P) {
+    G.power = 0; G.powerDir = 1;
+    G.broomY = clamp(G.broomY, FAR_HOG + 1.5, BACK_Y + 1);
+    setState('AIM');
+    setTurn('Your throw', T_P);
+    if (G.end === 0 && G.shotIdx <= 2) {
+      if (!G.tips.aim1) showTip('aim1', 'Set the broom wide — an unswept stone curls 3–4 feet toward the handle.');
+      else if (!G.tips.aim2) showTip('aim2', 'Sweeping can add distance but never take it away. Throw a touch light and save it.');
+    }
+  } else {
+    setState('THINK');
+    setTurn('Skip is reading the ice', T_A);
+    beginAiThink();
+  }
+}
+
+function scoreEnd() {
+  const cp = countPoints(G.stones);
+  const p = cp.team === T_P ? cp.pts : 0;
+  const a = cp.team === T_A ? cp.pts : 0;
+  G.ends[G.end] = { p, a };
+
+  // measure circle: radius of the best non-scoring stone
+  G.measure = 0;
+  if (cp.ds.length && cp.pts > 0) {
+    for (const d of cp.ds) if (d.team !== cp.team) { G.measure = d.d; break; }
+  }
+
+  const blank = (p === 0 && a === 0);
+  const scorer = p > 0 ? T_P : (a > 0 ? T_A : -1);
+  const stole = scorer >= 0 && scorer !== G.hammer;
+  if (!blank) G.hammer = 1 - scorer;      // whoever scored throws first next end
+
+  G.lastEndResult = { p, a, blank, scorer, stole };
+  refreshHud();
+
+  if (!blank) Audio_.crowd(clamp(0.4 + Math.max(p, a) * 0.22, 0, 1), scorer === T_P);
+  G.endCardShown = false;
+  setState('ENDBREAK');
+  setTurn(blank ? 'Blank end' : (scorer === T_P ? 'You score' : 'Skip scores'), scorer === T_P ? T_P : T_A);
+}
+
+/* Driven from the state timer rather than a timeout, so pausing (or losing
+   focus) mid-celebration can never stack the pause card on top of the end card. */
+function endBreakTick() {
+  if (G.endCardShown || G.stateT < 1.15) return;
+  G.endCardShown = true;
+  const t = totals();
+  const isLastReg = (G.end === REG_ENDS - 1);
+  const decided = (G.end >= REG_ENDS - 1) && (t.p !== t.a);
+  const outOfExtras = (G.end >= REG_ENDS - 1 + MAX_EXTRA);
+  if (decided || outOfExtras) showGameOver();
+  else showEndCard(isLastReg);
+}
+
+function showEndCard(wasLastReg) {
+  const r = G.lastEndResult;
+  const res = $('endres'), tag = $('endtag'), sub = $('endsub');
+  const t = totals();
+  tag.textContent = G.end >= REG_ENDS ? 'Extra end complete' : 'End ' + (G.end + 1) + ' complete';
+  if (r.blank) {
+    res.className = 'b'; res.textContent = 'Blank end';
+    sub.innerHTML = 'No stones counting. <b>Hammer stays</b> with ' + (G.hammer === T_P ? 'you' : 'the skip') + '.';
+  } else if (r.scorer === T_P) {
+    res.className = 'p'; res.textContent = (r.stole ? 'You steal ' : 'You score ') + r.p;
+    sub.innerHTML = r.stole
+      ? 'A steal — taken without the hammer. <b>The skip throws last</b> next end.'
+      : 'Counted <b>' + r.p + '</b>. Scoring costs you the hammer — <b>the skip throws last</b> next end.';
+  } else {
+    res.className = 'a'; res.textContent = (r.stole ? 'Skip steals ' : 'Skip scores ') + r.a;
+    sub.innerHTML = r.stole
+      ? 'Stolen against the hammer. <b>You throw last</b> next end.'
+      : 'The skip counted <b>' + r.a + '</b>. <b>You throw last</b> next end — use it.';
+  }
+  $('endscoreholder').innerHTML = scoreHTML();
+  const nextIsExtra = wasLastReg && t.p === t.a;
+  $('bNext').textContent = nextIsExtra ? 'Extra end' : 'Next end';
+  if (nextIsExtra) sub.innerHTML += '<br><b>Tied after ' + REG_ENDS + '</b> — one extra end decides it.';
+  screen(scEnd, 1);
+}
+
+function showGameOver() {
+  setState('OVER');
+  const t = totals();
+  const head = $('gohead'), flav = $('goflav');
+  const win = t.p > t.a, tie = t.p === t.a;
+  head.className = win ? 'win' : (tie ? 'tie' : 'lose');
+  head.textContent = win ? 'YOU WIN' : (tie ? 'A DRAW' : 'YOU LOSE');
+  const margin = Math.abs(t.p - t.a);
+  flav.innerHTML = win
+    ? (margin >= 3
+      ? 'The skip pulls the broom early. <b>A handshake at the third</b> — that one was never close.'
+      : 'Brooms up, gloves off, <b>the skip offers a handshake</b>. Well curled.')
+    : (tie
+      ? 'Nobody could find the button. The brooms stay up and the ice keeps its secret.'
+      : (margin >= 3
+        ? 'You offer the handshake early. <b>The other rink read the ice better</b> — next bonspiel.'
+        : 'One stone in it. <b>You offer the handshake</b> and go look at the last end again.'));
+  $('goscoreholder').innerHTML = scoreHTML();
+  const acc = G.shots ? Math.round(100 * G.inPlay / G.shots) : 0;
+  const hs = G.shots ? Math.round(100 * G.inHouse / G.shots) : 0;
+  $('gostats').innerHTML =
+    '<div class="stat"><div class="v">' + t.p + '–' + t.a + '</div><div class="l">Final</div></div>' +
+    '<div class="stat"><div class="v">' + acc + '%</div><div class="l">Kept in play</div></div>' +
+    '<div class="stat"><div class="v">' + hs + '%</div><div class="l">Drew the house</div></div>' +
+    '<div class="stat"><div class="v">' + G.shots + '</div><div class="l">Stones thrown</div></div>';
+  refreshScore();
+  screen(scOver, 1);
+  if (win) { burstConfetti(); Audio_.crowd(1, true); }
+  else Audio_.crowd(0.5, false);
+}
+
+function burstConfetti() {
+  const cols = ['#e5483c', '#ff8f7f', '#f2c230', '#ffe27a', '#7fd8f5', '#ffffff', '#9be0c8'];
+  for (let i = 0; i < 90; i++) {
+    const p = spawnPart(
+      VW * (0.15 + Math.random() * 0.7), VH * 0.15 + Math.random() * 60,
+      (Math.random() - 0.5) * 260, 180 + Math.random() * 340,
+      2.2 + Math.random() * 1.8, Math.random() * TAU, 2,
+      cols[(Math.random() * cols.length) | 0]);
+    if (!p) break;
+  }
+}
+
+/* ---------- throwing ---------- */
+function startCharge() {
+  if (G.state !== 'AIM') return;
+  setState('CHARGE');
+  G.power = 0; G.powerDir = 1;
+  Audio_.tick(620, 0.045);
+  if (G.end === 0 && !G.tips.chg) showTip('chg', 'Release inside the DRAW band to reach the rings. Overshooting the top swings back down.');
+}
+function releaseThrow() {
+  if (G.state !== 'CHARGE') return;
+  throwStone(T_P, G.broomX, G.broomY, G.power, G.handle);
+  if (G.end === 0 && !G.tips.swp) showTip('swp', 'Now scrub — anywhere, fast. Sweeping carries the stone farther and straightens the curl.');
+}
+function throwStone(team, broomX, broomY, power, handle) {
+  const s = newStone();
+  s.id = G.nextId++;
+  s.team = team;
+  launchStone(s, broomX, broomY, power, handle);
+  G.stones.push(s);
+  G.thrownIdx = G.stones.length - 1;
+  G.stamina = clamp(G.stamina, 0, 1);
+  G.physAcc = 0;
+  setState('RUN');
+  setCamTarget(s.y - 8, BACK_Y + 4);
+  snapCam();                      // cut to the delivery rather than swooping to it
+  setTurn(team === T_P ? 'Sweep it!' : 'Skip’s stone', team);
+  Audio_.whoosh();
+  if (team === T_P) G.shots++;
+  clearTrack();
+}
+
+/* ---------- AI ---------- */
+function beginAiThink() {
+  const t = totals();
+  const lead = t.a - t.p;
+  const hasHammer = (G.hammer === T_A);
+  const late = G.shotIdx >= 5;
+  const isFinalEnd = (G.end >= REG_ENDS - 1);
+  const sit = {
+    decisive: G.shotIdx >= 6,
+    wantsOpen: hasHammer && !late,
+    wantsGuard: (!hasHammer && G.shotIdx < 5) || (lead < 0 && G.shotIdx < 4),
+    guardBias: 1,
+    isFinalEnd,
+  };
+  sit.guardBias = sit.wantsGuard ? 1.05 : 0.4;
+  if (hasHammer && isFinalEnd && lead > 0) { sit.wantsOpen = true; sit.guardBias = 0.25; }
+  AI.begin(G.stones, sit);
+  G.aiThinkT = 0;
+}
+function finishAiThink() {
+  const pick = AI.pick();
+  if (!pick) { throwStone(T_A, 0, AIM_Y, P_BUTTON, -1); return; }
+  const isFinalEnd = (G.end >= REG_ENDS - 1);
+  const k = isFinalEnd ? 0.74 : 1;
+  const bx = clamp(pick.sol.broomX + gauss() * 0.92 * k, -SHEET_HW + 0.3, SHEET_HW - 0.3);
+  const pw = clamp(pick.sol.power + gauss() * 0.030 * k, 0.06, 1);
+  G.aiShot = { bx, by: AIM_Y, pw, handle: pick.sol.handle };
+  G.aiTarget = { x: pick.c.tx, y: pick.c.ty, kind: pick.c.kind };
+  G.stamina = 1;
+  setState('AIAIM');
+  setTurn('Skip throws', T_A);
+}
+const PRED = [newStone()];
+function predictStopY(s) {
+  const p = copyStone(PRED[0], s);
+  p.out = false;
+  for (let i = 0; i < 2400; i++) {
+    if (!stepStones(PRED, PHYS_DT, -1, 0, null)) break;
+    if (p.out) break;
+  }
+  return p.y;
+}
+function aiSweepDecision() {
+  if (G.stamina < 0.05) return 0;
+  const s = G.stones[G.thrownIdx];
+  if (!s || s.out) return 0;
+  const v = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+  if (v < 0.4) return 0;
+  const tgt = G.aiTarget;
+  if (!tgt) return 0;
+  if (tgt.kind === 'takeout') {
+    // only rescue a takeout that is dying short of its victim
+    const stop = predictStopY(s);
+    return stop < tgt.y + 1.5 ? 1 : 0;
+  }
+  const stop = predictStopY(s);
+  const want = tgt.y;
+  if (stop < want - 1.0) return 1;
+  if (stop < want - 0.25) return 0.55;
+  return 0;
+}
+
+/* ---------- collisions -> juice ---------- */
+function onHit(a, b, impact, x, y) {
+  const mag = clamp(impact / 26, 0, 1);
+  a.hitFlash = 1; b.hitFlash = 1;
+  Audio_.knock(0.12 + mag * 0.95);
+  shake = Math.min(shake + mag * 9.5, 13);
+  const n = 3 + Math.floor(mag * 9);
+  for (let i = 0; i < n; i++) {
+    const ang = Math.random() * TAU;
+    const sp = (2 + Math.random() * 9) * (0.3 + mag);
+    spawnPart(x, y, Math.cos(ang) * sp, Math.sin(ang) * sp, 0.35 + Math.random() * 0.5,
+      0.045 + Math.random() * 0.06, Math.random() < 0.55 ? 0 : 1);
+  }
+  if (mag > 0.5 && perf.t - (onHit._last || -9) > 1.1) {
+    onHit._last = perf.t;
+    Audio_.crowd(clamp(mag, 0.35, 1), false);
+  }
+}
+
+/* ---------- sweeping input ---------- */
+function computeSweepInput(dt) {
+  const ref = Math.max(300, Math.min(VW, VH)) * 3.0;    // px/s for "full tilt"
+  const rate = dt > 0 ? G.ptrAccum / dt : 0;
+  G.ptrAccum = 0;
+  const ptrT = clamp(rate / ref, 0, 1);
+  G.kbdImp *= Math.exp(-3.4 * dt);
+  const target = Math.max(ptrT, clamp(G.kbdImp, 0, 1));
+  G.scrubIn = approach(G.scrubIn, target, target > G.scrubIn ? 17 : 7.5, dt);
+  return clamp(G.scrubIn, 0, 1);
+}
+
+/* ============================================================================
+   UPDATE
+   ========================================================================= */
+function update(dt) {
+  perf.t += dt;
+  G.stateT += dt;
+
+  // out-of-play stones keep sliding off, then vanish
+  for (let i = G.stones.length - 1; i >= 0; i--) {
+    const s = G.stones[i];
+    if (!s.out) continue;
+    s.outT += dt;
+    const v = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+    if (v > 0.05) {
+      s.x += s.vx * dt; s.y += s.vy * dt;
+      const k = Math.exp(-1.4 * dt);
+      s.vx *= k; s.vy *= k;
+      s.rot += s.spin * dt;
+    }
+  }
+  for (const s of G.stones) if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt * 3.2);
+
+  // stamina recovers whenever we're not running a stone
+  if (G.state !== 'RUN') G.stamina = clamp(G.stamina + 0.55 * dt, 0, 1);
+
+  switch (G.state) {
+    case 'AIM': {
+      // touch: press and hold (without dragging) starts the charge
+      if (ptr.down && ptr.type !== 'mouse' && !ptr.consumed &&
+        perf.t - ptr.downT > 0.22 && ptr.moved < 16) {
+        ptr.consumed = true;
+        startCharge();
+      }
+      keyboardAim(dt);
+      break;
+    }
+    case 'CHARGE': {
+      const rate = 0.82;                 // full sweep of the bar in ~1.22s
+      G.power += G.powerDir * rate * dt;
+      if (G.power >= 1) { G.power = 1; G.powerDir = -1; Audio_.tick(1180, 0.05); }
+      else if (G.power <= 0) { G.power = 0; G.powerDir = 1; Audio_.tick(420, 0.05); }
+      break;
+    }
+    case 'THINK': {
+      G.aiThinkT += dt;
+      // one candidate per frame: a whole plan costs well under the 0.75s the
+      // skip spends "reading the ice", and no single frame ever gets hitched
+      if (!AI.done) AI.work(G.stones, 1);
+      if (AI.done && G.aiThinkT > 0.75) finishAiThink();
+      break;
+    }
+    case 'AIAIM': {
+      if (G.stateT > 0.8) {
+        throwStone(T_A, G.aiShot.bx, G.aiShot.by, G.aiShot.pw, G.aiShot.handle);
+      }
+      break;
+    }
+    case 'RUN': {
+      const s = G.stones[G.thrownIdx];
+      const throwing = s ? s.team : T_P;
+      let sweep = 0;
+      if (s && !s.out) {
+        if (throwing === T_P) {
+          const scrub = computeSweepInput(dt);
+          G.scrub = scrub;
+          sweep = scrub * clamp(G.stamina * 5, 0, 1);
+        } else {
+          G.aiSweepT -= dt;
+          if (G.aiSweepT <= 0) { G.aiSweepT = 0.16; G.aiSweep = aiSweepDecision(); }
+          G.scrub = approach(G.scrub, G.aiSweep, 12, dt);
+          sweep = G.scrub * clamp(G.stamina * 5, 0, 1);
+        }
+      } else { G.scrub = approach(G.scrub, 0, 9, dt); }
+      G.sweepEff = sweep;
+
+      // stamina
+      if (sweep > 0.06) G.stamina = clamp(G.stamina - sweep * 0.40 * dt, 0, 1);
+      else G.stamina = clamp(G.stamina + 0.16 * dt, 0, 1);
+
+      // fixed-timestep physics
+      G.physAcc += dt;
+      let steps = 0, moving = true;
+      while (G.physAcc >= PHYS_DT && steps < 8) {
+        moving = stepStones(G.stones, PHYS_DT, G.thrownIdx, sweep, onHit);
+        G.physAcc -= PHYS_DT; steps++;
+        if (!moving) break;
+      }
+      if (G.physAcc > 0.25) G.physAcc = 0;
+
+      // swept-ice track + spray
+      if (s && !s.out && sweep > 0.06) {
+        const v = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+        if (v > 0.5) {
+          G.trackT = (G.trackT || 0) + dt;
+          if (G.trackT > 0.035) {
+            G.trackT = 0;
+            const ux = s.vx / v, uy = s.vy / v;
+            addTrack(s.x + ux * 0.85, s.y + uy * 0.85, sweep);
+            if (sweep > 0.3 && Math.random() < 0.55) {
+              const a = Math.random() * TAU;
+              spawnPart(s.x + ux * 0.9 + Math.cos(a) * 0.3, s.y + uy * 0.9 + Math.sin(a) * 0.3,
+                -ux * (1 + Math.random() * 3) + Math.cos(a) * 1.6,
+                -uy * (1 + Math.random() * 3) + Math.sin(a) * 1.6,
+                0.3 + Math.random() * 0.35, 0.03 + Math.random() * 0.04, 0);
+            }
+          }
+        }
+      }
+
+      // broom cadence, advanced on the real clock so it looks the same at any refresh rate
+      G.sweepPhase = (G.sweepPhase || 0) + (6 + sweep * 26) * dt;
+
+      // audio bed
+      const sv = s && !s.out ? Math.sqrt(s.vx * s.vx + s.vy * s.vy) : 0;
+      Audio_.bed(sv, sweep);
+
+      if (!moving) finishShot();
+      else if (G.stateT > 26) finishShot();      // safety valve
+      break;
+    }
+    case 'ENDBREAK': {
+      endBreakTick();
+      break;
+    }
+    case 'SETTLE': {
+      G.settleT += dt;
+      let anim = false;
+      for (const s of G.stones) if (s.out && s.outT < 0.9) anim = true;
+      if (G.settleT > 0.55 && (!anim || G.settleT > 2.2)) {
+        for (let i = G.stones.length - 1; i >= 0; i--) if (G.stones[i].out) G.stones.splice(i, 1);
+        G.shotIdx++;
+        nextShot();
+      }
+      break;
+    }
+  }
+
+  // only touch the audio params on the transition out of a running stone
+  if (G.state !== 'RUN' && G._bedOn) { G._bedOn = false; Audio_.silenceBeds(); }
+  else if (G.state === 'RUN') G._bedOn = true;
+
+  // camera
+  if (G.state === 'RUN' && G.thrownIdx >= 0 && G.stones[G.thrownIdx]) {
+    const s = G.stones[G.thrownIdx];
+    setCamTarget(s.y - 8, BACK_Y + 4);
+  } else {
+    setCamTarget(FAR_HOG - 4, BACK_Y + 4);
+  }
+  cam.cy = approach(cam.cy, camT.cy, 3.6, dt);
+  cam.cx = approach(cam.cx, camT.cx, 3.6, dt);
+  cam.span = approach(cam.span, camT.span, 3.2, dt);
+  camApply();
+
+  // measure circle fades in during the end break
+  G.measureA = approach(G.measureA, (G.state === 'ENDBREAK' && G.measure > 0) ? 1 : 0, 4, dt);
+
+  // shake
+  shake = Math.max(0, shake - shake * 7 * dt - 2 * dt);
+  const sh = shake;
+  shakeX = (Math.random() - 0.5) * sh;
+  shakeY = (Math.random() - 0.5) * sh;
+
+  updateParts(dt);
+  updateTrack(dt);
+  updateDeck();
+}
+
+function finishShot() {
+  const s = G.thrownIdx >= 0 ? G.stones[G.thrownIdx] : null;
+  if (s) {
+    // settle the stones still in play; stones already out keep their velocity so
+    // they can finish sliding off the sheet
+    for (const st of G.stones) if (!st.out) { st.vx = 0; st.vy = 0; }
+    // hog-line rule: a delivered stone that never fully crosses is removed,
+    // unless it struck a stone already in play
+    if (!s.out && !s.struck && s.y < HOG_LIM) {
+      s.out = true; s.outWhy = 'hog'; s.outT = 0;
+      Audio_.tick(300, 0.06);
+    }
+    if (s.team === T_P) {
+      if (!s.out) {
+        G.inPlay++;
+        if (distToButton(s) <= IN_HOUSE) G.inHouse++;
+      }
+    }
+  }
+  Audio_.silenceBeds();
+  G.settleT = 0;
+  setState('SETTLE');
+}
+
+/* ---------- deck / meter DOM ---------- */
+/* Writing textContent every frame forces needless style work, so only write on change. */
+function setText(el, s) { if (el._txt !== s) { el._txt = s; el.textContent = s; } }
+
+function updateDeck() {
+  if (G.state === 'AIM' || G.state === 'CHARGE') {
+    elNeedle.style.transform = 'translateX(' + (G.power * meterW).toFixed(1) + 'px)';
+    const z = zoneForPower(G.power);
+    setText(elWName, z.name);
+    const c = z.key === 'draw' ? '#8fe8d2' : (z.key === 'hog' ? '#ff9a8a' : '#ffffff');
+    if (elWName._c !== c) { elWName._c = c; elWName.style.color = c; }
+    setText(elWHint, G.state === 'CHARGE'
+      ? 'Release to throw'
+      : (ptr.type === 'mouse' ? 'Hold to charge' : 'Press & hold to charge'));
+  }
+  if (G.state === 'RUN') {
+    elScrubFill.style.transform = 'scaleX(' + G.scrub.toFixed(3) + ')';
+    elStamFill.style.transform = 'scaleX(' + G.stamina.toFixed(3) + ')';
+    elStamBar.classList.toggle('low', G.stamina < 0.25);
+    const s = G.stones[G.thrownIdx];
+    const mine = !!(s && s.team === T_P);
+    setText(elSweepCall, mine
+      ? (G.stamina < 0.05 ? 'Brooms up!' : (G.scrub > 0.55 ? 'Hard! Hard!' : 'Sweep!'))
+      : 'Skip’s stone');
+    elSweepCall.classList.toggle('hot', mine && G.scrub > 0.55);
+    elSweepCall.classList.toggle('spent', mine && G.stamina < 0.05);
+  }
+}
+
+/* ============================================================================
+   RENDER
+   ========================================================================= */
+function render() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawBackground();
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawSheet();
+  drawTrack();
+
+  // aim visuals
+  const aiming = (G.state === 'AIM' || G.state === 'CHARGE');
+  if (aiming) {
+    drawAimLine(G.broomX, G.broomY, 0.9);
+    drawBroomTarget(G.broomX, G.broomY, G.handle, 0.5 + 0.5 * Math.sin(perf.t * 3.2));
+  } else if (G.state === 'AIAIM' && G.aiShot) {
+    const a = clamp(G.stateT / 0.25, 0, 1);
+    drawAimLine(G.aiShot.bx, G.aiShot.by, 0.55 * a);
+    ctx.save(); ctx.globalAlpha = a;
+    drawBroomTarget(G.aiShot.bx, G.aiShot.by, G.aiShot.handle, 0.5 + 0.5 * Math.sin(perf.t * 3.2));
+    ctx.restore();
+  }
+
+  if (G.measureA > 0.01) drawMeasure(G.measure, G.measureA * 0.75);
+
+  drawStoneShadows(G.stones);
+  for (const s of G.stones) drawStone(s);
+
+  // sweepers ride ahead of a live stone
+  if (G.state === 'RUN' && G.thrownIdx >= 0) {
+    const s = G.stones[G.thrownIdx];
+    if (s && !s.out) {
+      const v = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+      if (v > 1.2) {
+        const ang = Math.atan2(s.vy, s.vx) - Math.PI / 2;   // heading, 0 = up the sheet
+        const vig = G.sweepEff;
+        const ux = s.vx / v, uy = s.vy / v;
+        const ax = s.x + ux * 1.15, ay = s.y + uy * 1.15;
+        drawSweeper(ax, ay, ang, -1, vig, G.sweepPhase, s.team);
+        drawSweeper(ax, ay, ang, 1, vig, G.sweepPhase + Math.PI, s.team);
+      }
+    }
+  }
+
+  drawParts();
+  ctx.restore();
+}
+
+/* ============================================================================
+   INPUT
+   ========================================================================= */
+const ptr = { down: false, x: 0, y: 0, downX: 0, downY: 0, downT: 0, moved: 0, type: 'mouse', consumed: false };
+const keys = Object.create(null);
+
+function pointToBroom(sx, sy, touch) {
+  const off = touch ? 42 : 0;
+  G.broomX = clamp(WX(sx), -SHEET_HW + 0.35, SHEET_HW - 0.35);
+  G.broomY = clamp(WY(sy - off), FAR_HOG + 1.5, BACK_Y + 1.0);
+}
+
+cv.addEventListener('pointerdown', (e) => {
+  Audio_.init();
+  ptr.type = e.pointerType || 'mouse';
+  ptr.down = true; ptr.consumed = false;
+  ptr.x = ptr.downX = e.clientX; ptr.y = ptr.downY = e.clientY;
+  ptr.downT = perf.t; ptr.moved = 0;
+  if (G.state === 'AIM') {
+    if (ptr.type === 'mouse') { ptr.consumed = true; startCharge(); }
+    else pointToBroom(e.clientX, e.clientY, true);
+  }
+  e.preventDefault();
+}, { passive: false });
+
+window.addEventListener('pointermove', (e) => {
+  const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
+  ptr.x = e.clientX; ptr.y = e.clientY;
+  // A single move event can never legitimately cover half a screen; capping it
+  // stops the very first move (from the 0,0 seed) or a teleporting pointer from
+  // registering as one enormous scrub.
+  let dist = Math.sqrt(dx * dx + dy * dy);
+  const cap = Math.max(VW, VH) * 0.5;
+  if (dist > cap) dist = cap;
+  if (ptr.down) ptr.moved += dist;
+  if (G.state === 'RUN') {
+    const s = G.stones[G.thrownIdx];
+    if (s && s.team === T_P) G.ptrAccum += dist;
+    return;
+  }
+  if (G.state === 'AIM') {
+    if ((e.pointerType || 'mouse') === 'mouse') pointToBroom(e.clientX, e.clientY, false);
+    else if (ptr.down) pointToBroom(e.clientX, e.clientY, true);
+  }
+}, { passive: true });
+
+function endPointer() {
+  // only the pointer that started the delivery may release it, so a stray second
+  // touch (or a keyboard-started charge) can't fire the stone
+  if (G.state === 'CHARGE' && ptr.down) releaseThrow();
+  ptr.down = false; ptr.consumed = false;
+}
+window.addEventListener('pointerup', endPointer, { passive: true });
+window.addEventListener('pointercancel', () => {
+  // the gesture was taken away from us: back out of the delivery rather than
+  // firing the stone at whatever weight the meter happened to be showing
+  if (G.state === 'CHARGE' && ptr.down) { setState('AIM'); G.power = 0; G.powerDir = 1; }
+  ptr.down = false; ptr.consumed = false;
+}, { passive: true });
+
+function updateHandleBtns() {
+  elHIn.classList.toggle('sel', G.handle === -1);
+  elHOut.classList.toggle('sel', G.handle === 1);
+}
+function setHandle(h) {
+  if (G.state !== 'AIM' && G.state !== 'CHARGE') return;
+  if (G.handle === h) return;
+  G.handle = h; updateHandleBtns(); Audio_.tick(760, 0.05); Audio_.init();
+}
+elHIn.addEventListener('pointerdown', (e) => { e.stopPropagation(); setHandle(-1); });
+elHOut.addEventListener('pointerdown', (e) => { e.stopPropagation(); setHandle(1); });
+
+function keyboardAim(dt) {
+  let dx = 0, dy = 0;
+  if (keys['ArrowLeft']) dx -= 1;
+  if (keys['ArrowRight']) dx += 1;
+  if (keys['ArrowUp']) dy += 1;
+  if (keys['ArrowDown']) dy -= 1;
+  if (dx || dy) {
+    G.broomX = clamp(G.broomX + dx * 5.2 * dt, -SHEET_HW + 0.35, SHEET_HW - 0.35);
+    G.broomY = clamp(G.broomY + dy * 7.5 * dt, FAR_HOG + 1.5, BACK_Y + 1.0);
+  }
+}
+
+window.addEventListener('keydown', (e) => {
+  const k = e.key;
+  if (k === ' ' || k === 'ArrowUp' || k === 'ArrowDown' || k === 'ArrowLeft' || k === 'ArrowRight') e.preventDefault();
+  if (e.repeat) {
+    keys[k] = true;
+    return;
+  }
+  keys[k] = true;
+  Audio_.init();
+
+  if (k === 'Escape' || k === 'p' || k === 'P') { togglePause(); return; }
+
+  // overlays first
+  if (scStart.classList.contains('on')) { if (k === ' ' || k === 'Enter') startGame(); return; }
+  if (scEnd.classList.contains('on')) { if (k === ' ' || k === 'Enter') nextEndFromCard(); return; }
+  if (scOver.classList.contains('on')) { if (k === ' ' || k === 'Enter') rematch(); return; }
+  if (scPause.classList.contains('on')) { if (k === ' ' || k === 'Enter') resumeGame(); return; }
+
+  if (G.state === 'AIM') {
+    if (k === 'z' || k === 'Z' || k === 'q' || k === 'Q') setHandle(-1);
+    else if (k === 'x' || k === 'X' || k === 'e' || k === 'E') setHandle(1);
+    else if (k === ' ') startCharge();
+  } else if (G.state === 'CHARGE') {
+    if (k === 'z' || k === 'Z' || k === 'q' || k === 'Q') setHandle(-1);
+    else if (k === 'x' || k === 'X' || k === 'e' || k === 'E') setHandle(1);
+  } else if (G.state === 'RUN') {
+    const s = G.stones[G.thrownIdx];
+    if (s && s.team === T_P) {
+      const isSweepKey = (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'a' || k === 'A' || k === 'd' || k === 'D');
+      if (isSweepKey) {
+        const norm = (k === 'ArrowLeft' || k === 'a' || k === 'A') ? 'L' : 'R';
+        if (norm !== G.lastSweepKey) {
+          G.lastSweepKey = norm;
+          G.kbdImp = Math.min(1.25, G.kbdImp + 0.44);
+        }
+      }
+    }
+  }
+}, { passive: false });
+
+window.addEventListener('keyup', (e) => {
+  keys[e.key] = false;
+  if (e.key === ' ' && G.state === 'CHARGE') releaseThrow();
+}, { passive: true });
+
+/* ---------- pause ---------- */
+function canPause() {
+  return G.state !== 'MENU' && G.state !== 'OVER' && !scStart.classList.contains('on')
+    && !scOver.classList.contains('on') && !scEnd.classList.contains('on');
+}
+function pauseGame(byBlur) {
+  if (G.paused || !canPause()) return;
+  // Losing focus mid-charge means the matching pointerup/keyup is delivered to
+  // whatever stole focus, so the meter would sit there charging forever. Back
+  // the delivery out and let the player set their weight again.
+  if (G.state === 'CHARGE') { setState('AIM'); G.power = 0; G.powerDir = 1; }
+  // drop any held input so nothing is stuck down when we come back
+  ptr.down = false; ptr.consumed = false; ptr.moved = 0;
+  for (const k in keys) keys[k] = false;
+  G.paused = true; G.pauseByBlur = !!byBlur;
+  Audio_.silenceBeds(); G._bedOn = false;
+  screen(scPause, 1);
+}
+function resumeGame() {
+  if (!G.paused) return;
+  G.paused = false;
+  screen(scPause, 0);
+  lastT = 0;                 // don't integrate the time spent paused
+  Audio_.resume();
+}
+function togglePause() {
+  if (G.paused) resumeGame();
+  else pauseGame(false);
+}
+window.addEventListener('blur', () => pauseGame(true));
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(true); });
+
+/* ---------- buttons ---------- */
+function startGame() {
+  Audio_.init();
+  hideAllScreens();
+  elHud.classList.add('on');
+  resetMatch();
+}
+function nextEndFromCard() {
+  screen(scEnd, 0);
+  G.measure = 0;
+  startEnd(G.end + 1);
+}
+function rematch() {
+  hideAllScreens();
+  G.paused = false;
+  elHud.classList.add('on');
+  hideTip();
+  resetMatch();
+}
+$('bPlay').addEventListener('click', startGame);
+$('bNext').addEventListener('click', nextEndFromCard);
+$('bAgain').addEventListener('click', rematch);
+$('bResume').addEventListener('click', resumeGame);
+$('bQuit').addEventListener('click', () => { screen(scPause, 0); G.paused = false; rematch(); });
+$('bRestart').addEventListener('click', () => { G.paused = false; rematch(); });
+$('bPause').addEventListener('click', togglePause);
+const bMute = $('bMute');
+bMute.addEventListener('click', () => {
+  Audio_.init();
+  const m = !Audio_.muted;
+  Audio_.setMuted(m);
+  bMute.classList.toggle('alt', m);
+});
+
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/* ============================================================================
+   MAIN LOOP
+   ========================================================================= */
+let lastT = 0, rafId = 0;
+function frame(t) {
+  rafId = requestAnimationFrame(frame);
+  if (!lastT) { lastT = t; render(); return; }
+  let dt = (t - lastT) / 1000;
+  lastT = t;
+  if (!isFinite(dt) || dt < 0) dt = 0;
+  if (dt > 0.1) dt = 0.1;
+  if (!G.paused) update(dt);
+  render();
+}
+
+/* ---------- boot ---------- */
+window.addEventListener('resize', () => { resize(); measureMeter(); });
+window.addEventListener('orientationchange', () => setTimeout(() => { resize(); measureMeter(); }, 120));
+
+buildStoneTex();
+resize();
+buildMeter();
+measureMeter();
+refreshScore();
+updateHandleBtns();
+camApply();
+rafId = requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>
