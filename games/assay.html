@@ -1,0 +1,2683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="ASSAY - a candlelit balance-scale deduction game. One coin in every batch is counterfeit. Weigh, deduce, and stamp the forgery before your seals run out.">
+<title>ASSAY</title>
+<style>
+  :root{
+    --ink:#f3e6cd;
+    --dim:rgba(243,230,205,.58);
+    --faint:rgba(243,230,205,.34);
+    --brass:#d8a44e;
+    --brass-lo:#8a6224;
+    --gold:#ffd98a;
+    --wax:#c0303a;
+    --wax-lo:#7a1a21;
+    --green:#63c084;
+    --felt:#07120d;
+    --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:#040a07;color:var(--ink);
+    font-family:var(--ui);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#040a07;}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+
+  /* ------------------------------ HUD ------------------------------ */
+  #hud{
+    position:absolute;left:0;right:0;top:0;z-index:5;pointer-events:none;
+    padding:max(8px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) 8px max(10px,env(safe-area-inset-left));
+    display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
+    opacity:0;transition:opacity .45s ease;
+  }
+  #hud.on{opacity:1;}
+  .hcol{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .hcol.c{align-items:center;text-align:center;flex:1 1 auto;}
+  .hcol.r{align-items:flex-end;text-align:right;}
+  .lbl{
+    font-size:8.5px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;
+    color:var(--faint);text-shadow:0 1px 4px rgba(0,0,0,.9);white-space:nowrap;
+  }
+  .val{
+    font-size:clamp(19px,4.4vw,26px);line-height:1;font-weight:700;font-variant-numeric:tabular-nums;
+    color:#fff2d6;text-shadow:0 2px 12px rgba(0,0,0,.85), 0 0 18px rgba(255,190,110,.18);
+    transition:transform .16s cubic-bezier(.2,1.8,.4,1);transform-origin:0 50%;white-space:nowrap;
+  }
+  .val.pop{transform:scale(1.18);}
+  .sub{
+    font-size:9px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;
+    color:var(--brass);text-shadow:0 1px 4px rgba(0,0,0,.9);white-space:nowrap;opacity:.9;
+  }
+  #ruleV{
+    color:rgba(255,214,150,.82);font-size:clamp(8px,2.3vw,10px);letter-spacing:.16em;
+    max-width:44vw;white-space:normal;line-height:1.35;
+  }
+  #weights{display:flex;gap:5px;margin-top:3px;}
+  .wt{
+    width:13px;height:13px;border-radius:3px;
+    background:linear-gradient(160deg,#ffe0a0,#c8902f 55%,#7a5418);
+    border:1px solid rgba(255,225,170,.35);
+    box-shadow:0 0 8px rgba(255,180,90,.35), inset 0 1px 0 rgba(255,255,255,.35);
+    transition:opacity .35s ease, transform .35s cubic-bezier(.3,1.6,.4,1), filter .35s ease;
+  }
+  .wt.spent{opacity:.22;transform:scale(.74) translateY(2px);filter:grayscale(1);box-shadow:none;}
+  #rgroup{display:flex;align-items:flex-start;gap:8px;}
+  #seals{display:flex;gap:5px;}
+  .seal{
+    position:relative;width:17px;height:17px;border-radius:50%;
+    background:radial-gradient(circle at 34% 30%, #e0555c, #a3202a 52%, #5e1218);
+    box-shadow:0 0 9px rgba(200,50,60,.45), inset 0 -2px 4px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.18);
+    transition:opacity .4s ease, filter .5s ease, transform .3s ease;
+  }
+  .seal::after{
+    content:"";position:absolute;inset:4px;border-radius:50%;
+    border:1px solid rgba(255,255,255,.16);
+  }
+  .seal.cracked{
+    opacity:.3;filter:grayscale(.85) brightness(.55);transform:scale(.86);
+    background:radial-gradient(circle at 34% 30%, #6a4a4c, #37262a 60%, #1a1214);
+    box-shadow:none;
+  }
+  .seal.cracked::before{
+    content:"";position:absolute;left:50%;top:-1px;width:1.5px;height:19px;
+    background:#0a0605;transform:translateX(-50%) rotate(14deg);
+    clip-path:polygon(0 0,100% 12%,10% 34%,100% 56%,0 78%,70% 100%,0 100%);
+  }
+  .seal.shatter{animation:sealPop .42s ease-out;}
+  @keyframes sealPop{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.38) rotate(-8deg);}
+    100%{transform:scale(.86);}
+  }
+
+  /* ------------------------------ mute ------------------------------ */
+  #mute{
+    pointer-events:auto;flex:0 0 auto;
+    width:32px;height:32px;border-radius:9px;border:1px solid rgba(243,230,205,.15);
+    background:rgba(8,18,13,.6);color:var(--ink);padding:0;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    opacity:.55;transition:opacity .2s ease,transform .12s ease,border-color .2s ease;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  }
+  #mute:hover{opacity:1;border-color:rgba(216,164,78,.45);}
+  #mute:active{transform:scale(.92);}
+  #mute svg{width:17px;height:17px;display:block;}
+  #mute .slash{opacity:0;transition:opacity .15s ease;}
+  #mute.off .slash{opacity:1;}
+  #mute.off .wave{opacity:.16;}
+
+  /* ----------------------------- screens ---------------------------- */
+  /* visibility (not just opacity) so the hidden card and its BEGIN button
+     cannot swallow pointer events over the coin tray beneath them */
+  #screen{
+    position:absolute;inset:0;z-index:6;pointer-events:none;
+    display:flex;align-items:center;justify-content:center;
+    padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+    opacity:0;visibility:hidden;
+    transition:opacity .35s ease, visibility 0s linear .35s;
+    background:radial-gradient(ellipse at 50% 42%, rgba(4,10,7,.62), rgba(3,7,5,.9) 78%);
+  }
+  #screen.on{
+    opacity:1;visibility:visible;pointer-events:auto;
+    transition:opacity .35s ease, visibility 0s linear 0s;
+  }
+  #screen.bare{background:none;}
+  #card{
+    position:relative;max-width:min(600px,94vw);width:100%;
+    max-height:100%;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
+    padding:clamp(16px,3.4vh,28px) clamp(16px,4vw,32px);
+    border-radius:18px;text-align:center;
+    background:linear-gradient(180deg, rgba(18,28,22,.9), rgba(6,13,9,.94));
+    border:1px solid rgba(216,164,78,.22);
+    box-shadow:0 24px 70px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,225,170,.08);
+    -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);
+    transform:translateY(10px) scale(.985);opacity:0;
+    transition:transform .42s cubic-bezier(.16,1,.3,1), opacity .38s ease;
+  }
+  #screen.on #card{transform:none;opacity:1;}
+  #card.bare{background:none;border:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;}
+  #scEyebrow{
+    font-size:9.5px;letter-spacing:.36em;text-transform:uppercase;font-weight:700;
+    color:var(--faint);margin-bottom:9px;
+  }
+  #scTitle{
+    font-size:clamp(38px,10vw,74px);line-height:.94;font-weight:800;
+    letter-spacing:.14em;margin:0;text-transform:uppercase;
+    background:linear-gradient(178deg,#fff6e2 4%,#ffd98a 44%,#c8862c 98%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 6px 22px rgba(255,170,70,.26));
+  }
+  #scRule{
+    width:64px;height:2px;margin:13px auto;border-radius:2px;
+    background:linear-gradient(90deg,transparent,rgba(216,164,78,.85),transparent);
+  }
+  #scSub{
+    font-size:clamp(12px,3.2vw,14.5px);line-height:1.62;color:var(--dim);
+    max-width:46em;margin:0 auto;
+  }
+  #scSub em{color:var(--gold);font-style:normal;font-weight:600;}
+  #scBody{margin-top:14px;}
+  .howto{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));
+    gap:8px;text-align:left;margin:0 auto;max-width:520px;
+  }
+  .ht{
+    display:flex;gap:9px;align-items:flex-start;
+    padding:8px 10px;border-radius:10px;
+    background:rgba(255,225,170,.045);border:1px solid rgba(255,225,170,.09);
+  }
+  .ht b{
+    flex:0 0 auto;font-size:9px;letter-spacing:.12em;font-weight:800;text-transform:uppercase;
+    color:#0a1410;background:linear-gradient(160deg,#ffe0a0,#c8902f);
+    padding:3px 5px;border-radius:5px;margin-top:1px;min-width:34px;text-align:center;
+  }
+  .ht span{font-size:11.5px;line-height:1.45;color:rgba(243,230,205,.76);}
+  .keys{
+    margin-top:12px;font-size:10.5px;line-height:1.9;color:var(--faint);letter-spacing:.03em;
+  }
+  .keys kbd{
+    display:inline-block;padding:1px 5px;margin:0 1px;border-radius:4px;
+    background:rgba(243,230,205,.09);border:1px solid rgba(243,230,205,.16);
+    font-family:inherit;font-size:9.5px;font-weight:700;color:rgba(243,230,205,.8);
+  }
+  #stats{
+    display:flex;justify-content:center;gap:clamp(14px,5vw,36px);margin:16px 0 4px;flex-wrap:wrap;
+  }
+  .stat{display:flex;flex-direction:column;gap:3px;align-items:center;}
+  .stat .sv{
+    font-size:clamp(24px,6.6vw,38px);font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+    color:#fff2d6;text-shadow:0 0 24px rgba(255,190,110,.22);
+  }
+  .stat .sl{font-size:8.5px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;color:var(--faint);}
+  #scBtn{
+    pointer-events:auto;margin-top:18px;
+    padding:12px 30px;border-radius:12px;border:1px solid rgba(255,225,170,.3);
+    background:linear-gradient(180deg,rgba(216,164,78,.28),rgba(216,164,78,.12));
+    color:#fff3dc;font-family:inherit;font-size:13px;font-weight:800;letter-spacing:.24em;
+    text-transform:uppercase;cursor:pointer;
+    box-shadow:0 8px 26px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,240,210,.2);
+    transition:transform .12s ease, background .2s ease, border-color .2s ease;
+  }
+  #scBtn:hover{background:linear-gradient(180deg,rgba(216,164,78,.42),rgba(216,164,78,.2));border-color:rgba(255,225,170,.55);}
+  #scBtn:active{transform:scale(.95);}
+  #scFoot{margin-top:11px;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);}
+
+  #pausev{
+    position:absolute;inset:0;z-index:7;display:none;
+    align-items:center;justify-content:center;flex-direction:column;gap:8px;
+    background:rgba(3,8,5,.74);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+    cursor:pointer;
+  }
+  #pausev.on{display:flex;}
+  #pausev .pt{
+    font-size:clamp(22px,6vw,34px);font-weight:800;letter-spacing:.4em;
+    text-transform:uppercase;color:#fff2d6;text-shadow:0 0 30px rgba(255,190,110,.3);
+  }
+  #pausev .ps{font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:var(--faint);}
+  @media (max-width:400px){
+    .ht span{font-size:10.5px;}
+    #scSub{font-size:11.5px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.01ms !important;}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="hcol">
+      <div class="lbl">Score</div>
+      <div class="val" id="scoreV">0</div>
+      <div class="sub" id="batchV">Batch I</div>
+    </div>
+    <div class="hcol c">
+      <div class="lbl" id="ruleV">The alloy is light</div>
+      <div id="weights"></div>
+      <div class="lbl" id="weighLbl" style="margin-top:2px">Weighings</div>
+    </div>
+    <div class="hcol r">
+      <div id="rgroup">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+          <div id="seals"></div>
+          <div class="lbl">Seals</div>
+        </div>
+        <button id="mute" aria-label="Toggle sound">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 9.5v5h3.2L12 18.5v-13L7.2 9.5H4z" fill="currentColor" stroke="none"/>
+            <g class="wave"><path d="M15.4 9.2a4 4 0 0 1 0 5.6"/><path d="M17.9 6.8a7.5 7.5 0 0 1 0 10.4"/></g>
+            <path class="slash" d="M3 3l18 18" stroke="#ff8a7a" stroke-width="2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen">
+    <div id="card">
+      <div id="scEyebrow"></div>
+      <h1 id="scTitle"></h1>
+      <div id="scRule"></div>
+      <div id="scSub"></div>
+      <div id="scBody"></div>
+      <button id="scBtn"></button>
+      <div id="scFoot"></div>
+    </div>
+  </div>
+
+  <div id="pausev">
+    <div class="pt">Paused</div>
+    <div class="ps">Click or press any key to resume</div>
+  </div>
+</div>
+<script>
+/* =====================================================================
+   ASSAY  -  a candlelit balance-scale deduction game
+   One self-contained file. No network, no storage, no dependencies.
+   ===================================================================== */
+(function(){
+'use strict';
+
+/* ------------------------------ utils ------------------------------- */
+var PI = Math.PI, TAU = PI*2;
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function easeOutCubic(t){ var u=1-t; return 1-u*u*u; }
+function easeOutBack(t){ var c=1.70158; var u=t-1; return 1+ (c+1)*u*u*u + c*u*u; }
+function rnd(a,b){ return a + Math.random()*(b-a); }
+function hash1(n){ var s = Math.sin(n*127.1)*43758.5453; return s - Math.floor(s); }
+/* frame-rate independent approach */
+function approach(cur, tgt, rate, dt){ return tgt + (cur-tgt)*Math.exp(-rate*dt); }
+function roman(n){
+  if (n<1 || n>3999) return ''+n;
+  var v=[1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  var s=['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
+  var out='', i;
+  for(i=0;i<v.length;i++){ while(n>=v[i]){ out+=s[i]; n-=v[i]; } }
+  return out;
+}
+
+/* ------------------------------ audio ------------------------------- */
+var Snd = {
+  ctx:null, master:null, noise:null, muted:false, ready:false,
+  init:function(){
+    if (this.ctx) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { this.ctx = new AC(); } catch(e){ this.ctx = null; return; }
+    var c = this.ctx;
+    this.master = c.createGain();
+    this.master.gain.value = this.muted ? 0 : 0.32;
+    this.master.connect(c.destination);
+    var len = Math.floor(c.sampleRate * 1.4), i;
+    var buf = c.createBuffer(1, len, c.sampleRate);
+    var d = buf.getChannelData(0);
+    for (i=0;i<len;i++) d[i] = Math.random()*2-1;
+    this.noise = buf;
+    this.ready = true;
+  },
+  unlock:function(){
+    this.init();
+    if (this.ctx && this.ctx.state === 'suspended'){ try{ this.ctx.resume(); }catch(e){} }
+  },
+  setMuted:function(m){
+    this.muted = m;
+    if (this.master && this.ctx){
+      var t = this.ctx.currentTime;
+      this.master.gain.cancelScheduledValues(t);
+      this.master.gain.setTargetAtTime(m?0:0.32, t, 0.02);
+    }
+  },
+  tone:function(freq, dur, type, vol, delay, glideTo){
+    if (!this.ready || this.muted) return;
+    var c = this.ctx, t0 = c.currentTime + (delay||0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,glideTo), t0+dur);
+    var atk = Math.min(0.010, dur*0.3);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0+atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t0); o.stop(t0+dur+0.03);
+  },
+  burst:function(dur, cut, vol, delay, type, q, glideCut, rate){
+    if (!this.ready || this.muted) return;
+    var c = this.ctx, t0 = c.currentTime + (delay||0);
+    var s = c.createBufferSource(); s.buffer = this.noise;
+    s.playbackRate.value = rate || (0.85 + Math.random()*0.3);
+    var f = c.createBiquadFilter(); f.type = type || 'lowpass';
+    f.frequency.setValueAtTime(cut, t0);
+    if (glideCut) f.frequency.exponentialRampToValueAtTime(Math.max(60,glideCut), t0+dur);
+    f.Q.value = q || 0.8;
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), t0+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t0); s.stop(t0+dur+0.03);
+  },
+
+  clink:function(vol, delay){
+    if (!this.ready || this.muted) return;
+    var base = 2350 * (0.88 + Math.random()*0.3);
+    var v = (vol===undefined?1:vol);
+    this.tone(base, 0.085, 'sine', 0.085*v, delay||0);
+    this.tone(base*1.503, 0.055, 'sine', 0.05*v, delay||0);
+    this.tone(base*0.502, 0.11, 'triangle', 0.035*v, delay||0);
+    this.burst(0.028, 5200, 0.05*v, delay||0, 'highpass', 0.8);
+  },
+  creak:function(){
+    if (!this.ready || this.muted) return;
+    var c=this.ctx, t0=c.currentTime;
+    var s=c.createBufferSource(); s.buffer=this.noise; s.playbackRate.value=0.28;
+    var f=c.createBiquadFilter(); f.type='bandpass'; f.Q.value=7.5;
+    f.frequency.setValueAtTime(240, t0);
+    f.frequency.linearRampToValueAtTime(760, t0+0.42);
+    var g=c.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(0.13, t0+0.07);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.52);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t0); s.stop(t0+0.56);
+    this.tone(78, 0.42, 'sawtooth', 0.05, 0, 58);
+    this.tone(117, 0.34, 'triangle', 0.028, 0.03, 92);
+  },
+  chk:function(delay){
+    this.burst(0.026, 3400, 0.075, delay||0, 'highpass', 1.2);
+    this.tone(1720, 0.045, 'sine', 0.05, delay||0);
+    this.tone(2580, 0.03, 'sine', 0.026, delay||0);
+  },
+  thunk:function(){
+    this.tone(128, 0.30, 'sine', 0.36, 0, 44);
+    this.tone(74, 0.36, 'sine', 0.24, 0.01, 38);
+    this.burst(0.13, 900, 0.26, 0, 'lowpass', 0.9, 180);
+    this.burst(0.05, 4200, 0.10, 0, 'highpass', 0.7);
+  },
+  press:function(){
+    this.burst(0.20, 1600, 0.07, 0, 'lowpass', 0.9, 420);
+    this.tone(210, 0.18, 'triangle', 0.04, 0, 160);
+  },
+  chime:function(){
+    var base=523.25, seq=[0,4,7,12,16], i;
+    for(i=0;i<seq.length;i++){
+      var f = base*Math.pow(2,seq[i]/12);
+      this.tone(f, 0.42, 'triangle', 0.15, i*0.075);
+      this.tone(f*2, 0.24, 'sine', 0.05, i*0.075);
+    }
+    this.tone(base*Math.pow(2,19/12), 0.9, 'triangle', 0.11, 0.40);
+  },
+  sting:function(){
+    this.tone(233.1, 0.55, 'sawtooth', 0.10, 0);
+    this.tone(246.9, 0.55, 'sawtooth', 0.10, 0.005);
+    this.tone(116.5, 0.60, 'square', 0.055, 0, 92);
+    this.burst(0.30, 1500, 0.16, 0, 'lowpass', 1.0, 240);
+  },
+  deny:function(){
+    this.tone(180, 0.13, 'square', 0.07, 0, 132);
+    this.burst(0.09, 700, 0.06, 0, 'lowpass', 1.0);
+  },
+  crack:function(){
+    this.burst(0.22, 2600, 0.20, 0, 'highpass', 0.9, 700);
+    this.tone(320, 0.16, 'square', 0.07, 0, 150);
+  },
+  over:function(){
+    var seq=[0,-3,-7,-10,-15], i;
+    for(i=0;i<seq.length;i++){
+      this.tone(392*Math.pow(2,seq[i]/12), 0.52, 'triangle', 0.13, i*0.20);
+      this.tone(196*Math.pow(2,seq[i]/12), 0.60, 'sine', 0.07, i*0.20);
+    }
+  },
+  batch:function(){
+    this.tone(196, 0.5, 'triangle', 0.09, 0);
+    this.tone(294, 0.5, 'triangle', 0.07, 0.09);
+    this.burst(0.35, 800, 0.05, 0, 'lowpass', 0.8, 300);
+  }
+};
+
+/* ---------------------------- constants ----------------------------- */
+var GEN = 10;            /* weight of a genuine coin, in units      */
+var MAXA = 0.185;        /* max beam tilt, radians                  */
+var CANDLE_MAX = 90;     /* seconds of candle per batch             */
+var MAXFRAME = 1/20;     /* dt cap                                  */
+var PARTMAX = 260;
+
+/* --------------------------- round schedule -------------------------- */
+var LATE_N = [14,18,22,27,33,40,45,50,56,60];
+function roundConfig(r){
+  if (r===1) return {n:5,  unk:false, k:2};
+  if (r===2) return {n:8,  unk:false, k:2};
+  if (r===3) return {n:9,  unk:false, k:2};
+  if (r===4) return {n:8,  unk:true,  k:3};
+  if (r===5) return {n:12, unk:true,  k:3};
+  if (r===6) return {n:13, unk:true,  k:3};
+  var n = LATE_N[Math.min(r-7, LATE_N.length-1)];
+  var k = 2, cap = 4;
+  while (n > cap){ k++; cap = (Math.pow(3,k)-1)/2; }
+  return {n:n, unk:true, k:k};
+}
+
+/* ------------------------------ state ------------------------------- */
+var S = {
+  mode:'title',        /* title | banner | play | over            */
+  paused:false,
+  t:0,                 /* seconds in current mode                 */
+  now:0,               /* seconds since boot (unpaused sim time)  */
+  round:1, score:0, scoreShown:0, seals:3, bestRound:1,
+  coins:[], n:0, fake:-1, fakeDir:-1, unknown:false,
+  kMax:3, kUsed:0,
+  hyp:[], log:[],
+  panL:[], panR:[],
+  candle:CANDLE_MAX,
+  beamA:0, beamV:0, beamTarget:0,
+  locked:false,        /* input lock during animations            */
+  result:0, resultShow:0, hasResult:false,
+  drag:null, sel:-1, numBuf:'', numBufT:0,
+  confirm:null,        /* {coin, t}                               */
+  reveal:null,         /* {coin, ok, t, breakdown}                */
+  press:0,             /* anvil press animation 0..1              */
+  shake:0, shakeT:0,
+  timers:[], parts:[], toast:null,
+  hoverTarget:'', flick:1,
+  weighFlash:0, weighPress:0, pressWeigh:false
+};
+
+/* ------------------------- hypothesis engine ------------------------ */
+/* A hypothesis is {c: coinId, d: +1 heavy | -1 light}.
+   predict() simulates the pan totals exactly as the physical scale does. */
+function predict(h, w){
+  var lt = w.L.length*GEN, rt = w.R.length*GEN, i;
+  for (i=0;i<w.L.length;i++) if (w.L[i]===h.c) lt += h.d;
+  for (i=0;i<w.R.length;i++) if (w.R[i]===h.c) rt += h.d;
+  return lt>rt ? 1 : (lt<rt ? -1 : 0);
+}
+function buildHypotheses(n, unknown){
+  var out=[], i;
+  for (i=0;i<n;i++){
+    out.push({c:i, d:-1});
+    if (unknown) out.push({c:i, d:1});
+  }
+  return out;
+}
+/* Re-filter every hypothesis against every recorded weighing.  Returns the
+   set of coin ids that no longer appear in ANY surviving hypothesis. */
+function refilter(){
+  var keep=[], i, j, h, ok;
+  for (i=0;i<S.hyp.length;i++){
+    h = S.hyp[i]; ok = true;
+    for (j=0;j<S.log.length;j++){
+      if (predict(h, S.log[j]) !== S.log[j].out){ ok=false; break; }
+    }
+    if (ok) keep.push(h);
+  }
+  S.hyp = keep;
+  var alive = {}, newly = [];
+  for (i=0;i<keep.length;i++) alive[keep[i].c] = 1;
+  for (i=0;i<S.coins.length;i++){
+    /* `pending` guards against queueing a second stamp for a coin whose
+       staggered stamp animation has not fired yet. */
+    if (!S.coins[i].cleared && !S.coins[i].pending && !alive[i]){
+      S.coins[i].pending = true;
+      newly.push(i);
+    }
+  }
+  return newly;
+}
+
+/* ------------------------------ timers ------------------------------ */
+function after(sec, fn){ S.timers.push({t:S.now+sec, fn:fn}); }
+function runTimers(){
+  var i=0, arr=S.timers;
+  while (i<arr.length){
+    if (S.now >= arr[i].t){ var f=arr[i].fn; arr.splice(i,1); f(); }
+    else i++;
+  }
+}
+
+/* ----------------------------- particles ---------------------------- */
+var partPool = [];
+(function(){ for (var i=0;i<PARTMAX;i++) partPool.push({live:false,x:0,y:0,vx:0,vy:0,g:0,life:0,max:0,r:0,c:0,rot:0,vr:0,shape:0}); })();
+function spawn(x,y,vx,vy,life,r,c,shape,g){
+  var i, p=null;
+  for (i=0;i<PARTMAX;i++){ if(!partPool[i].live){ p=partPool[i]; break; } }
+  if (!p) return;
+  p.live=true; p.x=x; p.y=y; p.vx=vx; p.vy=vy; p.life=life; p.max=life;
+  p.r=r; p.c=c; p.shape=shape||0; p.g=(g===undefined?820:g);
+  p.rot=Math.random()*TAU; p.vr=rnd(-7,7);
+  return p;
+}
+function burstGold(x,y,count,power){
+  var i;
+  for (i=0;i<count;i++){
+    var a = rnd(0,TAU), sp = rnd(0.25,1)*power;
+    spawn(x, y, Math.cos(a)*sp, Math.sin(a)*sp - power*0.35,
+          rnd(0.5,1.1), rnd(1.6,4.2), 0, (i%3===0)?1:0);
+  }
+}
+function burstShards(x,y,count,col){
+  var i;
+  for (i=0;i<count;i++){
+    var a = rnd(-PI,0), sp = rnd(60,320);
+    spawn(x, y, Math.cos(a)*sp, Math.sin(a)*sp, rnd(0.5,1.0), rnd(1.5,3.6), col, 2);
+  }
+}
+function updateParts(dt){
+  var i,p;
+  for (i=0;i<PARTMAX;i++){
+    p = partPool[i]; if (!p.live) continue;
+    p.life -= dt;
+    if (p.life<=0){ p.live=false; continue; }
+    p.vy += p.g*dt;
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.vx *= Math.exp(-1.4*dt);
+    p.rot += p.vr*dt;
+  }
+}
+
+/* ------------------------------ canvas ------------------------------ */
+var cv = document.getElementById('game');
+var ctx = cv.getContext('2d', {alpha:false});
+var DPR = 1, W = 0, H = 0;
+var bg = document.createElement('canvas'), bgc = bg.getContext('2d');
+var ledgerCv = document.createElement('canvas'), ledgerCtx = ledgerCv.getContext('2d');
+var ledgerDirty = true;
+var coinSprite = null, coinSpriteDim = null, coinSpriteR = 0;
+var panSprite = null, panSpriteR = 0;
+
+var L = {
+  hudH:0, pad:10,
+  ledger:{x:0,y:0,w:0,h:0},
+  candle:{x:0,y:0,w:0,h:0},
+  cx:0, beamY:0, beamHalf:0, rope:0, panR:0, postY:0, footH:12,
+  plaqueY:0, plaqueH:26, trayRows:1,
+  shelfY:0, shelfH:0,
+  weigh:{x:0,y:0,w:0,h:0},
+  anvil:{x:0,y:0,w:0,h:0},
+  tray:{x:0,y:0,w:0,h:0},
+  trayR:12, trayCols:1, trayGX:0, trayGY:0, trayStep:0,
+  panCR:11, panCols:3, panStep:0, panRows:1, panCap:4, panStackF:0.8,
+  narrow:false
+};
+
+function computeLayout(){
+  var r = cv.getBoundingClientRect ? wrapRect() : null;
+  W = r.w; H = r.h;
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+
+  var hudEl = document.getElementById('hud');
+  var hh = hudEl.getBoundingClientRect().height;
+  L.hudH = clamp(hh+4, 48, 110);
+  L.narrow = W < 620;
+  var pad = L.pad = clamp(W*0.022, 7, 18);
+
+  /* --- bottom-up: tray, shelf --- */
+  var maxTrayH = clamp(H*0.245, 92, 230);
+  var shelfH = clamp(H*0.105, 54, 88);
+  if (H < 520){ maxTrayH = clamp(H*0.26, 84, 150); shelfH = clamp(H*0.11,48,64); }
+  L.tray.x = pad; L.tray.w = W-pad*2;
+  /* size the tray to the rows the batch actually needs, then hand the slack
+     back to the scale above it */
+  L.tray.h = maxTrayH; L.tray.y = H - maxTrayH - pad*0.6;
+  layoutTray();
+  L.tray.h = clamp(L.trayRows*L.trayStep + 14, 56, maxTrayH);
+  L.tray.y = H - L.tray.h - pad*0.6;
+  layoutTray();
+  L.shelfH = shelfH; L.shelfY = L.tray.y - shelfH - pad*0.55;
+
+  /* weigh button + anvil sit side by side on the shelf */
+  var inner = W - pad*2, gap = clamp(W*0.02,7,16);
+  var wW = Math.min(inner*0.56 - gap*0.5, 330);
+  var aW = Math.min(inner*0.44 - gap*0.5, 260);
+  var totalW = wW + aW + gap;
+  var sx = (W - totalW)/2;
+  L.weigh.x = sx; L.weigh.y = L.shelfY; L.weigh.w = wW; L.weigh.h = shelfH;
+  L.anvil.x = sx+wW+gap; L.anvil.y = L.shelfY; L.anvil.w = aW; L.anvil.h = shelfH;
+
+  /* --- scale zone --- */
+  var zy = L.hudH, zh = L.shelfY - pad*0.6 - zy;
+  var lw = clamp(W*0.23, 80, 210);
+  var lavail = Math.max(60, zh - pad*0.8);
+  L.ledger.x = pad; L.ledger.y = zy + pad*0.4; L.ledger.w = lw;
+  /* only as tall as the batch's weighings can fill */
+  L.ledger.h = clamp(52 + S.kMax*76, 130, lavail);
+
+  var cw = clamp(W*0.055, 20, 54);
+  L.candle.w = cw; L.candle.x = W - pad - cw;
+  L.candle.h = Math.min(zh*0.86, 210);
+  L.candle.y = zy + zh - L.candle.h - pad*0.3;
+
+  var sxL = L.ledger.x + L.ledger.w + pad*0.7;
+  var sxR = L.candle.x - pad*0.7;
+  var sw = Math.max(140, sxR - sxL);
+  L.cx = (sxL + sxR)/2;
+  L.beamY = zy + zh*0.19;
+
+  /* pans - sized so the stand's foot lands clear of the shelf below */
+  var maxHalf = sw*0.5 - 4;
+  /* a dish is 1.3 pan-radii wide either side of its rope, so the beam has to
+     be shortened by that much or the pans hang off the edge of the table;
+     0.33 keeps a clear gap between the two dishes as well */
+  L.panR = clamp(Math.min(maxHalf*0.33, zh*0.20), 20, 96);
+  L.beamHalf = clamp(maxHalf - L.panR*1.32, 30, 330);
+  L.rope = clamp(zh*0.23, 30, 112);
+  L.footH = Math.max(9, L.panR*0.30);
+  L.postY = zy + zh - L.footH - 4;
+  /* the result plaque is mounted on the column, below the lowest a pan can
+     swing and above the foot */
+  L.plaqueH = clamp(W*0.05, 22, 32);
+  var panLow = L.beamY + L.beamHalf*0.19 + L.rope + L.panR*0.88;
+  L.plaqueY = clamp(L.postY - L.footH*1.7 - L.plaqueH - 10,
+                    panLow + 8, L.postY - L.footH - L.plaqueH - 4);
+  L.plaqueY = Math.min(L.plaqueY, L.shelfY - L.plaqueH - 4);
+
+  layoutPanGrid();
+  ledgerDirty = true;
+  buildBackground();
+  coinSpriteR = 0; panSpriteR = 0;   /* force sprite rebuild */
+}
+function wrapRect(){
+  var w = document.getElementById('wrap');
+  var b = w.getBoundingClientRect();
+  return {w:Math.max(240,Math.round(b.width)), h:Math.max(320,Math.round(b.height))};
+}
+
+/* Fit n coin sockets in the tray. */
+function layoutTray(){
+  var n = Math.max(1, S.n||5);
+  var tw = L.tray.w - 14, th = L.tray.h - 14;
+  var r = Math.min(34, Math.floor(Math.min(tw,th)/2));
+  var cols=1, rows=1, step=1;
+  for (; r>=6; r-=0.5){
+    step = r*2 + Math.max(3, r*0.30);
+    cols = Math.max(1, Math.floor(tw/step));
+    rows = Math.ceil(n/cols);
+    if (rows*step <= th) break;
+  }
+  /* never below the sprite floor, or the lazy sprite rebuild would loop */
+  r = Math.max(6, r);
+  /* rebalance so the last row is not a stub: 40 coins read better as
+     14/14/12 than as 19/19/2 */
+  rows = Math.max(1, Math.ceil(n/cols));
+  cols = Math.max(1, Math.ceil(n/rows));
+  L.trayR = r; L.trayCols = cols; L.trayStep = step; L.trayRows = rows;
+  var usedW = Math.min(cols, n)*step;
+  var usedH = rows*step;
+  L.trayGX = L.tray.x + (L.tray.w - usedW)/2 + step/2;
+  L.trayGY = L.tray.y + (L.tray.h - usedH)/2 + step/2;
+}
+
+/* Fit the worst-case pan load, once the scale's own metrics are known.
+   The dish's usable interior is narrower than its rim, and the heap must stay
+   clear of the beam above, so the row spacing tightens rather than letting
+   coins shrink away to nothing. */
+function layoutPanGrid(){
+  var n = Math.max(1, S.n||5);
+  /* pan capacity: never more than half the batch (+1) is a useful weighing */
+  var cap = Math.max(2, Math.ceil(n/2)+1);
+  L.panCap = cap;
+  var pw = L.panR*1.62;
+  var maxTop = L.rope*0.80;
+  var start = Math.min(L.trayR, L.panR*0.44);
+  var floorR = Math.max(6, start*0.42);
+  var cr = start, pc=1, pr=1, pstep=1, fit=false;
+  for (; cr>=floorR; cr-=0.5){
+    pstep = cr*2 + Math.max(2, cr*0.16);
+    pc = Math.max(1, Math.floor(pw/pstep));
+    pr = Math.ceil(cap/pc);
+    if ((pr-1)*pstep*0.80 - L.panR*0.10 + cr <= maxTop){ fit=true; break; }
+  }
+  if (!fit){
+    cr = floorR; pstep = cr*1.72;
+    pc = Math.max(1, Math.floor(pw/pstep)); pr = Math.ceil(cap/pc);
+  }
+  /* how tightly rows overlap, chosen so the tallest legal heap always clears */
+  var sf = 0.80;
+  if (pr > 1) sf = clamp((maxTop - cr + L.panR*0.10) / ((pr-1)*pstep), 0.38, 0.80);
+  L.panStackF = sf;
+  L.panCR = cr; L.panCols = pc; L.panStep = pstep; L.panRows = pr;
+}
+
+/* position of tray socket i (fixed per coin id, so the tray never reflows) */
+function traySlot(i, out){
+  var c = i % L.trayCols, r = (i / L.trayCols)|0;
+  out.x = L.trayGX + c*L.trayStep;
+  out.y = L.trayGY + r*L.trayStep;
+  return out;
+}
+/* pan pivot positions from the current beam angle */
+var _pl={x:0,y:0}, _pr={x:0,y:0};
+function panPos(side){
+  var a = S.beamA, s = Math.sin(a), c = Math.cos(a);
+  var o = side==='L' ? _pl : _pr;
+  var dir = side==='L' ? -1 : 1;
+  o.x = L.cx + dir*L.beamHalf*c;
+  o.y = L.beamY - dir*L.beamHalf*s + L.rope;
+  return o;
+}
+/* offset of the k-th coin resting in a pan.  Row 0 is the top of the heap;
+   the last row nestles just inside the rim of the dish. */
+var _po={x:0,y:0};
+function panSlot(k, count){
+  var cols = L.panCols, step = L.panStep;
+  var rows = Math.ceil(count/cols);
+  var row = (k/cols)|0, col = k%cols;
+  var inRow = Math.min(cols, count - row*cols);
+  _po.x = (col - (inRow-1)/2)*step;
+  _po.y = L.panR*0.10 - (rows-1-row)*step*L.panStackF;
+  return _po;
+}
+
+/* ------------------------- cached gradients ------------------------- */
+/* Every gradient whose geometry depends only on the layout is built once here,
+   so the steady-state render loop allocates nothing. */
+var G = {};
+function buildGradients(){
+  var g, b;
+
+  g = ctx.createLinearGradient(0,-1,0,1);
+  g.addColorStop(0,'#ffe7b4'); g.addColorStop(.35,'#d9a648'); g.addColorStop(.62,'#a5762c'); g.addColorStop(1,'#5d3f16');
+  G.beam = g;
+
+  /* stand */
+  var bw = L.panR*1.32;
+  g = ctx.createLinearGradient(L.cx-bw, 0, L.cx+bw, 0);
+  g.addColorStop(0,'#523714'); g.addColorStop(.3,'#c79641'); g.addColorStop(.55,'#8e6626'); g.addColorStop(1,'#40290e');
+  G.base = g;
+  var pw = Math.max(5, L.panR*0.17);
+  g = ctx.createLinearGradient(L.cx-pw, 0, L.cx+pw, 0);
+  g.addColorStop(0,'#5c3f16'); g.addColorStop(.28,'#e2be79'); g.addColorStop(.55,'#a97c31'); g.addColorStop(1,'#4a3211');
+  G.post = g;
+  /* pivot boss, in beam-local space */
+  var pr = Math.max(4.5, L.panR*0.15)*2.3;
+  g = ctx.createRadialGradient(-pr*0.3,-pr*0.35,pr*0.1, 0,0,pr);
+  g.addColorStop(0,'#fff0cc'); g.addColorStop(.5,'#cf9f47'); g.addColorStop(1,'#6b4a17');
+  G.pivot = g;
+
+  /* weigh button, drawn at rest position then translated when pressed */
+  b = L.weigh;
+  g = ctx.createLinearGradient(0,b.y,0,b.y+b.h);
+  g.addColorStop(0,'#f6d288'); g.addColorStop(.45,'#c9922f'); g.addColorStop(.55,'#b3801f'); g.addColorStop(1,'#6d4c12');
+  G.weighOn = g;
+  g = ctx.createLinearGradient(0,b.y,0,b.y+b.h);
+  g.addColorStop(0,'#4d4738'); g.addColorStop(.5,'#39352a'); g.addColorStop(1,'#25231b');
+  G.weighOff = g;
+
+  /* anvil */
+  b = L.anvil;
+  g = ctx.createLinearGradient(0,b.y,0,b.y+b.h);
+  g.addColorStop(0,'#3d4045'); g.addColorStop(.35,'#2a2d31'); g.addColorStop(1,'#141618');
+  G.anvilBlock = g;
+  g = ctx.createLinearGradient(b.x,0,b.x+b.w,0);
+  g.addColorStop(0,'#2c2f33'); g.addColorStop(.4,'#565a60'); g.addColorStop(1,'#23262a');
+  G.anvilTop = g;
+  var pcx = b.x+b.w*0.5, ppw = Math.min(b.w*0.30, b.h*0.62);
+  g = ctx.createLinearGradient(pcx-ppw*0.5,0,pcx+ppw*0.5,0);
+  g.addColorStop(0,'#6d1a20'); g.addColorStop(.35,'#d24a52'); g.addColorStop(.7,'#a3202a'); g.addColorStop(1,'#5c1218');
+  G.anvilPress = g;
+
+  /* candle */
+  var r = L.candle, ccx = r.x + r.w*0.5, cw = r.w*0.62;
+  g = ctx.createLinearGradient(ccx-r.w*0.5,0,ccx+r.w*0.5,0);
+  g.addColorStop(0,'#4a3211'); g.addColorStop(.3,'#d2a24a'); g.addColorStop(.6,'#8b6323'); g.addColorStop(1,'#3d290d');
+  G.holder = g;
+  g = ctx.createLinearGradient(ccx-cw*0.5,0,ccx+cw*0.5,0);
+  g.addColorStop(0,'#c9b591'); g.addColorStop(.28,'#f6ecd6'); g.addColorStop(.62,'#e2d2b2'); g.addColorStop(1,'#9e8b68');
+  G.wax = g;
+
+  /* result plaque */
+  var py = L.plaqueY, ph = L.plaqueH;
+  g = ctx.createLinearGradient(0,py,0,py+ph);
+  g.addColorStop(0,'rgba(30,42,34,.92)'); g.addColorStop(1,'rgba(12,20,15,.92)');
+  G.plaque = g;
+}
+
+/* ---------------------------- background ---------------------------- */
+function buildBackground(){
+  bg.width = Math.round(W*DPR); bg.height = Math.round(H*DPR);
+  var c = bgc;
+  c.setTransform(DPR,0,0,DPR,0,0);
+  c.clearRect(0,0,W,H);
+
+  /* felt */
+  var g = c.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#0d1c14'); g.addColorStop(.55,'#08150f'); g.addColorStop(1,'#040b07');
+  c.fillStyle = g; c.fillRect(0,0,W,H);
+
+  /* warm pool of candlelight, baked soft */
+  var cxg = L.candle.x + L.candle.w*0.5, cyg = L.candle.y + L.candle.h*0.12;
+  g = c.createRadialGradient(cxg, cyg, 8, cxg, cyg, Math.max(W,H)*0.86);
+  g.addColorStop(0,'rgba(255,190,105,.20)');
+  g.addColorStop(.32,'rgba(255,160,80,.075)');
+  g.addColorStop(1,'rgba(255,140,60,0)');
+  c.fillStyle = g; c.fillRect(0,0,W,H);
+
+  /* felt grain */
+  var i, n = Math.min(4200, Math.floor(W*H/240));
+  c.save();
+  for (i=0;i<n;i++){
+    var x = hash1(i*1.7)*W, y = hash1(i*3.1+7)*H;
+    var a = 0.012 + hash1(i*5.3)*0.03;
+    c.fillStyle = (i%5===0) ? 'rgba(255,225,180,'+a+')' : 'rgba(0,0,0,'+(a*1.5)+')';
+    c.fillRect(x, y, 1.2, 1.2);
+  }
+  c.restore();
+
+  /* table shadow under the scale */
+  g = c.createRadialGradient(L.cx, L.postY, 4, L.cx, L.postY, Math.min(W*0.5, 320));
+  g.addColorStop(0,'rgba(0,0,0,.44)'); g.addColorStop(1,'rgba(0,0,0,0)');
+  c.fillStyle=g; c.beginPath(); c.ellipse(L.cx, L.postY, Math.min(W*0.42,300), 26, 0,0,TAU); c.fill();
+
+  /* ledger drop shadow, baked so the ledger blit needs no per-frame shadow */
+  c.save();
+  c.shadowColor='rgba(0,0,0,.55)'; c.shadowBlur=14; c.shadowOffsetY=5;
+  c.fillStyle='rgba(0,0,0,.9)';
+  rrect(c, L.ledger.x+2, L.ledger.y+2, L.ledger.w-4, L.ledger.h-4, 5); c.fill();
+  c.restore();
+
+  /* --- the tray --- */
+  drawTrayWood(c);
+
+  /* vignette */
+  g = c.createRadialGradient(W*0.5, H*0.46, Math.min(W,H)*0.30, W*0.5, H*0.5, Math.max(W,H)*0.78);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(.62,'rgba(0,0,0,.30)'); g.addColorStop(1,'rgba(0,0,0,.74)');
+  c.fillStyle=g; c.fillRect(0,0,W,H);
+}
+function rrect(c,x,y,w,h,r){
+  r = Math.min(r, w*0.5, h*0.5);
+  c.beginPath();
+  c.moveTo(x+r,y); c.lineTo(x+w-r,y); c.arcTo(x+w,y,x+w,y+r,r);
+  c.lineTo(x+w,y+h-r); c.arcTo(x+w,y+h,x+w-r,y+h,r);
+  c.lineTo(x+r,y+h); c.arcTo(x,y+h,x,y+h-r,r);
+  c.lineTo(x,y+r); c.arcTo(x,y,x+r,y,r);
+  c.closePath();
+}
+function drawTrayWood(c){
+  var t = L.tray, r = clamp(t.h*0.09, 6, 14);
+  c.save();
+  c.shadowColor='rgba(0,0,0,.6)'; c.shadowBlur=18; c.shadowOffsetY=6;
+  var g = c.createLinearGradient(0,t.y,0,t.y+t.h);
+  g.addColorStop(0,'#3a2717'); g.addColorStop(.10,'#2c1d11'); g.addColorStop(1,'#1a1109');
+  c.fillStyle=g; rrect(c,t.x,t.y,t.w,t.h,r); c.fill();
+  c.shadowColor='transparent'; c.shadowBlur=0; c.shadowOffsetY=0;
+  /* grain */
+  var i;
+  for (i=0;i<44;i++){
+    var y = t.y + 4 + hash1(i*2.3)*(t.h-8);
+    c.strokeStyle = 'rgba(255,205,150,'+(0.012+hash1(i*7.7)*0.028)+')';
+    c.lineWidth = 0.6 + hash1(i*3.9)*1.1;
+    c.beginPath(); c.moveTo(t.x+3, y);
+    c.bezierCurveTo(t.x+t.w*0.33, y+hash1(i*11.1)*5-2.5, t.x+t.w*0.66, y-hash1(i*13.3)*5+2.5, t.x+t.w-3, y);
+    c.stroke();
+  }
+  /* inner bevel */
+  c.strokeStyle='rgba(0,0,0,.55)'; c.lineWidth=2;
+  rrect(c,t.x+2.5,t.y+2.5,t.w-5,t.h-5,r-2); c.stroke();
+  c.strokeStyle='rgba(255,205,150,.10)'; c.lineWidth=1;
+  rrect(c,t.x+0.5,t.y+0.5,t.w-1,t.h-1,r); c.stroke();
+
+  /* sockets */
+  var s = {x:0,y:0}, rr = L.trayR;
+  for (i=0;i<S.n;i++){
+    traySlot(i,s);
+    var sg = c.createRadialGradient(s.x, s.y-rr*0.2, rr*0.1, s.x, s.y, rr*1.02);
+    sg.addColorStop(0,'rgba(0,0,0,.52)'); sg.addColorStop(.75,'rgba(0,0,0,.34)'); sg.addColorStop(1,'rgba(0,0,0,0)');
+    c.fillStyle=sg; c.beginPath(); c.arc(s.x,s.y,rr*1.02,0,TAU); c.fill();
+    c.strokeStyle='rgba(255,210,160,.07)'; c.lineWidth=1;
+    c.beginPath(); c.arc(s.x,s.y-0.5,rr*0.94,PI*0.15,PI*0.85); c.stroke();
+  }
+  c.restore();
+}
+
+/* ---------------------------- coin sprites --------------------------- */
+var SPRPAD = 5;
+function buildCoinSprites(){
+  var r = L.trayR;
+  coinSpriteR = r;
+  coinSprite = makeCoin(r, false);
+  coinSpriteDim = makeCoin(r, true);
+  panSpriteR = L.panR;
+  panSprite = makePan(L.panR);
+  if (!sealSprite) sealSprite = makeSeal(SEALR);
+}
+/* the proven-genuine seal is drawn on every cleared coin every frame, so it
+   is a sprite rather than a fresh radial gradient per coin */
+var SEALR = 34, sealSprite = null;
+function makeSeal(r){
+  var s = document.createElement('canvas');
+  var size = Math.ceil((r+3)*2*2);
+  s.width = size; s.height = size;
+  var c = s.getContext('2d');
+  c.setTransform(2,0,0,2,0,0);
+  var cx = r+3, cy = r+3;
+  var g = c.createRadialGradient(cx-r*0.3, cy-r*0.35, r*0.1, cx, cy, r);
+  g.addColorStop(0,'#a8f0c0'); g.addColorStop(.5,'#3f9f63'); g.addColorStop(1,'#14512c');
+  c.fillStyle=g;
+  c.beginPath(); c.arc(cx,cy,r,0,TAU); c.fill();
+  c.strokeStyle='rgba(210,255,225,.6)'; c.lineWidth=r*0.12;
+  c.beginPath(); c.arc(cx,cy,r*0.99,0,TAU); c.stroke();
+  c.strokeStyle='#eafff0'; c.lineWidth=r*0.28; c.lineCap='round'; c.lineJoin='round';
+  c.beginPath();
+  c.moveTo(cx-r*0.42, cy+r*0.02);
+  c.lineTo(cx-r*0.08, cy+r*0.36);
+  c.lineTo(cx+r*0.46, cy-r*0.38);
+  c.stroke();
+  return s;
+}
+function makeCoin(r, dim){
+  var s = document.createElement('canvas');
+  var size = Math.ceil((r+SPRPAD)*2*DPR);
+  s.width = size; s.height = size;
+  var c = s.getContext('2d');
+  c.setTransform(DPR,0,0,DPR,0,0);
+  var cx = r+SPRPAD, cy = r+SPRPAD, i;
+
+  c.save();
+  c.shadowColor='rgba(0,0,0,.55)'; c.shadowBlur=r*0.35; c.shadowOffsetY=r*0.13;
+  c.fillStyle='#000'; c.beginPath(); c.arc(cx,cy,r*0.96,0,TAU); c.fill();
+  c.restore();
+
+  /* milled edge */
+  c.save(); c.translate(cx,cy);
+  var edge = c.createLinearGradient(-r,-r,r,r);
+  if (dim){ edge.addColorStop(0,'#8f8a7a'); edge.addColorStop(.5,'#5a5449'); edge.addColorStop(1,'#37332c'); }
+  else { edge.addColorStop(0,'#ffeec2'); edge.addColorStop(.42,'#d7a447'); edge.addColorStop(1,'#7a5218'); }
+  c.fillStyle = edge;
+  c.beginPath(); c.arc(0,0,r,0,TAU); c.fill();
+  c.strokeStyle = dim?'rgba(0,0,0,.5)':'rgba(90,58,16,.75)'; c.lineWidth = Math.max(0.7,r*0.045);
+  var ticks = Math.max(18, Math.round(r*2.1));
+  for (i=0;i<ticks;i++){
+    var a = i/ticks*TAU;
+    c.beginPath();
+    c.moveTo(Math.cos(a)*r*0.985, Math.sin(a)*r*0.985);
+    c.lineTo(Math.cos(a)*r*0.86, Math.sin(a)*r*0.86);
+    c.stroke();
+  }
+  /* face */
+  var face = c.createRadialGradient(-r*0.32,-r*0.36, r*0.06, 0,0, r*0.92);
+  if (dim){
+    face.addColorStop(0,'#8c877a'); face.addColorStop(.45,'#635e53'); face.addColorStop(.82,'#454138'); face.addColorStop(1,'#2e2b25');
+  } else {
+    face.addColorStop(0,'#fff3d2'); face.addColorStop(.34,'#f0c672'); face.addColorStop(.70,'#cf9a3c'); face.addColorStop(1,'#8f6320');
+  }
+  c.fillStyle = face;
+  c.beginPath(); c.arc(0,0,r*0.855,0,TAU); c.fill();
+  /* inner ring */
+  c.strokeStyle = dim?'rgba(255,255,255,.07)':'rgba(255,240,200,.30)'; c.lineWidth=Math.max(0.6,r*0.05);
+  c.beginPath(); c.arc(0,0,r*0.755,0,TAU); c.stroke();
+  c.strokeStyle = dim?'rgba(0,0,0,.32)':'rgba(110,72,20,.40)'; c.lineWidth=Math.max(0.5,r*0.035);
+  c.beginPath(); c.arc(0,0,r*0.80,0,TAU); c.stroke();
+  /* specular */
+  var sp = c.createLinearGradient(-r*0.7,-r*0.7,r*0.4,r*0.5);
+  sp.addColorStop(0, dim?'rgba(255,255,255,.14)':'rgba(255,255,255,.42)');
+  sp.addColorStop(.45,'rgba(255,255,255,0)');
+  c.fillStyle=sp;
+  c.beginPath(); c.arc(0,0,r*0.855,0,TAU); c.fill();
+  /* bottom shade */
+  var sh = c.createLinearGradient(0,r*0.1,0,r*0.9);
+  sh.addColorStop(0,'rgba(0,0,0,0)'); sh.addColorStop(1, dim?'rgba(0,0,0,.35)':'rgba(70,40,5,.34)');
+  c.fillStyle=sh;
+  c.beginPath(); c.arc(0,0,r*0.855,0,TAU); c.fill();
+  c.restore();
+  return s;
+}
+function makePan(r){
+  var s = document.createElement('canvas');
+  var pw = Math.ceil(r*2.6*DPR), ph = Math.ceil(r*1.5*DPR);
+  s.width=pw; s.height=ph;
+  var c = s.getContext('2d');
+  c.setTransform(DPR,0,0,DPR,0,0);
+  var cx = r*1.3, cy = r*0.52;
+  c.save();
+  c.shadowColor='rgba(0,0,0,.5)'; c.shadowBlur=r*0.28; c.shadowOffsetY=r*0.12;
+  /* dish body */
+  var g = c.createLinearGradient(0, cy-r*0.4, 0, cy+r*0.72);
+  g.addColorStop(0,'#e8c98a'); g.addColorStop(.28,'#c69a45'); g.addColorStop(.72,'#8d6626'); g.addColorStop(1,'#4c3411');
+  c.fillStyle = g;
+  c.beginPath();
+  c.moveTo(cx-r, cy);
+  c.bezierCurveTo(cx-r*0.92, cy+r*0.62, cx-r*0.5, cy+r*0.80, cx, cy+r*0.80);
+  c.bezierCurveTo(cx+r*0.5, cy+r*0.80, cx+r*0.92, cy+r*0.62, cx+r, cy);
+  c.closePath(); c.fill();
+  c.restore();
+  /* rim ellipse */
+  var rg = c.createLinearGradient(cx-r, cy, cx+r, cy);
+  rg.addColorStop(0,'#8a6224'); rg.addColorStop(.28,'#ffeec0'); rg.addColorStop(.55,'#cd9c42'); rg.addColorStop(1,'#7a5318');
+  c.strokeStyle = rg; c.lineWidth = Math.max(1.6, r*0.10);
+  c.beginPath(); c.ellipse(cx, cy, r, r*0.26, 0, 0, TAU); c.stroke();
+  /* interior */
+  var ig = c.createRadialGradient(cx-r*0.2, cy-r*0.05, r*0.06, cx, cy, r);
+  ig.addColorStop(0,'#5a4318'); ig.addColorStop(.6,'#3d2d10'); ig.addColorStop(1,'#241a09');
+  c.fillStyle = ig;
+  c.beginPath(); c.ellipse(cx, cy, r*0.94, r*0.235, 0,0,TAU); c.fill();
+  c.strokeStyle='rgba(255,225,170,.22)'; c.lineWidth=Math.max(0.7,r*0.03);
+  c.beginPath(); c.ellipse(cx, cy, r*0.94, r*0.235, 0, PI*1.02, PI*1.98); c.stroke();
+  return s;
+}
+
+/* ------------------------------ text -------------------------------- */
+function setFont(size, weight, serif){
+  ctx.font = (weight||600)+' '+size.toFixed(1)+'px '+(serif
+    ? '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif'
+    : 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif');
+}
+/* letter-spaced small caps label */
+function txtLS(s,x,y,sp,col,align){
+  var i, total=0, ws=[];
+  for (i=0;i<s.length;i++){ var w=ctx.measureText(s[i]).width; ws.push(w); total+=w+sp; }
+  total -= sp;
+  var cx = (align==='center') ? x-total/2 : (align==='right' ? x-total : x);
+  ctx.fillStyle=col; ctx.textAlign='left'; ctx.textBaseline='middle';
+  for (i=0;i<s.length;i++){ ctx.fillText(s[i], cx, y); cx += ws[i]+sp; }
+  return total;
+}
+
+/* ----------------------------- the scale ---------------------------- */
+function drawScale(){
+  var c = ctx, a = S.beamA;
+  var zy = L.hudH;
+
+  /* --- stand --- */
+  c.save();
+  /* base plate */
+  var bw = L.panR*1.32, bh = L.footH;
+  c.fillStyle=G.base;
+  c.beginPath(); c.ellipse(L.cx, L.postY, bw, bh, 0,0,TAU); c.fill();
+  c.strokeStyle='rgba(255,235,190,.24)'; c.lineWidth=1.2;
+  c.beginPath(); c.ellipse(L.cx, L.postY, bw, bh, 0, PI, TAU); c.stroke();
+  c.beginPath(); c.ellipse(L.cx, L.postY-bh*0.42, bw*0.62, bh*0.62, 0,0,TAU);
+  c.fillStyle='rgba(0,0,0,.22)'; c.fill();
+
+  /* post */
+  var pw = Math.max(5, L.panR*0.17);
+  c.fillStyle=G.post;
+  c.beginPath();
+  c.moveTo(L.cx-pw*1.35, L.postY-bh*0.3);
+  c.lineTo(L.cx-pw*0.62, L.beamY+6);
+  c.lineTo(L.cx+pw*0.62, L.beamY+6);
+  c.lineTo(L.cx+pw*1.35, L.postY-bh*0.3);
+  c.closePath(); c.fill();
+  /* collar rings */
+  var k;
+  for (k=0;k<2;k++){
+    var yy = lerp(L.beamY+10, L.postY-bh, k?0.62:0.16);
+    var ww = lerp(pw*0.72, pw*1.3, k?0.62:0.16);
+    c.fillStyle='rgba(255,232,180,.16)';
+    c.fillRect(L.cx-ww*1.25, yy, ww*2.5, Math.max(2,pw*0.30));
+    c.fillStyle='rgba(0,0,0,.28)';
+    c.fillRect(L.cx-ww*1.25, yy+Math.max(2,pw*0.30), ww*2.5, Math.max(1,pw*0.16));
+  }
+  c.restore();
+
+  /* --- tilt plate + needle --- */
+  var nl = Math.max(20, L.panR*0.62);
+  c.save();
+  c.strokeStyle='rgba(255,225,175,.16)'; c.lineWidth=1.4;
+  c.beginPath();
+  c.arc(L.cx, L.beamY, nl+7, PI*0.5-MAXA*1.5, PI*0.5+MAXA*1.5);
+  c.stroke();
+  var notch;
+  for (notch=-1; notch<=1; notch++){
+    var na = notch*MAXA;
+    var nx = L.cx + Math.sin(na)*(nl+7), ny = L.beamY + Math.cos(na)*(nl+7);
+    c.fillStyle = notch===0 ? 'rgba(255,225,175,.55)' : 'rgba(255,225,175,.28)';
+    c.beginPath(); c.arc(nx,ny, notch===0?2.4:1.7, 0,TAU); c.fill();
+  }
+  c.translate(L.cx, L.beamY); c.rotate(-a);
+  c.strokeStyle = 'rgba(255,238,200,.72)'; c.lineWidth=Math.max(1.4, L.panR*0.045);
+  c.beginPath(); c.moveTo(0,4); c.lineTo(0, nl+4); c.stroke();
+  c.fillStyle='#ffeec6';
+  c.beginPath(); c.moveTo(0,nl+8); c.lineTo(-3.1,nl+2); c.lineTo(3.1,nl+2); c.closePath(); c.fill();
+  c.restore();
+
+  /* --- ropes + pans (behind the beam) --- */
+  drawPan('L'); drawPan('R');
+
+  /* --- beam --- */
+  c.save();
+  c.translate(L.cx, L.beamY); c.rotate(-a);
+  var bh2 = Math.max(4.5, L.panR*0.15);
+  c.save();
+  c.scale(1, bh2);
+  c.fillStyle = G.beam;
+  c.beginPath();
+  c.moveTo(-L.beamHalf-6, -1);
+  c.lineTo(L.beamHalf+6, -1);
+  c.lineTo(L.beamHalf+6, 1);
+  c.lineTo(-L.beamHalf-6, 1);
+  c.closePath(); c.fill();
+  c.restore();
+  c.strokeStyle='rgba(0,0,0,.35)'; c.lineWidth=1;
+  c.strokeRect(-L.beamHalf-6, -bh2, (L.beamHalf+6)*2, bh2*2);
+  /* end knobs */
+  var e;
+  for (e=-1;e<=1;e+=2){
+    c.fillStyle='#e3bd74';
+    c.beginPath(); c.arc(e*L.beamHalf, 0, bh2*1.5, 0, TAU); c.fill();
+    c.fillStyle='rgba(80,50,12,.55)';
+    c.beginPath(); c.arc(e*L.beamHalf, bh2*0.3, bh2*0.85, 0, TAU); c.fill();
+    c.fillStyle='rgba(255,245,215,.5)';
+    c.beginPath(); c.arc(e*L.beamHalf-bh2*0.35, -bh2*0.42, bh2*0.42, 0, TAU); c.fill();
+  }
+  /* pivot boss */
+  var pr = bh2*2.3;
+  c.fillStyle=G.pivot;
+  c.beginPath(); c.arc(0,0,pr,0,TAU); c.fill();
+  c.strokeStyle='rgba(60,38,8,.6)'; c.lineWidth=1.1;
+  c.beginPath(); c.arc(0,0,pr,0,TAU); c.stroke();
+  c.fillStyle='rgba(45,28,6,.75)';
+  c.beginPath(); c.arc(0,0,pr*0.33,0,TAU); c.fill();
+  c.restore();
+}
+function drawPan(side){
+  var p = panPos(side), c = ctx;
+  var bx = side==='L' ? L.cx - L.beamHalf*Math.cos(S.beamA) : L.cx + L.beamHalf*Math.cos(S.beamA);
+  var by = side==='L' ? L.beamY + L.beamHalf*Math.sin(S.beamA) : L.beamY - L.beamHalf*Math.sin(S.beamA);
+  /* ropes */
+  c.save();
+  c.strokeStyle='rgba(232,206,150,.42)'; c.lineWidth=Math.max(0.9, L.panR*0.028);
+  var k;
+  for (k=-1;k<=1;k++){
+    c.beginPath();
+    c.moveTo(bx, by+2);
+    c.lineTo(p.x + k*L.panR*0.86, p.y);
+    c.stroke();
+  }
+  c.restore();
+  /* dish sprite */
+  if (panSprite){
+    var r = L.panR;
+    c.drawImage(panSprite, p.x - r*1.3, p.y - r*0.52, r*2.6, r*1.5);
+  }
+  /* hover ring while dragging */
+  if (S.drag && S.hoverTarget===side){
+    c.save();
+    c.strokeStyle='rgba(255,222,150,'+(0.42+0.2*Math.sin(S.now*8))+')';
+    c.lineWidth=2; c.setLineDash([5,5]);
+    c.beginPath(); c.ellipse(p.x, p.y-L.panR*0.18, L.panR*1.28, L.panR*0.86, 0,0,TAU); c.stroke();
+    c.restore();
+  }
+}
+
+/* ------------------------------- coins ------------------------------ */
+function coinTarget(co, out){
+  var s;
+  if (co.loc==='tray'){ s = traySlot(co.id, _tmp); out.x=s.x; out.y=s.y; out.r=L.trayR; }
+  else if (co.loc==='L' || co.loc==='R'){
+    var arr = co.loc==='L' ? S.panL : S.panR;
+    var idx = arr.indexOf(co.id);
+    if (idx<0) idx = 0;
+    var p = panPos(co.loc), o = panSlot(idx, arr.length);
+    out.x = p.x + o.x; out.y = p.y + o.y; out.r = L.panCR;
+  } else if (co.loc==='anvil'){
+    out.r = Math.min(L.trayR, L.anvil.h*0.26);
+    out.x = L.anvil.x + L.anvil.w*0.5;
+    out.y = L.anvil.y + L.anvil.h*0.46 - out.r*0.30;   /* sits on the face */
+  } else { out.x=co.x; out.y=co.y; out.r=L.trayR*1.14; }
+  return out;
+}
+var _tmp={x:0,y:0}, _tg={x:0,y:0,r:0};
+
+function drawCoin(co){
+  var c = ctx, r = co.r;
+  if (r < 0.6) return;
+  var x = co.x, y = co.y;
+  if (co.shake>0) x += Math.sin(S.now*58)*co.shake*7;
+
+  var spr = co.cleared ? coinSpriteDim : coinSprite;
+  if (!spr) return;
+  var f = r/coinSpriteR, half = (coinSpriteR+SPRPAD)*f;
+
+  /* glow for the dragged / selected coin */
+  if (co.drag || co.sel){
+    c.save();
+    c.globalAlpha = co.drag ? 0.5 : 0.32;
+    c.fillStyle = 'rgba(255,205,120,1)';
+    c.beginPath(); c.arc(x, y, r*1.45, 0, TAU); c.fill();
+    c.restore();
+  }
+  c.drawImage(spr, x-half, y-half, half*2, half*2);
+
+  /* numeral */
+  var fs = r*1.02;
+  setFont(fs, 700, true);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  var label = ''+co.n;
+  if (co.cleared){
+    ctx.fillStyle='rgba(20,20,16,.55)';
+    ctx.fillText(label, x, y+fs*0.10);
+    ctx.fillStyle='rgba(190,196,180,.62)';
+    ctx.fillText(label, x, y+fs*0.04);
+  } else {
+    ctx.fillStyle='rgba(92,58,12,.62)';
+    ctx.fillText(label, x, y+fs*0.10);
+    ctx.fillStyle='#fff4d6';
+    ctx.fillText(label, x, y+fs*0.04);
+  }
+
+  /* proven-genuine seal */
+  if (co.cleared || co.clearT>0){
+    var t = clamp(co.clearT,0,1);
+    var sc = t<1 ? easeOutBack(t) : 1;
+    var sr = r*0.46*sc;
+    var sx = x + r*0.60, sy = y + r*0.60;
+    c.save();
+    c.globalAlpha = clamp(t*1.6,0,1);
+    if (sealSprite){
+      var sf = sr/SEALR, sh = (SEALR+3)*sf;
+      c.drawImage(sealSprite, sx-sh, sy-sh, sh*2, sh*2);
+    }
+    if (t<1){
+      c.globalAlpha = (1-t)*0.6;
+      c.strokeStyle='#bfffd6'; c.lineWidth=2;
+      c.beginPath(); c.arc(sx,sy,sr*(1+ (1-t)*1.6),0,TAU); c.stroke();
+    }
+    c.restore();
+  }
+
+  /* selection ring */
+  if (co.sel){
+    c.save();
+    c.strokeStyle='rgba(255,226,160,.85)'; c.lineWidth=2; c.setLineDash([4,4]);
+    c.lineDashOffset = -S.now*14;
+    c.beginPath(); c.arc(x,y,r*1.24,0,TAU); c.stroke();
+    c.restore();
+  }
+  /* the true forgery, shown after a wrong accusation */
+  if (S.reveal && !S.reveal.ok && co.id===S.fake){
+    c.save();
+    var pulse = 0.5+0.5*Math.sin(S.now*6);
+    c.strokeStyle='rgba(255,90,80,'+(0.5+0.45*pulse)+')';
+    c.lineWidth=2.6;
+    c.beginPath(); c.arc(x,y,r*(1.3+pulse*0.12),0,TAU); c.stroke();
+    c.restore();
+  }
+}
+function drawCoins(){
+  var i, co, dragged=null;
+  /* shimmer hint when the weighings are spent */
+  var shimmer = (S.mode==='play' && S.kUsed>=S.kMax && !S.reveal && !S.confirm);
+  for (i=0;i<S.coins.length;i++){
+    co = S.coins[i];
+    if (co.drag){ dragged=co; continue; }
+    drawCoin(co);
+    if (shimmer && !co.cleared && co.loc==='tray'){
+      var ph = (S.now*0.8 - co.x/Math.max(80,W)) % 1;
+      if (ph<0) ph+=1;
+      var glow = Math.max(0, Math.sin(ph*PI))*Math.max(0,Math.sin(ph*PI));
+      if (glow>0.02){
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        ctx.globalAlpha = glow*0.30;
+        ctx.fillStyle='#ffe9b8';
+        ctx.beginPath(); ctx.arc(co.x, co.y, co.r*1.05, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+  if (dragged) drawCoin(dragged);
+}
+
+/* ------------------------------ ledger ------------------------------ */
+function renderLedger(){
+  var w = Math.max(40, L.ledger.w), h = Math.max(40, L.ledger.h);
+  ledgerCv.width = Math.round(w*DPR); ledgerCv.height = Math.round(h*DPR);
+  var c = ledgerCtx;
+  c.setTransform(DPR,0,0,DPR,0,0);
+  c.clearRect(0,0,w,h);
+
+  /* parchment */
+  var g = c.createLinearGradient(0,0,w*0.4,h);
+  g.addColorStop(0,'#e6d5ae'); g.addColorStop(.45,'#dcc79a'); g.addColorStop(1,'#c9b083');
+  c.fillStyle=g;
+  rrect(c,1,1,w-2,h-2,5); c.fill();
+  /* stains + fibres */
+  var i;
+  for (i=0;i<70;i++){
+    var x=hash1(i*4.7)*w, y=hash1(i*8.3+3)*h;
+    c.fillStyle='rgba(120,92,50,'+(0.02+hash1(i*2.9)*0.05)+')';
+    c.beginPath(); c.ellipse(x,y, 2+hash1(i*6.1)*13, 1.6+hash1(i*3.3)*7, hash1(i)*3, 0, TAU); c.fill();
+  }
+  c.strokeStyle='rgba(90,66,34,.45)'; c.lineWidth=1.2;
+  rrect(c,1,1,w-2,h-2,5); c.stroke();
+  c.strokeStyle='rgba(255,246,222,.35)'; c.lineWidth=1;
+  rrect(c,2.5,2.5,w-5,h-5,4); c.stroke();
+
+  var pad = Math.max(5, w*0.055);
+  var ink = '#3a2b16', inkDim = 'rgba(58,43,22,.52)';
+
+  /* header */
+  var hy = pad+5;
+  c.font = '700 9px ui-sans-serif, system-ui, sans-serif';
+  (function(){  /* txtLS writes to the main ctx, so space the header inline */
+    var s='LEDGER', sp=2.2, tot=0, ws=[], k;
+    for(k=0;k<s.length;k++){ var ww=c.measureText(s[k]).width; ws.push(ww); tot+=ww+sp; }
+    tot-=sp;
+    var x = (w-tot)/2;
+    c.fillStyle=ink; c.textAlign='left'; c.textBaseline='middle';
+    for(k=0;k<s.length;k++){ c.fillText(s[k], x, hy); x+=ws[k]+sp; }
+  })();
+  c.strokeStyle='rgba(90,66,34,.4)'; c.lineWidth=1;
+  c.beginPath(); c.moveTo(pad, hy+8); c.lineTo(w-pad, hy+8); c.stroke();
+
+  var top = hy+15, avail = h - top - pad;
+
+  /* faint rules, so an empty ledger still reads as a ledger */
+  var ry, ri=0;
+  c.strokeStyle='rgba(90,66,34,.13)'; c.lineWidth=1;
+  for (ry = top+16; ry < h-pad; ry += 17){
+    c.beginPath(); c.moveTo(pad, ry+.5); c.lineTo(w-pad, ry+.5); c.stroke();
+    if (++ri>40) break;
+  }
+
+  if (S.log.length===0){
+    c.font='italic 10.5px "Iowan Old Style", Georgia, serif';
+    c.fillStyle=inkDim; c.textAlign='center'; c.textBaseline='top';
+    wrapText(c, 'No weighings recorded.', w/2, top+4, w-pad*2, 13);
+    return;
+  }
+
+  /* choose a font size that fits every entry */
+  var fs = clamp(w*0.10, 7, 15);
+  var plan = null;
+  for (; fs>=5.6; fs-=0.4){
+    plan = planLedger(c, fs, w-pad*2);
+    if (plan.h <= avail) break;
+  }
+  if (!plan) plan = planLedger(c, 5.6, w-pad*2);
+
+  var y = top;
+  var e, ent;
+  for (e=0;e<plan.entries.length;e++){
+    ent = plan.entries[e];
+    /* index, then a hairline across the rest of the line */
+    c.font='700 '+(fs*0.72).toFixed(1)+'px ui-sans-serif, system-ui, sans-serif';
+    c.fillStyle=inkDim; c.textAlign='left'; c.textBaseline='middle';
+    var idx = ''+(e+1);
+    c.fillText(idx, pad, y+fs*0.42);
+    var iw = c.measureText(idx).width;
+    c.strokeStyle='rgba(90,66,34,.28)'; c.lineWidth=1;
+    c.beginPath();
+    c.moveTo(pad+iw+4, y+fs*0.42+.5); c.lineTo(w-pad, y+fs*0.42+.5); c.stroke();
+    var rowsY = y + fs*0.72;
+    var side, si;
+    for (si=0; si<2; si++){
+      side = si===0 ? ent.L : ent.R;
+      var mark = si===0 ? ent.markL : ent.markR;
+      var mx = pad + fs*0.36, my = rowsY + fs*0.66;
+      /* marker triangle / bar */
+      c.save();
+      c.fillStyle = mark>0 ? '#7d2b18' : (mark<0 ? '#2f5a7a' : 'rgba(58,43,22,.62)');
+      var ms = fs*0.34;
+      c.beginPath();
+      if (mark>0){ c.moveTo(mx-ms,my-ms*0.8); c.lineTo(mx+ms,my-ms*0.8); c.lineTo(mx,my+ms*0.9); }
+      else if (mark<0){ c.moveTo(mx-ms,my+ms*0.8); c.lineTo(mx+ms,my+ms*0.8); c.lineTo(mx,my-ms*0.9); }
+      else { c.rect(mx-ms, my-ms*0.75, ms*2, ms*0.55); c.rect(mx-ms, my+ms*0.2, ms*2, ms*0.55); }
+      c.closePath(); c.fill();
+      c.restore();
+      /* numbers */
+      c.font='600 '+fs.toFixed(1)+'px ui-sans-serif, system-ui, sans-serif';
+      c.fillStyle = mark>0 ? '#5a2410' : (mark<0 ? '#24445c' : ink);
+      c.textAlign='left'; c.textBaseline='middle';
+      var lines = si===0 ? ent.linesL : ent.linesR;
+      var li;
+      for (li=0; li<lines.length; li++){
+        c.fillText(lines[li], pad + fs*0.92, rowsY + fs*0.66 + li*(fs*1.18));
+      }
+      rowsY += lines.length*(fs*1.18) + fs*0.16;
+    }
+    y = rowsY + fs*0.62;
+  }
+}
+function planLedger(c, fs, maxw){
+  var entries=[], total=0, i;
+  c.font='600 '+fs.toFixed(1)+'px ui-sans-serif, system-ui, sans-serif';
+  var inner = maxw - fs*0.92;
+  for (i=0;i<S.log.length;i++){
+    var w = S.log[i];
+    var nl = numLines(c, w.L, inner);
+    var nr = numLines(c, w.R, inner);
+    var markL = w.out, markR = -w.out;
+    entries.push({L:w.L,R:w.R,linesL:nl,linesR:nr,markL:markL,markR:markR});
+    total += (nl.length+nr.length)*(fs*1.18) + fs*1.66;
+  }
+  return {entries:entries, h:total};
+}
+function numLines(c, ids, maxw){
+  var out=[], cur='', i;
+  if (ids.length===0) return ['—'];
+  for (i=0;i<ids.length;i++){
+    var s = ''+(ids[i]+1);
+    var test = cur ? cur+' '+s : s;
+    if (c.measureText(test).width > maxw && cur){ out.push(cur); cur = s; }
+    else cur = test;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function wrapText(c, s, x, y, maxw, lh){
+  var words = s.split(' '), line='', i, yy=y;
+  for (i=0;i<words.length;i++){
+    var t = line ? line+' '+words[i] : words[i];
+    if (c.measureText(t).width>maxw && line){ c.fillText(line,x,yy); yy+=lh; line=words[i]; }
+    else line=t;
+  }
+  if (line) c.fillText(line,x,yy);
+}
+function drawLedger(){
+  if (ledgerDirty){ renderLedger(); ledgerDirty=false; }
+  ctx.drawImage(ledgerCv, L.ledger.x, L.ledger.y, L.ledger.w, L.ledger.h);
+}
+
+/* ------------------------------ candle ------------------------------ */
+function drawCandle(){
+  var c = ctx, r = L.candle;
+  var frac = clamp(S.candle/CANDLE_MAX, 0, 1);
+  var holderH = Math.max(12, r.h*0.10);
+  var baseY = r.y + r.h;
+  var maxWax = r.h - holderH - 10;
+  var waxH = Math.max(0, maxWax*frac);
+  var cw = r.w*0.62, cx = r.x + r.w*0.5;
+  var topY = baseY - holderH - waxH;
+
+  /* holder */
+  c.save();
+  c.fillStyle=G.holder;
+  c.beginPath(); c.ellipse(cx, baseY-2, r.w*0.5, Math.max(3.5,r.w*0.16), 0,0,TAU); c.fill();
+  c.fillRect(cx-cw*0.36, baseY-holderH, cw*0.72, holderH);
+  c.beginPath(); c.ellipse(cx, baseY-holderH, cw*0.62, Math.max(2.6,r.w*0.10), 0,0,TAU); c.fill();
+  c.restore();
+
+  /* wax */
+  if (waxH > 1){
+    c.save();
+    c.fillStyle=G.wax;
+    rrect(c, cx-cw*0.5, topY, cw, waxH+4, cw*0.16); c.fill();
+    /* drips */
+    var d;
+    for (d=0;d<3;d++){
+      var dx = cx - cw*0.5 + cw*(0.18+d*0.32);
+      var dl = (hash1(d*13.7+S.round)*0.5+0.25)*Math.min(waxH, 26);
+      c.fillStyle='rgba(255,250,236,.55)';
+      c.beginPath();
+      c.moveTo(dx-cw*0.10, topY+3);
+      c.quadraticCurveTo(dx, topY+dl*1.1, dx+cw*0.10, topY+3);
+      c.fill();
+    }
+    /* top rim */
+    c.fillStyle='rgba(255,252,240,.8)';
+    c.beginPath(); c.ellipse(cx, topY+1, cw*0.5, cw*0.15, 0,0,TAU); c.fill();
+    c.fillStyle='rgba(150,128,92,.45)';
+    c.beginPath(); c.ellipse(cx, topY+1, cw*0.34, cw*0.09, 0,0,TAU); c.fill();
+    c.restore();
+  }
+
+  /* wick + flame */
+  var wy = topY - 1;
+  c.save();
+  c.strokeStyle='#2a2018'; c.lineWidth=Math.max(1,cw*0.07);
+  c.beginPath(); c.moveTo(cx, wy+2); c.lineTo(cx, wy-cw*0.22); c.stroke();
+  if (frac > 0.001){
+    var fl = S.flick;
+    var fh = cw*(0.85+0.16*fl) * (0.6+0.4*Math.min(1,frac*4));
+    var fw = cw*(0.30+0.05*fl);
+    var wob = Math.sin(S.now*9.3)*cw*0.045 + Math.sin(S.now*3.1)*cw*0.03;
+    var fy = wy - cw*0.20;
+    /* glow */
+    var gg = c.createRadialGradient(cx, fy-fh*0.3, 1, cx, fy-fh*0.3, fh*4.6);
+    gg.addColorStop(0,'rgba(255,196,110,'+(0.36*fl)+')');
+    gg.addColorStop(.45,'rgba(255,150,60,'+(0.10*fl)+')');
+    gg.addColorStop(1,'rgba(255,140,50,0)');
+    c.fillStyle=gg;
+    c.beginPath(); c.arc(cx, fy-fh*0.3, fh*4.6, 0, TAU); c.fill();
+    /* outer flame */
+    c.fillStyle='rgba(255,168,52,.92)';
+    c.beginPath();
+    c.moveTo(cx+wob, fy-fh);
+    c.bezierCurveTo(cx+fw+wob*0.5, fy-fh*0.45, cx+fw*0.85, fy+fh*0.12, cx, fy+fh*0.16);
+    c.bezierCurveTo(cx-fw*0.85, fy+fh*0.12, cx-fw+wob*0.5, fy-fh*0.45, cx+wob, fy-fh);
+    c.fill();
+    /* inner */
+    c.fillStyle='rgba(255,244,196,.95)';
+    c.beginPath();
+    c.moveTo(cx+wob*0.6, fy-fh*0.58);
+    c.bezierCurveTo(cx+fw*0.46, fy-fh*0.2, cx+fw*0.4, fy+fh*0.06, cx, fy+fh*0.08);
+    c.bezierCurveTo(cx-fw*0.4, fy+fh*0.06, cx-fw*0.46, fy-fh*0.2, cx+wob*0.6, fy-fh*0.58);
+    c.fill();
+    c.fillStyle='rgba(90,130,220,.35)';
+    c.beginPath(); c.ellipse(cx, fy+fh*0.03, fw*0.30, fh*0.12, 0,0,TAU); c.fill();
+  } else {
+    /* smoke */
+    var s;
+    for (s=0;s<3;s++){
+      var t = (S.now*0.5 + s*0.33)%1;
+      c.fillStyle='rgba(190,190,190,'+(0.14*(1-t))+')';
+      c.beginPath();
+      c.arc(cx + Math.sin(t*5+s)*cw*0.4, wy-cw*0.3 - t*cw*2.4, cw*(0.1+t*0.30), 0, TAU);
+      c.fill();
+    }
+  }
+  c.restore();
+}
+
+/* ------------------------ weigh button + anvil ---------------------- */
+function weighState(){
+  if (S.mode!=='play' || S.locked || S.confirm || S.reveal) return {on:false, sub:''};
+  if (S.kUsed>=S.kMax) return {on:false, sub:'NO WEIGHINGS LEFT'};
+  if (S.panL.length+S.panR.length===0) return {on:false, sub:'LOAD THE PANS'};
+  if (isDuplicate()) return {on:false, sub:'ALREADY WEIGHED'};
+  var left = S.kMax-S.kUsed;
+  return {on:true, sub:left+(left===1?' WEIGHING LEFT':' WEIGHINGS LEFT')};
+}
+function drawWeigh(){
+  var c=ctx, b=L.weigh, st=weighState();
+  var press = S.weighPress;
+  var y = b.y + press*2.5;
+  c.save();
+  c.translate(0, press*2.5);   /* cached gradients live at the rest position */
+  if (st.on){
+    c.shadowColor='rgba(255,180,80,'+(0.30+0.14*Math.sin(S.now*2.6))+')'; c.shadowBlur=20;
+  } else { c.shadowColor='rgba(0,0,0,.5)'; c.shadowBlur=10; c.shadowOffsetY=4; }
+  c.fillStyle = st.on ? G.weighOn : G.weighOff;
+  rrect(c,b.x,b.y,b.w,b.h,9); c.fill();
+  c.restore();
+  c.save();
+  c.strokeStyle= st.on?'rgba(255,240,205,.5)':'rgba(255,240,205,.10)'; c.lineWidth=1.2;
+  rrect(c,b.x+.75,y+.75,b.w-1.5,b.h-1.5,8.5); c.stroke();
+  c.strokeStyle='rgba(0,0,0,.35)'; c.lineWidth=1;
+  rrect(c,b.x+3,y+3,b.w-6,b.h-6,7); c.stroke();
+
+  var fs = clamp(b.h*0.30, 12, 22);
+  setFont(fs, 800, false);
+  var col = st.on ? '#2a1c06' : 'rgba(243,230,205,.30)';
+  c.globalAlpha=1;
+  var midY = y + b.h*0.42;
+  if (st.on){
+    ctx.fillStyle='rgba(255,244,214,.55)';
+    txtLS('WEIGH', b.x+b.w/2, midY+1.2, fs*0.22, 'rgba(255,246,220,.5)', 'center');
+  }
+  txtLS('WEIGH', b.x+b.w/2, midY, fs*0.22, col, 'center');
+  setFont(clamp(b.h*0.155,8,11), 700, false);
+  txtLS(st.sub, b.x+b.w/2, y+b.h*0.75, 1.6, st.on?'rgba(50,32,4,.72)':'rgba(243,230,205,.30)', 'center');
+  if (S.weighFlash>0){
+    c.globalAlpha = S.weighFlash*0.6;
+    c.fillStyle='#fff6dc'; rrect(c,b.x,y,b.w,b.h,9); c.fill();
+    c.globalAlpha=1;
+  }
+  c.restore();
+}
+/* The stamping block: an iron anvil in the lower half, a wax press riding
+   above it.  Everything stays inside the anvil rect so nothing collides with
+   the balance standing behind it. */
+function drawAnvil(){
+  var c=ctx, b=L.anvil;
+  var hot = (S.drag && S.hoverTarget==='anvil') || !!S.confirm;
+  var blockY = b.y + b.h*0.46, blockH = b.h*0.54;
+  var inset = blockH*0.26;
+  c.save();
+  c.shadowColor='rgba(0,0,0,.6)'; c.shadowBlur=12; c.shadowOffsetY=4;
+  c.fillStyle=G.anvilBlock;
+  c.beginPath();
+  c.moveTo(b.x+inset, blockY);
+  c.lineTo(b.x+b.w-inset, blockY);
+  c.lineTo(b.x+b.w, b.y+b.h);
+  c.lineTo(b.x, b.y+b.h);
+  c.closePath(); c.fill();
+  c.restore();
+
+  c.save();
+  /* struck top face */
+  c.fillStyle=G.anvilTop;
+  c.fillRect(b.x+inset, blockY, b.w-inset*2, Math.max(3, blockH*0.14));
+  c.strokeStyle = hot ? 'rgba(255,120,100,.9)' : 'rgba(255,225,180,.14)';
+  c.lineWidth = hot?1.8:1;
+  c.beginPath();
+  c.moveTo(b.x+inset, blockY+0.5);
+  c.lineTo(b.x+b.w-inset, blockY+0.5);
+  c.lineTo(b.x+b.w-0.5, b.y+b.h-0.5);
+  c.lineTo(b.x+0.5, b.y+b.h-0.5);
+  c.closePath(); c.stroke();
+  if (hot){
+    c.save();
+    c.globalCompositeOperation='lighter';
+    c.fillStyle='rgba(220,60,50,'+(0.11+0.07*Math.sin(S.now*8))+')';
+    c.beginPath();
+    c.moveTo(b.x+inset, blockY); c.lineTo(b.x+b.w-inset, blockY);
+    c.lineTo(b.x+b.w, b.y+b.h); c.lineTo(b.x, b.y+b.h); c.closePath(); c.fill();
+    c.restore();
+  }
+
+  /* the press: a brass frame straddling the block, with a wax die that is
+     driven down onto the coin when the stamp falls */
+  var pcx = b.x+b.w*0.5;
+  var pw = Math.min(b.w*0.26, b.h*0.42);
+  var pressH = b.h*0.26;
+  var rest = b.y + b.h*0.05;
+  var ptop = rest + S.press*(blockY - pressH - rest - 1);
+  var frameW = pw*1.9, railT = Math.max(3, b.h*0.055);
+  /* uprights */
+  c.fillStyle='rgba(150,116,56,.5)';
+  c.fillRect(pcx-frameW*0.5, b.y+railT*0.5, Math.max(2.5,pw*0.16), blockY-b.y-railT*0.5);
+  c.fillRect(pcx+frameW*0.5-Math.max(2.5,pw*0.16), b.y+railT*0.5, Math.max(2.5,pw*0.16), blockY-b.y-railT*0.5);
+  /* head rail */
+  var rg = c.createLinearGradient(pcx-frameW*0.6,0,pcx+frameW*0.6,0);
+  rg.addColorStop(0,'#5a3f16'); rg.addColorStop(.35,'#d9ab54'); rg.addColorStop(1,'#4d3512');
+  c.fillStyle=rg;
+  rrect(c, pcx-frameW*0.6, b.y, frameW*1.2, railT, 2); c.fill();
+  /* die */
+  c.fillStyle=G.anvilPress;
+  rrect(c, pcx-pw*0.5, ptop, pw, pressH, 2.5); c.fill();
+  c.fillStyle='rgba(255,255,255,.15)';
+  c.fillRect(pcx-pw*0.5, ptop, pw, 2);
+  c.fillStyle='rgba(0,0,0,.3)';
+  c.fillRect(pcx-pw*0.5, ptop+pressH-2.5, pw, 2.5);
+
+  /* label along the block face */
+  setFont(clamp(blockH*0.30,8.5,13), 800, false);
+  txtLS('ACCUSE', pcx, b.y+b.h*0.84, clamp(blockH*0.08,1.6,3),
+        hot?'rgba(255,196,180,.95)':'rgba(243,230,205,.5)', 'center');
+  c.restore();
+}
+
+/* --------------------------- result plaque -------------------------- */
+function drawResultPlaque(){
+  if (!S.hasResult && S.resultShow<=0.01) return;
+  var a = clamp(S.resultShow,0,1);
+  if (a<=0.01) return;
+  var c=ctx;
+  var y = L.plaqueY;
+  var label = S.result>0 ? 'THE LEFT PAN SINKS' : (S.result<0 ? 'THE RIGHT PAN SINKS' : 'PERFECTLY LEVEL');
+  setFont(clamp(W*0.026,10,14), 800, false);
+  var tw = 0, i;
+  for (i=0;i<label.length;i++) tw += ctx.measureText(label[i]).width + 2.4;
+  var pw = tw+30, ph = L.plaqueH;
+  var px = L.cx - pw/2;
+  c.save();
+  c.globalAlpha=a;
+  c.fillStyle=G.plaque; rrect(c,px,y,pw,ph,6); c.fill();
+  c.strokeStyle= S.result===0 ? 'rgba(120,200,150,.5)' : 'rgba(255,210,140,.5)';
+  c.lineWidth=1; rrect(c,px+.5,y+.5,pw-1,ph-1,6); c.stroke();
+  setFont(clamp(W*0.026,10,14), 800, false);
+  txtLS(label, L.cx, y+ph*0.53, 2.4, S.result===0?'#a8e6bf':'#ffdfa8','center');
+  c.restore();
+}
+
+/* ------------------------------ toast ------------------------------- */
+function showToast(msg, col){
+  S.toast = {msg:msg, t:0, life:2.0, col:col||'#ffd88f'};
+}
+function drawToast(){
+  if (!S.toast) return;
+  var t = S.toast;
+  var a = t.t<0.18 ? t.t/0.18 : clamp((t.life-t.t)/0.4,0,1);
+  var y = L.shelfY - clamp(H*0.02,8,18) - (1-clamp(t.t/0.2,0,1))*8;
+  ctx.save();
+  ctx.globalAlpha=a;
+  setFont(clamp(W*0.028,10,14), 800, false);
+  var tw=0,i;
+  for(i=0;i<t.msg.length;i++) tw += ctx.measureText(t.msg[i]).width+2.2;
+  ctx.fillStyle='rgba(6,12,9,.82)';
+  rrect(ctx, W/2-tw/2-13, y-14, tw+26, 25, 6); ctx.fill();
+  txtLS(t.msg, W/2, y-1.5, 2.2, t.col, 'center');
+  ctx.restore();
+}
+
+/* ----------------------------- particles ---------------------------- */
+function drawParts(){
+  var i,p,c=ctx;
+  c.save();
+  for (i=0;i<PARTMAX;i++){
+    p = partPool[i]; if (!p.live) continue;
+    var a = clamp(p.life/p.max,0,1);
+    if (p.shape===2){
+      c.save();
+      c.translate(p.x,p.y); c.rotate(p.rot);
+      c.globalAlpha=a;
+      c.fillStyle = p.c===1 ? '#7b1c24' : (p.c===2?'#8fe2ab':'#e8d6ae');
+      c.fillRect(-p.r, -p.r*0.6, p.r*2, p.r*1.2);
+      c.restore();
+    } else {
+      c.globalAlpha = a;
+      c.fillStyle = p.c===1 ? 'rgba(255,246,214,1)' : (p.c===2?'rgba(140,240,175,1)':'rgba(255,199,96,1)');
+      c.beginPath(); c.arc(p.x,p.y,p.r*(0.4+a*0.6),0,TAU); c.fill();
+    }
+  }
+  c.restore();
+}
+
+/* ---------------------------- round banner -------------------------- */
+function bannerText(){
+  var cfg = roundConfig(S.round);
+  return {
+    a:'BATCH '+roman(S.round),
+    b:cfg.n+' coins  ·  '+cfg.k+' weighings',
+    c:cfg.unk ? 'This forger is cleverer — the fake may be light OR heavy.'
+              : "The forger's alloy is LIGHT."
+  };
+}
+function drawBanner(){
+  var t = S.t, dur = 1.6;
+  var a;
+  if (t < 0.28) a = easeOutCubic(t/0.28);
+  else if (t > dur-0.3) a = clamp((dur-t)/0.3,0,1);
+  else a = 1;
+  if (a<=0.001) return;
+  var bt = bannerText();
+  var c=ctx;
+  var bw = Math.min(W*0.86, 460);
+  var bh = clamp(H*0.20, 118, 168);
+  var bx = W/2-bw/2, by = H*0.40-bh/2 - (1-a)*10;
+  c.save();
+  c.globalAlpha = a;
+  c.shadowColor='rgba(0,0,0,.6)'; c.shadowBlur=26; c.shadowOffsetY=8;
+  var g=c.createLinearGradient(0,by,bw*0.3,by+bh);
+  g.addColorStop(0,'#e9d9b3'); g.addColorStop(.5,'#dcc99e'); g.addColorStop(1,'#c6ad80');
+  c.fillStyle=g; rrect(c,bx,by,bw,bh,7); c.fill();
+  c.shadowColor='transparent'; c.shadowBlur=0; c.shadowOffsetY=0;
+  c.strokeStyle='rgba(88,64,32,.5)'; c.lineWidth=1.4; rrect(c,bx+.7,by+.7,bw-1.4,bh-1.4,7); c.stroke();
+  c.strokeStyle='rgba(120,90,50,.3)'; c.lineWidth=1; rrect(c,bx+5,by+5,bw-10,bh-10,5); c.stroke();
+
+  setFont(clamp(bw*0.085,20,34), 800, true);
+  txtLS(bt.a, W/2, by+bh*0.30, clamp(bw*0.014,2,5), '#3a2b16','center');
+  setFont(clamp(bw*0.040,11,16), 700, false);
+  txtLS(bt.b, W/2, by+bh*0.575, 1.8, 'rgba(58,43,22,.78)','center');
+  setFont(clamp(bw*0.032,9.5,13), 600, true);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(96,44,30,.9)';
+  wrapText(ctx, bt.c, W/2, by+bh*0.79, bw-40, 14);
+
+  /* wax seal on the corner */
+  var sx = bx+bw-16, sy = by+8, sr = clamp(bw*0.036,11,17);
+  var sg=c.createRadialGradient(sx-sr*0.3,sy-sr*0.35,sr*0.1,sx,sy,sr);
+  sg.addColorStop(0,'#e0555c'); sg.addColorStop(.55,'#a3202a'); sg.addColorStop(1,'#5e1218');
+  c.fillStyle=sg; c.beginPath(); c.arc(sx,sy,sr,0,TAU); c.fill();
+  c.strokeStyle='rgba(255,255,255,.2)'; c.lineWidth=1;
+  c.beginPath(); c.arc(sx,sy,sr*0.62,0,TAU); c.stroke();
+
+  setFont(9,700,false);
+  txtLS('TAP TO CONTINUE', W/2, by+bh+16, 2.4, 'rgba(243,230,205,'+(0.28+0.16*Math.sin(S.now*4))+')','center');
+  c.restore();
+}
+
+/* --------------------------- confirm dialog ------------------------- */
+var HIT = {yes:{x:0,y:0,w:0,h:0}, no:{x:0,y:0,w:0,h:0}, panel:{x:0,y:0,w:0,h:0}};
+function drawConfirm(){
+  var cf = S.confirm; if (!cf) return;
+  var co = S.coins[cf.id];
+  var a = clamp(cf.t/0.16,0,1);
+  var c=ctx;
+  c.save();
+  c.globalAlpha = a*0.62;
+  c.fillStyle='rgba(3,8,5,1)'; c.fillRect(0,0,W,H);
+  c.globalAlpha = a;
+  var bw = Math.min(W*0.84, 330), bh = clamp(H*0.24,150,190);
+  var bx=W/2-bw/2, by=H*0.40-bh/2 + (1-a)*8;
+  HIT.panel.x=bx; HIT.panel.y=by; HIT.panel.w=bw; HIT.panel.h=bh;
+  c.shadowColor='rgba(0,0,0,.6)'; c.shadowBlur=24; c.shadowOffsetY=8;
+  var g=c.createLinearGradient(0,by,0,by+bh);
+  g.addColorStop(0,'rgba(26,36,29,.98)'); g.addColorStop(1,'rgba(8,15,11,.98)');
+  c.fillStyle=g; rrect(c,bx,by,bw,bh,14); c.fill();
+  c.shadowColor='transparent'; c.shadowBlur=0; c.shadowOffsetY=0;
+  c.strokeStyle='rgba(216,164,78,.35)'; c.lineWidth=1;
+  rrect(c,bx+.5,by+.5,bw-1,bh-1,14); c.stroke();
+
+  setFont(clamp(bw*0.075,17,25), 800, false);
+  txtLS('STAMP IT?', W/2, by+bh*0.20, 3.4, '#ffe0a4','center');
+  setFont(clamp(bw*0.042,10.5,14), 600, true);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(243,230,205,.66)';
+  wrapText(ctx, 'Declare coin '+co.n+' counterfeit. A wrong accusation cracks a seal.',
+           W/2, by+bh*0.40, bw-44, 15);
+
+  var bwd = (bw-46)/2, bhh = clamp(bh*0.22,34,44);
+  var byy = by+bh-bhh-14;
+  HIT.no.x = bx+16; HIT.no.y=byy; HIT.no.w=bwd; HIT.no.h=bhh;
+  HIT.yes.x = bx+bw-16-bwd; HIT.yes.y=byy; HIT.yes.w=bwd; HIT.yes.h=bhh;
+
+  c.fillStyle='rgba(243,230,205,.07)';
+  rrect(c,HIT.no.x,HIT.no.y,HIT.no.w,HIT.no.h,9); c.fill();
+  c.strokeStyle='rgba(243,230,205,.2)'; c.lineWidth=1;
+  rrect(c,HIT.no.x+.5,HIT.no.y+.5,HIT.no.w-1,HIT.no.h-1,9); c.stroke();
+  setFont(clamp(bwd*0.13,10,13), 800, false);
+  txtLS('CANCEL', HIT.no.x+HIT.no.w/2, HIT.no.y+HIT.no.h/2, 2.4, 'rgba(243,230,205,.72)','center');
+
+  var yg=c.createLinearGradient(0,HIT.yes.y,0,HIT.yes.y+HIT.yes.h);
+  yg.addColorStop(0,'#d8555c'); yg.addColorStop(1,'#8e1a22');
+  c.fillStyle=yg; rrect(c,HIT.yes.x,HIT.yes.y,HIT.yes.w,HIT.yes.h,9); c.fill();
+  c.strokeStyle='rgba(255,200,190,.4)'; c.lineWidth=1;
+  rrect(c,HIT.yes.x+.5,HIT.yes.y+.5,HIT.yes.w-1,HIT.yes.h-1,9); c.stroke();
+  txtLS('STAMP', HIT.yes.x+HIT.yes.w/2, HIT.yes.y+HIT.yes.h/2, 2.4, '#fff1e2','center');
+
+  setFont(9,700,false);
+  txtLS('ENTER / ESC', W/2, by+bh+15, 2.2, 'rgba(243,230,205,.26)','center');
+  c.restore();
+}
+
+/* ---------------------------- reveal ribbon ------------------------- */
+function drawReveal(){
+  var rv = S.reveal; if (!rv) return;
+  var a = clamp(rv.t/0.22,0,1) * clamp((rv.life-rv.t)/0.35,0,1);
+  if (a<=0.002) return;
+  var c=ctx;
+  var bh = clamp(H*0.155, 96, 140);
+  var by = H*0.34 - bh/2;
+  c.save();
+  c.globalAlpha=a;
+  var g=c.createLinearGradient(0,by,0,by+bh);
+  if (rv.ok){ g.addColorStop(0,'rgba(28,48,32,.95)'); g.addColorStop(1,'rgba(8,20,12,.95)'); }
+  else { g.addColorStop(0,'rgba(52,20,20,.95)'); g.addColorStop(1,'rgba(20,6,6,.95)'); }
+  c.fillStyle=g; c.fillRect(0,by,W,bh);
+  c.strokeStyle = rv.ok?'rgba(120,220,150,.4)':'rgba(230,90,80,.4)';
+  c.lineWidth=1.4;
+  c.beginPath(); c.moveTo(0,by+.7); c.lineTo(W,by+.7);
+  c.moveTo(0,by+bh-.7); c.lineTo(W,by+bh-.7); c.stroke();
+
+  setFont(clamp(W*0.052,20,34), 800, false);
+  var title = rv.ok ? 'COUNTERFEIT CONFIRMED' : 'THAT COIN WAS TRUE';
+  txtLS(title, W/2, by+bh*0.30, clamp(W*0.008,2.5,5.5), rv.ok?'#b6f3c9':'#ffb3aa','center');
+
+  setFont(clamp(W*0.028,11,15), 700, false);
+  if (rv.ok){
+    txtLS(rv.sub, W/2, by+bh*0.60, 2, 'rgba(243,230,205,.72)','center');
+    setFont(clamp(W*0.042,15,22), 800, false);
+    txtLS('+'+rv.gain, W/2, by+bh*0.84, 2.6, '#ffe0a4','center');
+  } else {
+    txtLS(rv.sub, W/2, by+bh*0.62, 2, 'rgba(243,230,205,.72)','center');
+    setFont(clamp(W*0.024,10,13), 700, false);
+    txtLS(S.seals>0 ? 'A FRESH BATCH ARRIVES' : 'THE MINT DISMISSES YOU',
+          W/2, by+bh*0.85, 2.4, 'rgba(255,170,160,.6)','center');
+  }
+  c.restore();
+}
+
+/* ------------------------------ render ------------------------------ */
+function render(){
+  var c = ctx;
+  /* coin radii change with the batch size, so sprites are rebuilt lazily */
+  if (coinSpriteR !== L.trayR || panSpriteR !== L.panR) buildCoinSprites();
+  c.setTransform(DPR,0,0,DPR,0,0);
+  if (S.shake>0.002){
+    var sx = Math.sin(S.now*57)*S.shake*11, sy = Math.cos(S.now*71)*S.shake*8;
+    c.translate(sx, sy);
+  }
+  c.drawImage(bg, 0,0, W,H);
+
+  /* candle-flicker ambience over the brass */
+  if (G.amb && G.ambW>0 && G.ambH>0){
+    c.save();
+    c.globalCompositeOperation='lighter';
+    var aa = 0.15 + 0.55*(S.flick-1);
+    c.globalAlpha = aa<0 ? 0 : (aa>1?1:aa);
+    c.fillStyle = G.amb;
+    c.fillRect(G.ambX, G.ambY, G.ambW, G.ambH);
+    c.restore();
+  }
+
+  drawLedger();
+  drawCandle();
+  drawScale();
+  drawWeigh();
+  drawAnvil();
+  drawCoins();
+  drawParts();
+  drawResultPlaque();
+  drawToast();
+  if (S.mode==='banner') drawBanner();
+  if (S.reveal) drawReveal();
+  if (S.confirm) drawConfirm();
+  c.setTransform(DPR,0,0,DPR,0,0);
+}
+
+/* =========================== game flow ============================== */
+function makeCoins(n){
+  var arr=[], i, s={x:0,y:0};
+  for (i=0;i<n;i++){
+    traySlot(i,s);
+    /* coins drop the last inch into their own socket, so a big batch never
+       rains across the ledger or the scale on its way in */
+    arr.push({
+      id:i, n:i+1, loc:'tray',
+      x:s.x + rnd(-3,3), y:s.y - rnd(26,64),
+      r:L.trayR*0.72, cleared:false, pending:false, clearT:0,
+      shake:0, sel:false, drag:false,
+      delay:i*0.014
+    });
+  }
+  return arr;
+}
+function startRound(r){
+  var cfg = roundConfig(r);
+  S.round = r;
+  if (r > S.bestRound) S.bestRound = r;
+  S.n = cfg.n; S.unknown = cfg.unk; S.kMax = cfg.k; S.kUsed = 0;
+  S.fake = Math.floor(Math.random()*cfg.n);
+  S.fakeDir = cfg.unk ? (Math.random()<0.5?-1:1) : -1;
+  S.hyp = buildHypotheses(cfg.n, cfg.unk);
+  S.log = []; S.panL=[]; S.panR=[];
+  S.candle = CANDLE_MAX;
+  S.beamA=0; S.beamV=0; S.beamTarget=0;
+  S.locked=false; S.hasResult=false; S.resultShow=0; S.result=0;
+  S.drag=null; S.sel=-1; S.confirm=null; S.reveal=null; S.press=0;
+  S.toast=null; S.numBuf='';
+  S.timers.length = 0;
+  /* the tray, ledger and pan grid all size themselves to the batch, so the
+     whole layout is rebuilt when a batch changes */
+  syncHUD(true);
+  doResize();
+  S.coins = makeCoins(cfg.n);
+  ledgerDirty = true;
+  S.mode='banner'; S.t=0;
+  Snd.batch();
+}
+function nextRound(){ startRound(S.round+1); }
+function rerollRound(){ startRound(S.round); }
+
+function isDuplicate(){
+  var kl = S.panL.slice().sort(numSort).join(','), kr = S.panR.slice().sort(numSort).join(',');
+  var i;
+  for (i=0;i<S.log.length;i++){
+    var w=S.log[i];
+    var al = w.L.slice().sort(numSort).join(','), ar = w.R.slice().sort(numSort).join(',');
+    if ((al===kl && ar===kr) || (al===kr && ar===kl)) return true;
+  }
+  return false;
+}
+function numSort(a,b){ return a-b; }
+
+function doWeigh(){
+  if (S.mode!=='play' || S.locked || S.confirm || S.reveal) return;
+  var st = weighState();
+  if (!st.on){
+    if (st.sub) showToast(st.sub, '#ffb0a4');
+    Snd.deny();
+    S.weighPress = 0;
+    return;
+  }
+  Snd.unlock();
+  var w = {L:S.panL.slice(), R:S.panR.slice(), out:0};
+  w.out = predict({c:S.fake, d:S.fakeDir}, w);
+  S.locked = true;
+  S.weighFlash = 1;
+  S.beamTarget = w.out*MAXA;
+  Snd.creak();
+  var i, cnt = Math.min(5, w.L.length+w.R.length);
+  for (i=0;i<cnt;i++) Snd.clink(0.5, 0.04+i*0.045);
+
+  after(1.10, function(){
+    S.log.push(w);
+    S.kUsed++;
+    S.result = w.out; S.hasResult = true;
+    ledgerDirty = true;
+    var newly = refilter();
+    var j;
+    for (j=0;j<newly.length;j++){
+      (function(id, k){
+        after(0.10 + k*0.075, function(){
+          var co = S.coins[id];
+          if (!co) return;
+          co.cleared = true; co.pending = false; co.clearT = 0;
+          Snd.chk();
+          var q;
+          for (q=0;q<3;q++) spawn(co.x, co.y, rnd(-40,40), rnd(-90,-20), rnd(0.3,0.6), rnd(1,2.2), 2, 0, 300);
+        });
+      })(newly[j], j);
+    }
+    S.locked = false;
+    syncHUD(false);
+  });
+}
+
+function askAccuse(id){
+  var co = S.coins[id]; if (!co) return;
+  if (co.cleared){
+    co.shake = 0.5;
+    Snd.deny();
+    showToast('COIN '+co.n+' IS PROVEN GENUINE', '#8fe2ab');
+    if (co.loc!=='tray') { detach(id); co.loc='tray'; }
+    return;
+  }
+  if (S.confirm || S.reveal || S.locked) return;
+  detach(id);
+  co.loc = 'anvil';
+  S.confirm = {id:id, t:0};
+  S.sel = -1;
+  updateSel();
+  Snd.press();
+}
+function cancelAccuse(){
+  if (!S.confirm) return;
+  var co = S.coins[S.confirm.id];
+  if (co) co.loc='tray';
+  S.confirm = null;
+  Snd.clink(0.6,0);
+}
+function doAccuse(id){
+  S.confirm = null;
+  S.locked = true;
+  S.press = 0;
+  var co = S.coins[id];
+  if (co) co.loc='anvil';
+  Snd.press();
+  after(0.34, function(){
+    var ok = (id === S.fake);
+    var ax = L.anvil.x + L.anvil.w*0.5, ay = L.anvil.y + L.anvil.h*0.45;
+    Snd.thunk();
+    S.shake = ok ? 0.35 : 0.9;
+    if (ok){
+      burstGold(ax, ay, 34, 320);
+      Snd.chime();
+      var base = 100*S.round;
+      var spared = 150*(S.kMax-S.kUsed);
+      var cand = Math.round(100*clamp(S.candle/CANDLE_MAX,0,1));
+      var gain = base+spared+cand;
+      S.score += gain;
+      S.reveal = {ok:true, t:0, life:2.5, gain:gain,
+        sub:'BASE '+base+'   ·   SPARED '+spared+'   ·   CANDLE '+cand};
+      after(2.5, function(){ S.reveal=null; nextRound(); });
+    } else {
+      Snd.sting();
+      S.seals--;
+      crackSeal(S.seals);
+      burstShards(ax, ay, 16, 1);
+      var fakeCoin = S.coins[S.fake];
+      S.reveal = {ok:false, t:0, life:2.9,
+        sub:'COIN '+(fakeCoin?fakeCoin.n:'?')+' WAS THE FORGERY'};
+      if (co) co.cleared = true;
+      after(2.9, function(){
+        S.reveal=null;
+        if (S.seals<=0) gameOver();
+        else rerollRound();
+      });
+    }
+    syncHUD(false);
+  });
+}
+function crackSeal(idx){
+  var els = document.querySelectorAll('#seals .seal');
+  if (idx<0 || idx>=els.length) return;
+  var el = els[idx];
+  el.classList.add('cracked','shatter');
+  var b = el.getBoundingClientRect();
+  var cx = b.left + b.width/2, cy = b.top + b.height/2;
+  burstShards(cx, cy, 12, 1);
+  Snd.crack();
+}
+function gameOver(){
+  S.mode='over';
+  S.locked=true;
+  S.drag=null;
+  Snd.over();
+  showOver();
+}
+
+/* ------------------------- coin manipulation ------------------------ */
+function detach(id){
+  var i = S.panL.indexOf(id);
+  if (i>=0){ S.panL.splice(i,1); onPansChanged(); return; }
+  i = S.panR.indexOf(id);
+  if (i>=0){ S.panR.splice(i,1); onPansChanged(); return; }
+}
+function onPansChanged(){
+  S.beamTarget = 0;
+  S.hasResult = false;
+}
+function placeCoin(id, dest){
+  var co = S.coins[id]; if (!co) return false;
+  if (dest==='L' || dest==='R'){
+    var arr = dest==='L' ? S.panL : S.panR;
+    if (co.loc===dest) return false;
+    if (arr.length >= L.panCap){
+      co.shake = 0.4;
+      Snd.deny();
+      showToast('THE PAN WILL HOLD NO MORE', '#ffb0a4');
+      return false;
+    }
+    detach(id);
+    arr.push(id);
+    co.loc = dest;
+    onPansChanged();
+    Snd.clink(0.85,0);
+    return true;
+  }
+  if (dest==='tray'){
+    if (co.loc==='tray') return false;
+    detach(id);
+    co.loc='tray';
+    Snd.clink(0.6,0);
+    return true;
+  }
+  return false;
+}
+
+/* ============================== input =============================== */
+function evPos(e){
+  return {x:e.clientX, y:e.clientY};
+}
+function coinAt(x,y){
+  var i, best=-1, bd=1e9;
+  for (i=S.coins.length-1;i>=0;i--){
+    var co=S.coins[i];
+    if (co.loc==='anvil') continue;
+    var dx=x-co.x, dy=y-co.y, d=dx*dx+dy*dy;
+    var rr = Math.max(co.r*1.2, 13);
+    if (d < rr*rr && d<bd){ bd=d; best=i; }
+  }
+  return best;
+}
+function inRect(x,y,r,pad){
+  pad=pad||0;
+  return x>=r.x-pad && x<=r.x+r.w+pad && y>=r.y-pad && y<=r.y+r.h+pad;
+}
+function panHit(x,y,side){
+  var p = panPos(side);
+  var dx = (x-p.x)/(L.panR*1.42), dy=(y-(p.y-L.panR*0.25))/(L.panR*1.05);
+  return dx*dx+dy*dy <= 1;
+}
+function targetAt(x,y){
+  if (panHit(x,y,'L')) return 'L';
+  if (panHit(x,y,'R')) return 'R';
+  if (inRect(x,y,L.anvil,6)) return 'anvil';
+  if (inRect(x,y,L.tray,4)) return 'tray';
+  return '';
+}
+
+function onDown(e){
+  Snd.unlock();
+  if (S.paused){ resumeGame(); return; }
+  if (S.mode==='title' || S.mode==='over') return;
+  var p = evPos(e);
+  if (e.pointerId!==undefined && cv.setPointerCapture){
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  }
+  if (S.confirm){
+    if (inRect(p.x,p.y,HIT.yes)) doAccuse(S.confirm.id);
+    else if (inRect(p.x,p.y,HIT.no)) cancelAccuse();
+    else if (!inRect(p.x,p.y,HIT.panel,6)) cancelAccuse();
+    return;
+  }
+  if (S.mode==='banner'){
+    if (S.t>0.3) S.t = 99;
+    return;
+  }
+  if (S.reveal || S.locked) return;
+
+  /* weigh button */
+  if (inRect(p.x,p.y,L.weigh,2)){ S.weighPress=1; S.pressWeigh=true; return; }
+
+  var id = coinAt(p.x,p.y);
+  if (id>=0){
+    S.drag = {id:id, x:p.x, y:p.y, sx:p.x, sy:p.y, moved:false, t0:S.now, from:S.coins[id].loc};
+    return;
+  }
+  /* tap a target with a selected coin */
+  if (S.sel>=0){
+    var t = targetAt(p.x,p.y);
+    if (t==='anvil'){ askAccuse(S.sel); return; }
+    if (t){ placeCoin(S.sel, t); return; }
+  }
+  if (inRect(p.x,p.y,L.anvil,6)) { showToast('DROP A COIN HERE TO ACCUSE IT','#ffc9a0'); return; }
+  /* tap empty felt clears selection */
+  if (S.sel>=0){ S.sel=-1; updateSel(); }
+}
+function onMove(e){
+  if (!S.drag){
+    if (S.pressWeigh) return;
+    return;
+  }
+  var p = evPos(e);
+  var d = S.drag;
+  d.x=p.x; d.y=p.y;
+  if (!d.moved){
+    var dx=p.x-d.sx, dy=p.y-d.sy;
+    if (dx*dx+dy*dy > 42){
+      d.moved = true;
+      var co = S.coins[d.id];
+      detach(d.id);
+      co.loc='drag'; co.drag=true;
+      S.sel=-1; updateSel();
+      Snd.clink(0.7,0);
+    }
+  }
+  if (d.moved){
+    S.hoverTarget = targetAt(p.x,p.y);
+  }
+}
+function onUp(e){
+  if (S.pressWeigh){
+    S.pressWeigh=false; S.weighPress=0;
+    var pp = evPos(e);
+    if (inRect(pp.x,pp.y,L.weigh,10)) doWeigh();
+    return;
+  }
+  var d = S.drag;
+  if (!d) return;
+  S.drag = null;
+  S.hoverTarget='';
+  var co = S.coins[d.id];
+  if (!co) return;
+  if (!d.moved){
+    /* a tap: select / deselect */
+    if (S.sel===d.id){ S.sel=-1; }
+    else { S.sel=d.id; Snd.clink(0.45,0); }
+    updateSel();
+    return;
+  }
+  co.drag = false;
+  var p = evPos(e);
+  var t = targetAt(p.x,p.y);
+  if (t==='anvil'){ co.loc='tray'; askAccuse(d.id); return; }
+  if (t==='L' || t==='R'){
+    co.loc='tray';
+    if (!placeCoin(d.id,t)) co.loc='tray';
+    return;
+  }
+  co.loc='tray';
+  Snd.clink(0.55,0);
+}
+function updateSel(){
+  var i;
+  for (i=0;i<S.coins.length;i++) S.coins[i].sel = (i===S.sel);
+}
+function moveSel(delta){
+  if (!S.coins.length) return;
+  var s = S.sel;
+  if (s<0) s = (delta>0? -1 : 0);
+  s = ((s+delta) % S.coins.length + S.coins.length) % S.coins.length;
+  S.sel = s; updateSel();
+  Snd.clink(0.30,0);
+}
+
+function onKey(e){
+  var k = e.key;
+  if (S.paused){ resumeGame(); e.preventDefault(); return; }
+  if (k==='m' || k==='M'){ toggleMute(); e.preventDefault(); return; }
+  Snd.unlock();
+  /* a focused button turns Enter/Space into a synthetic click; let it own them */
+  if ((k==='Enter'||k===' ') && (document.activeElement===btnEl || document.activeElement===muteBtn)) return;
+  if (S.mode==='title'){
+    if (k==='Enter' || k===' '){ e.preventDefault(); beginGame(); }
+    return;
+  }
+  if (S.mode==='over'){
+    if (k==='Enter' || k===' '){ e.preventDefault(); restart(); }
+    return;
+  }
+  if (S.confirm){
+    if (k==='Enter' || k==='y' || k==='Y'){ e.preventDefault(); doAccuse(S.confirm.id); }
+    else if (k==='Escape' || k==='n' || k==='N' || k==='Backspace'){ e.preventDefault(); cancelAccuse(); }
+    return;
+  }
+  if (S.mode==='banner'){
+    if (S.t>0.3) S.t=99;
+    e.preventDefault();
+    return;
+  }
+  if (k==='Escape'){ e.preventDefault(); pauseGame(); return; }
+  if (S.reveal || S.locked) return;
+
+  if (k>='0' && k<='9'){
+    e.preventDefault();
+    if (S.now - S.numBufT > 0.9) S.numBuf='';
+    S.numBufT = S.now;
+    S.numBuf += k;
+    var v = parseInt(S.numBuf,10);
+    if (v>=1 && v<=S.coins.length){ S.sel = v-1; updateSel(); Snd.clink(0.32,0); }
+    else { S.numBuf = k; v = parseInt(k,10);
+      if (v>=1 && v<=S.coins.length){ S.sel=v-1; updateSel(); Snd.clink(0.32,0); } }
+    return;
+  }
+  switch(k){
+    case 'ArrowRight': moveSel(1); e.preventDefault(); break;
+    case 'ArrowLeft': moveSel(-1); e.preventDefault(); break;
+    case 'ArrowDown': moveSel(L.trayCols); e.preventDefault(); break;
+    case 'ArrowUp': moveSel(-L.trayCols); e.preventDefault(); break;
+    case 'l': case 'L': if (S.sel>=0) placeCoin(S.sel,'L'); e.preventDefault(); break;
+    case 'r': case 'R': if (S.sel>=0) placeCoin(S.sel,'R'); e.preventDefault(); break;
+    case 'Backspace': case 'Delete':
+      if (S.sel>=0) placeCoin(S.sel,'tray'); e.preventDefault(); break;
+    case 'a': case 'A': if (S.sel>=0) askAccuse(S.sel); e.preventDefault(); break;
+    case 'Enter': case ' ': doWeigh(); e.preventDefault(); break;
+  }
+}
+
+/* ============================== HUD ================================= */
+var hudEl = document.getElementById('hud');
+var scoreV = document.getElementById('scoreV');
+var batchV = document.getElementById('batchV');
+var ruleV = document.getElementById('ruleV');
+var weightsEl = document.getElementById('weights');
+var sealsEl = document.getElementById('seals');
+var lastScoreShown = -1, lastWeights = -1, lastKmax = -1;
+
+function buildSeals(){
+  sealsEl.innerHTML='';
+  var i;
+  for (i=0;i<3;i++){
+    var d = document.createElement('div');
+    d.className='seal';
+    sealsEl.appendChild(d);
+  }
+}
+function syncHUD(full){
+  if (full || lastKmax!==S.kMax){
+    weightsEl.innerHTML='';
+    var i;
+    for (i=0;i<S.kMax;i++){
+      var d=document.createElement('div'); d.className='wt'; weightsEl.appendChild(d);
+    }
+    lastKmax = S.kMax; lastWeights = -1;
+  }
+  if (lastWeights !== S.kUsed){
+    var els = weightsEl.children, j;
+    for (j=0;j<els.length;j++){
+      if (j < S.kMax-S.kUsed) els[j].classList.remove('spent');
+      else els[j].classList.add('spent');
+    }
+    lastWeights = S.kUsed;
+  }
+  batchV.textContent = 'Batch '+roman(S.round);
+  /* keep the rule on one line - a wrapped HUD steals height from the scale */
+  var narrow = window.innerWidth < 560;
+  ruleV.textContent = S.unknown
+    ? (narrow ? 'Light or heavy?' : 'The fake may be light OR heavy')
+    : (narrow ? 'The alloy is light' : "The forger's alloy is light");
+}
+function hudTick(){
+  var v = Math.round(S.scoreShown);
+  if (v !== lastScoreShown){
+    scoreV.textContent = v;
+    lastScoreShown = v;
+  }
+}
+
+/* ============================ screens =============================== */
+var screenEl = document.getElementById('screen');
+var cardEl = document.getElementById('card');
+var eyeEl = document.getElementById('scEyebrow');
+var titleEl = document.getElementById('scTitle');
+var subEl = document.getElementById('scSub');
+var bodyEl = document.getElementById('scBody');
+var btnEl = document.getElementById('scBtn');
+var footEl = document.getElementById('scFoot');
+var pauseEl = document.getElementById('pausev');
+
+function showScreen(){ screenEl.classList.add('on'); }
+function hideScreen(){ screenEl.classList.remove('on'); }
+
+function showTitle(){
+  eyeEl.textContent = 'The Royal Mint · Night Shift';
+  titleEl.textContent = 'ASSAY';
+  subEl.innerHTML = 'A batch of freshly struck coins lands on your bench and exactly one of them is <em>false</em>. '+
+    'You have a brass balance, a few weighings, and three wax seals of credit with the Crown. '+
+    'Weigh, reason, and stamp the forgery.';
+  bodyEl.innerHTML =
+    '<div class="howto">'+
+      '<div class="ht"><b>Drag</b><span>Pull coins from the tray onto the left or right pan. Drag them back off to unload.</span></div>'+
+      '<div class="ht"><b>Weigh</b><span>The beam tips toward the heavier side. Every weighing is written into your ledger.</span></div>'+
+      '<div class="ht"><b>Seal</b><span>Coins the evidence has already proven true get a green seal. They lock — but they still make excellent reference weights.</span></div>'+
+      '<div class="ht"><b>Accuse</b><span>Drag your suspect onto the anvil and stamp it. Accuse early for a bigger purse; a wrong stamp cracks a seal.</span></div>'+
+    '</div>'+
+    '<div class="keys">'+
+      '<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> or <kbd>0-9</kbd> select a coin &nbsp;·&nbsp; '+
+      '<kbd>L</kbd>/<kbd>R</kbd> load a pan &nbsp;·&nbsp; <kbd>Bksp</kbd> unload<br>'+
+      '<kbd>Enter</kbd> weigh &nbsp;·&nbsp; <kbd>A</kbd> accuse &nbsp;·&nbsp; <kbd>M</kbd> mute &nbsp;·&nbsp; <kbd>Esc</kbd> pause'+
+    '</div>';
+  btnEl.textContent = 'Begin';
+  btnEl.style.display='';
+  footEl.textContent = 'The candle burns while you think';
+  cardEl.classList.remove('bare');
+  showScreen();
+}
+function showOver(){
+  eyeEl.textContent = 'The seals are spent';
+  titleEl.textContent = 'Dismissed';
+  subEl.innerHTML = 'The forger walks free and the Mint finds another assayer. '+
+    'Every batch you cleared still counts toward your name.';
+  bodyEl.innerHTML =
+    '<div id="stats">'+
+      '<div class="stat"><div class="sv">'+S.score+'</div><div class="sl">Final score</div></div>'+
+      '<div class="stat"><div class="sv">'+(S.round-1)+'</div><div class="sl">Batches cleared</div></div>'+
+      '<div class="stat"><div class="sv">'+roman(S.bestRound)+'</div><div class="sl">Deepest batch</div></div>'+
+    '</div>';
+  btnEl.textContent = 'Try again';
+  btnEl.style.display='';
+  footEl.textContent = 'Enter to restart';
+  cardEl.classList.remove('bare');
+  showScreen();
+}
+
+function beginGame(){
+  hideScreen();
+  try{ btnEl.blur(); }catch(e){}
+  hudEl.classList.add('on');
+  S.mode='play';
+  startRound(1);
+}
+function restart(){
+  /* full reset - no page reload */
+  S.timers.length = 0;
+  var i;
+  for (i=0;i<PARTMAX;i++) partPool[i].live=false;
+  S.score=0; S.scoreShown=0; lastScoreShown=-1;
+  S.seals=3; S.bestRound=1;
+  S.shake=0; S.press=0; S.locked=false;
+  S.drag=null; S.confirm=null; S.reveal=null; S.toast=null;
+  S.pressWeigh=false; S.weighPress=0; S.weighFlash=0;
+  buildSeals();
+  hideScreen();
+  try{ btnEl.blur(); }catch(e){}
+  hudEl.classList.add('on');
+  S.mode='play';
+  startRound(1);
+}
+
+btnEl.addEventListener('click', function(e){
+  e.preventDefault();
+  Snd.unlock();
+  if (S.mode==='title') beginGame();
+  else if (S.mode==='over') restart();
+});
+
+/* ------------------------------ mute -------------------------------- */
+var muteBtn = document.getElementById('mute');
+function toggleMute(){
+  Snd.setMuted(!Snd.muted);
+  muteBtn.classList.toggle('off', Snd.muted);
+}
+muteBtn.addEventListener('click', function(e){
+  e.preventDefault(); e.stopPropagation();
+  Snd.unlock(); toggleMute();
+  try{ muteBtn.blur(); }catch(err){}
+});
+
+/* ------------------------------ pause ------------------------------- */
+function pauseGame(){
+  if (S.paused) return;
+  if (S.mode!=='play' && S.mode!=='banner') return;
+  S.paused = true;
+  /* drop any drag safely */
+  if (S.drag){
+    var co = S.coins[S.drag.id];
+    if (co){ co.drag=false; co.loc='tray'; }
+    S.drag=null; S.hoverTarget='';
+  }
+  S.pressWeigh=false; S.weighPress=0;
+  pauseEl.classList.add('on');
+}
+function resumeGame(){
+  if (!S.paused) return;
+  S.paused=false;
+  pauseEl.classList.remove('on');
+}
+pauseEl.addEventListener('pointerdown', function(e){ e.preventDefault(); resumeGame(); });
+window.addEventListener('blur', pauseGame);
+document.addEventListener('visibilitychange', function(){ if (document.hidden) pauseGame(); });
+
+/* ---------------------------- listeners ----------------------------- */
+cv.addEventListener('pointerdown', function(e){ e.preventDefault(); onDown(e); }, {passive:false});
+window.addEventListener('pointermove', function(e){ onMove(e); }, {passive:false});
+window.addEventListener('pointerup', function(e){ onUp(e); }, {passive:false});
+window.addEventListener('pointercancel', function(e){ onUp(e); }, {passive:false});
+window.addEventListener('keydown', onKey, {passive:false});
+document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
+/* only the play surface swallows touch scrolling - the title card may scroll */
+cv.addEventListener('touchmove', function(e){ if (e.cancelable) e.preventDefault(); }, {passive:false});
+document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+var resizeTimer = 0;
+function doResize(){
+  syncHUD(false);       /* rule text is width-dependent; set it before measuring */
+  computeLayout();
+  buildGradients();
+  buildAmbient();
+  buildCoinSprites();
+}
+window.addEventListener('resize', function(){
+  doResize();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(doResize, 200);
+});
+window.addEventListener('orientationchange', function(){
+  doResize();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(doResize, 260);
+});
+/* The steady candlelight wash is baked into the background once.  Only the
+   flicker is drawn live, and it is confined to the brass around the scale -
+   a second full-screen composited pass costs ~20ms on a software rasteriser
+   and buys almost nothing visually. */
+function buildAmbient(){
+  var gx = L.cx, gy = L.beamY + L.rope*0.35;
+  var rr = Math.max(L.beamHalf*1.30, 150);
+  var g = ctx.createRadialGradient(gx, gy, 4, gx, gy, rr);
+  g.addColorStop(0,'rgba(255,196,116,.55)');
+  g.addColorStop(.42,'rgba(255,158,74,.18)');
+  g.addColorStop(1,'rgba(255,150,64,0)');
+  G.amb = g;
+  G.ambX = Math.max(0, gx-rr); G.ambY = Math.max(0, gy-rr);
+  G.ambW = Math.min(W, gx+rr) - G.ambX;
+  G.ambH = Math.min(H, gy+rr) - G.ambY;
+}
+
+/* ============================= update =============================== */
+function update(dt){
+  S.now += dt;
+  S.t += dt;
+  runTimers();
+
+  /* candle flicker */
+  S.flick = 1 + 0.055*Math.sin(S.now*7.3) + 0.035*Math.sin(S.now*3.1+1.7)
+              + 0.025*Math.sin(S.now*17.4+0.6);
+
+  /* beam spring (substepped) */
+  var steps = Math.min(8, Math.max(1, Math.ceil(dt*120)));
+  var sdt = dt/steps, i;
+  for (i=0;i<steps;i++){
+    var acc = (S.beamTarget-S.beamA)*95 - S.beamV*9.4;
+    S.beamV += acc*sdt;
+    S.beamA += S.beamV*sdt;
+  }
+
+  /* mode timing */
+  if (S.mode==='banner' && S.t>=1.6){ S.mode='play'; S.t=0; }
+
+  /* candle burn */
+  if (S.mode==='play' && !S.reveal && !S.confirm && S.candle>0){
+    S.candle = Math.max(0, S.candle - dt);
+  }
+
+  /* coins */
+  var co, tgt=_tg;
+  for (i=0;i<S.coins.length;i++){
+    co = S.coins[i];
+    if (co.delay>0){ co.delay -= dt; }
+    if (co.shake>0) co.shake = Math.max(0, co.shake - dt*1.6);
+    if (co.cleared && co.clearT<1) co.clearT = Math.min(1, co.clearT + dt*3.4);
+    if (co.drag && S.drag){
+      co.x = approach(co.x, S.drag.x, 34, dt);
+      co.y = approach(co.y, S.drag.y, 34, dt);
+      co.r = approach(co.r, L.trayR*1.16, 18, dt);
+      continue;
+    }
+    if (co.delay>0) continue;
+    coinTarget(co, tgt);
+    var rate = (co.loc==='L'||co.loc==='R') ? 24 : 17;
+    co.x = approach(co.x, tgt.x, rate, dt);
+    co.y = approach(co.y, tgt.y, rate, dt);
+    co.r = approach(co.r, tgt.r, 15, dt);
+  }
+
+  /* animation values */
+  S.scoreShown = approach(S.scoreShown, S.score, 6, dt);
+  S.shake = S.shake>0.001 ? S.shake*Math.exp(-6.5*dt) : 0;
+  S.resultShow = approach(S.resultShow, S.hasResult?1:0, 9, dt);
+  S.weighFlash = Math.max(0, S.weighFlash - dt*3.2);
+  S.weighPress = approach(S.weighPress, S.pressWeigh?1:0, 26, dt);
+  if (S.confirm) S.confirm.t += dt;
+  if (S.reveal){
+    S.reveal.t += dt;
+    S.press = approach(S.press, 0.05, 4, dt);
+  } else if (S.locked && S.mode==='play' && anyOnAnvil()){
+    S.press = Math.min(1, S.press + dt*4.2);
+  } else {
+    S.press = approach(S.press, 0, 8, dt);
+  }
+  if (S.toast){
+    S.toast.t += dt;
+    if (S.toast.t >= S.toast.life) S.toast = null;
+  }
+  updateParts(dt);
+}
+function anyOnAnvil(){
+  var i;
+  for (i=0;i<S.coins.length;i++) if (S.coins[i].loc==='anvil') return true;
+  return false;
+}
+
+/* ============================== loop ================================ */
+var lastT = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  var d = (now-lastT)/1000;
+  lastT = now;
+  if (!(d>0)) d=0;
+  if (d>MAXFRAME) d=MAXFRAME;
+  if (!S.paused) update(d);
+  hudTick();
+  render();
+}
+
+/* ============================== boot ================================ */
+function boot(){
+  S.n = 5;
+  S.coins = [];
+  buildSeals();
+  syncHUD(true);      /* fill the HUD first: layout measures its height */
+  computeLayout();
+  buildGradients();
+  buildAmbient();
+  buildCoinSprites();
+  showTitle();
+  requestAnimationFrame(frame);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>
