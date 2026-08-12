@@ -1,0 +1,2717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="DUCKS &amp; DRAKES - a one-button stone-skipping game across five dusk lakes. Hold to charge, release to throw, tap every time the stone kisses the water.">
+<title>DUCKS &amp; DRAKES</title>
+<style>
+  :root{
+    --ink:#f6ecdf;
+    --dim:rgba(246,236,223,.56);
+    --faint:rgba(246,236,223,.34);
+    --gold:#ffc773;
+    --amber:#ff9145;
+    --rose:#ff7a6b;
+    --teal:#7fe3d2;
+    --night:#070914;
+    --panel:rgba(11,14,30,.72);
+    --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:#070914;color:var(--ink);
+    font-family:var(--ui);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#070914;}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+
+  /* ---------------- HUD ---------------- */
+  #hud{
+    position:absolute;left:0;right:0;top:0;z-index:5;pointer-events:none;
+    padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));
+    display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+    opacity:0;transition:opacity .5s ease;
+  }
+  #hud.on{opacity:1;}
+  .hcol{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .hcol.c{align-items:center;text-align:center;}
+  .hcol.r{align-items:flex-end;text-align:right;}
+  .lbl{
+    font-size:9px;letter-spacing:.26em;text-transform:uppercase;font-weight:700;
+    color:var(--faint);text-shadow:0 1px 5px rgba(3,6,16,.9);white-space:nowrap;
+  }
+  .val{
+    font-size:22px;line-height:1;font-weight:650;font-variant-numeric:tabular-nums;
+    letter-spacing:.01em;color:#fff5e6;text-shadow:0 2px 14px rgba(3,8,20,.9);
+    transition:transform .16s cubic-bezier(.2,1.8,.4,1);transform-origin:0 50%;white-space:nowrap;
+  }
+  .hcol.c .val{transform-origin:50% 50%;font-size:15px;}
+  .hcol.r .val{transform-origin:100% 50%;font-size:17px;color:#ffe9c6;}
+  .val.pop{transform:scale(1.22);}
+  #stones{display:flex;gap:5px;margin-top:2px;}
+  .sdot{
+    width:9px;height:9px;border-radius:50%;
+    background:radial-gradient(circle at 35% 32%, #ffdca5, #b07c3f 68%, #5d3f1e);
+    box-shadow:0 0 8px rgba(255,180,100,.45);
+    transition:opacity .3s ease, transform .3s ease;
+  }
+  .sdot.spent{opacity:.2;transform:scale(.72);background:#3a3a4a;box-shadow:none;}
+  #windRow{display:flex;align-items:center;gap:6px;margin-top:2px;}
+  #windArrow{font-size:14px;line-height:1;color:var(--gold);text-shadow:0 0 10px rgba(255,180,90,.5);}
+  #windBars{display:flex;gap:3px;}
+  .wbar{width:3px;height:9px;border-radius:2px;background:rgba(246,236,223,.16);}
+  .wbar.on{background:var(--gold);box-shadow:0 0 6px rgba(255,190,110,.6);}
+
+  /* ---------------- mute ---------------- */
+  #mute{
+    position:absolute;z-index:8;pointer-events:auto;
+    right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));
+    width:38px;height:38px;border-radius:11px;border:1px solid rgba(246,236,223,.16);
+    background:rgba(9,12,26,.55);color:var(--ink);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    opacity:.5;transition:opacity .2s ease,transform .12s ease,border-color .2s ease;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  }
+  #mute:hover{opacity:.95;border-color:rgba(255,199,115,.4);}
+  #mute:active{transform:scale(.92);}
+  #mute svg{width:19px;height:19px;display:block;}
+  #mute .slash{opacity:0;transition:opacity .15s ease;}
+  #mute.off .slash{opacity:1;}
+  #mute.off .wave{opacity:.18;}
+
+  /* ---------------- screens ---------------- */
+  #screen{
+    position:absolute;inset:0;z-index:6;pointer-events:none;
+    display:flex;align-items:center;justify-content:center;
+    padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));
+    opacity:0;transition:opacity .35s ease;
+  }
+  #screen.on{opacity:1;}
+  #card{
+    position:relative;max-width:min(560px,92vw);width:100%;
+    padding:clamp(18px,3.6vh,30px) clamp(18px,4vw,34px);
+    border-radius:20px;text-align:center;
+    background:linear-gradient(180deg, rgba(14,17,36,.82), rgba(7,9,20,.9));
+    border:1px solid rgba(246,236,223,.13);
+    box-shadow:0 24px 70px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    transform:translateY(10px) scale(.985);opacity:0;
+    transition:transform .42s cubic-bezier(.16,1,.3,1), opacity .38s ease;
+  }
+  #screen.on #card{transform:none;opacity:1;}
+  #card.bare{background:none;border:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;}
+
+  #scEyebrow{
+    font-size:10px;letter-spacing:.38em;text-transform:uppercase;font-weight:700;
+    color:var(--faint);margin-bottom:10px;
+  }
+  #scTitle{
+    font-size:clamp(30px,7.6vw,58px);line-height:.98;font-weight:800;
+    letter-spacing:.055em;margin:0;
+    background:linear-gradient(178deg,#fff6e6 6%,#ffc773 46%,#ff8f4a 96%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 6px 24px rgba(255,140,60,.28));
+    text-transform:uppercase;
+  }
+  /* note: no opacity/filter on this span - a child compositing group would
+     punch a hole in the parent's background-clip:text gradient */
+  #scTitle .amp{font-size:.6em;vertical-align:.12em;letter-spacing:.02em;}
+  #scTitle.sm{font-size:clamp(24px,5.4vw,40px);letter-spacing:.09em;}
+  #scRule{
+    width:70px;height:2px;margin:14px auto;border-radius:2px;
+    background:linear-gradient(90deg,transparent,rgba(255,199,115,.85),transparent);
+  }
+  #scSub{
+    font-size:clamp(12px,1.6vh,14px);line-height:1.55;color:var(--dim);
+    margin:0 auto;max-width:40ch;
+  }
+  #scBody{margin-top:16px;}
+  #scBody:empty{display:none;}
+
+  .keys{
+    display:flex;flex-wrap:wrap;gap:8px 10px;justify-content:center;margin-top:2px;
+  }
+  .key{
+    display:flex;align-items:center;gap:7px;
+    font-size:11px;letter-spacing:.06em;color:var(--dim);
+    background:rgba(255,255,255,.035);border:1px solid rgba(246,236,223,.1);
+    border-radius:9px;padding:6px 10px;
+  }
+  .key b{
+    font-weight:700;color:#ffe3b4;letter-spacing:.1em;font-size:10px;
+    background:rgba(255,199,115,.11);border:1px solid rgba(255,199,115,.24);
+    border-radius:5px;padding:2px 6px;white-space:nowrap;
+  }
+
+  .tally{display:flex;flex-direction:column;gap:1px;margin:0 auto;max-width:340px;}
+  .trow{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:7px 2px;border-bottom:1px solid rgba(246,236,223,.07);
+    opacity:0;transform:translateY(6px);
+    animation:rowIn .42s cubic-bezier(.16,1,.3,1) forwards;
+  }
+  .trow.tot{border-bottom:none;margin-top:6px;padding-top:11px;border-top:1px solid rgba(255,199,115,.26);}
+  .trow .tk{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);}
+  .trow .tv{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:#ffeccd;}
+  .trow.tot .tk{color:var(--dim);}
+  .trow.tot .tv{font-size:26px;color:var(--gold);text-shadow:0 0 26px rgba(255,180,90,.4);}
+  .trow .tv.neg{color:rgba(246,236,223,.4);}
+  @keyframes rowIn{to{opacity:1;transform:none;}}
+
+  #scPrompt{
+    margin-top:20px;font-size:11px;letter-spacing:.24em;text-transform:uppercase;
+    font-weight:700;color:#ffd9a0;
+    animation:pulse 1.75s ease-in-out infinite;
+  }
+  #scPrompt:empty{display:none;}
+  #scPrompt .sp{color:var(--faint);letter-spacing:.14em;font-weight:600;}
+  @keyframes pulse{0%,100%{opacity:.42;}50%{opacity:1;}}
+
+  #scFoot{
+    margin-top:12px;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:rgba(246,236,223,.26);
+  }
+  #scFoot:empty{display:none;}
+
+  #best{
+    margin-top:14px;font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);
+  }
+  #best b{color:#ffe0ae;font-weight:700;letter-spacing:.12em;}
+  #best:empty{display:none;}
+
+  /* toast for wasted flick / notices handled on canvas */
+  @media (max-height:470px){
+    #scRule{margin:8px auto;width:52px;}
+    #scBody{margin-top:9px;}
+    #scPrompt{margin-top:11px;}
+    #best{margin-top:9px;}
+    .trow{padding:3.5px 2px;}
+    #scTitle{font-size:clamp(22px,5.4vw,38px);}
+    #scTitle.sm{font-size:clamp(19px,4.4vw,30px);}
+    #scSub{font-size:11.5px;line-height:1.45;}
+    #scEyebrow{margin-bottom:6px;}
+    #card{padding:14px 20px;border-radius:16px;}
+    .key{padding:4px 8px;font-size:10px;}
+    #scFoot{display:none;}
+  }
+  /* keep the lake name from crowding the distance readout on phones */
+  @media (max-width:560px){ .lname{display:none;} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="hcol">
+      <div class="lbl">Score</div>
+      <div class="val" id="hScore">0</div>
+      <div id="stones"></div>
+    </div>
+    <div class="hcol c">
+      <div class="lbl" id="hLakeLbl">Lake 1 of 5</div>
+      <div class="val" id="hChain">&nbsp;</div>
+    </div>
+    <div class="hcol r">
+      <div class="lbl">To shore</div>
+      <div class="val" id="hDist">0m</div>
+      <div id="windRow">
+        <div id="windBars"></div>
+        <div id="windArrow">&mdash;</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen">
+    <div id="card">
+      <div id="scEyebrow"></div>
+      <h1 id="scTitle"></h1>
+      <div id="scRule"></div>
+      <div id="scSub"></div>
+      <div id="scBody"></div>
+      <div id="best"></div>
+      <div id="scPrompt"></div>
+      <div id="scFoot"></div>
+    </div>
+  </div>
+
+  <button id="mute" aria-label="Toggle sound">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9.2h3.4L12 5.2v13.6l-4.6-4H4z" fill="currentColor" fill-opacity=".22"></path>
+      <path class="wave" d="M15.4 9.1a4 4 0 0 1 0 5.8"></path>
+      <path class="wave" d="M18 6.6a7.6 7.6 0 0 1 0 10.8"></path>
+      <path class="slash" d="M3.5 3.5l17 17" stroke="#ff7a6b"></path>
+    </svg>
+  </button>
+</div>
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   DUCKS & DRAKES
+   One-button stone skipping across five dusk lakes.
+   World units are "metres"; water surface is y = 0, +y is up.
+   Physics runs on a fixed 120Hz accumulator; rendering on rAF.
+   ===================================================================== */
+
+/* ------------------------------ tuning ------------------------------ */
+var DT        = 1/120;      // fixed physics step (s)
+var MAXFRAME  = 0.10;       // clamp on frame delta (s) -> no spiral of death
+var G         = 26.0;       // gravity (u/s^2) - floaty-readable
+var AIR       = 0.020;      // passive horizontal drag coefficient (1/s)
+var STONE_R   = 0.28;       // stone radius (u)
+var LAUNCH_X  = 1.25;
+var LAUNCH_Y  = 1.52;
+
+// timing windows, milliseconds
+var PERFECT_MS = 45;        // |dt| <= this  -> PERFECT
+var GOOD_MS    = 105;       // |dt| <= this  -> GOOD
+var LATE_MS    = 92;        // grace after contact before it is called sloppy
+var WASTE_MS   = 155;       // a tap this long before any contact is a wasted flick
+
+// skip response
+var RET_PERFECT = 0.965, BNC_PERFECT = 0.166;
+var RET_HYDRO   = 1.021, BNC_HYDRO   = 0.130;
+var HYDRO_ADD   = 0.75;     // additive push, so a plane always builds speed
+var RET_GOOD    = 0.850, BNC_GOOD    = 0.262;
+var RET_SLOPPY  = 0.600, BNC_SLOPPY  = 0.430;
+var MIN_VY      = 2.45;     // floor on bounce so contacts never machine-gun
+var VX_MAX      = 34.0;     // ceiling so a long plane cannot outrun the eye
+var PLUNK_VX    = 8.0;      // below this the stone sinks
+var SLOPPY_PLUNK_VX = 9.0;  // a sloppy at this speed or less drowns the stone
+var SKID_FRICTION = 0.60;   // drag while the stone hesitates on the surface
+
+var CHARGE_PERIOD = 1.20;   // full 0->100->0 sweep (s)
+var PWR_V0 = 15.0, PWR_V1 = 31.0;          // launch speed range
+var PWR_A0 = 42*Math.PI/180, PWR_A1 = 6*Math.PI/180; // launch angle range
+var HYDRO_CHAIN = 3;
+
+var ANCHOR = 0.34;          // stone rests at this fraction of screen width
+var VIEW_H = 13.0;          // world units of height we try to show
+var VIEW_W = 24.0;          // world units of width we try to show
+var SCALE_MAX = 84;
+
+var DUCK_R    = 1.25;       // splash radius that startles a duck
+var DUCK_WARN = 16;         // how far ahead a plane is warned about ducks
+var BUOY_R    = 0.56, BUOY_H = 1.55;
+var PAD_HW    = 1.10;
+
+var LAKES = [
+  { dist: 76,  wind: 0.00, groups: 1, dspd: 0.42, buoys: 0, pads: 0, name:'MILLPOND' },
+  { dist: 100, wind: 0.40, groups: 2, dspd: 0.62, buoys: 1, pads: 0, name:'THE NARROWS' },
+  { dist: 126, wind: 0.70, groups: 3, dspd: 0.82, buoys: 2, pads: 2, name:'REEDMERE' },
+  { dist: 150, wind: 0.95, groups: 4, dspd: 1.02, buoys: 3, pads: 4, name:'DRAKE WATER' },
+  { dist: 178, wind: 1.20, groups: 5, dspd: 1.22, buoys: 4, pads: 6, name:'THE LONG LOCH' }
+];
+var STONES_PER_LAKE = 3;
+
+/* ------------------------------ helpers ----------------------------- */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function easeOut(t){ t=clamp(t,0,1); return 1-(1-t)*(1-t); }
+function smoothTo(cur,tgt,rate,dt){ return cur + (tgt-cur)*(1-Math.exp(-rate*dt)); }
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// cheap stable hash -> 0..1, used for shimmer that must not allocate
+function hash1(n){ var s = Math.sin(n*127.1)*43758.5453; return s - Math.floor(s); }
+
+/* ------------------------------ audio ------------------------------- */
+var Snd = {
+  ctx:null, master:null, noise:null, muted:false, ready:false,
+  chargeOsc:null, chargeGain:null, chargeFilt:null,
+
+  init:function(){
+    if (this.ctx) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try { this.ctx = new AC(); } catch(e){ this.ctx = null; return; }
+    var c = this.ctx;
+    this.master = c.createGain();
+    this.master.gain.value = this.muted ? 0 : 0.30;
+    this.master.connect(c.destination);
+    var len = Math.floor(c.sampleRate * 1.2);
+    var buf = c.createBuffer(1, len, c.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i=0;i<len;i++) d[i] = Math.random()*2-1;
+    this.noise = buf;
+    this.ready = true;
+  },
+  unlock:function(){
+    this.init();
+    if (this.ctx && this.ctx.state === 'suspended') { try{ this.ctx.resume(); }catch(e){} }
+  },
+  setMuted:function(m){
+    this.muted = m;
+    if (this.master && this.ctx) {
+      var t = this.ctx.currentTime;
+      this.master.gain.cancelScheduledValues(t);
+      this.master.gain.setTargetAtTime(m?0:0.30, t, 0.02);
+    }
+    if (m) this.chargeStop();
+  },
+  now:function(){ return this.ctx ? this.ctx.currentTime : 0; },
+
+  // simple enveloped oscillator
+  tone:function(freq, dur, type, vol, delay, glideTo, curve){
+    if (!this.ready || this.muted) return;
+    var c = this.ctx, t0 = c.currentTime + (delay||0);
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,glideTo), t0+dur);
+    var atk = Math.min(0.012, dur*0.3);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0+atk);
+    if (curve === 'flat') {
+      g.gain.setValueAtTime(Math.max(0.0002,vol), t0+dur*0.6);
+    }
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t0); o.stop(t0+dur+0.03);
+  },
+  burst:function(dur, cut, vol, delay, type, q, glideCut){
+    if (!this.ready || this.muted) return;
+    var c = this.ctx, t0 = c.currentTime + (delay||0);
+    var s = c.createBufferSource(); s.buffer = this.noise;
+    s.playbackRate.value = 0.85 + Math.random()*0.3;
+    var f = c.createBiquadFilter(); f.type = type || 'lowpass';
+    f.frequency.setValueAtTime(cut, t0);
+    if (glideCut) f.frequency.exponentialRampToValueAtTime(Math.max(60,glideCut), t0+dur);
+    f.Q.value = q || 0.8;
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), t0+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    s.connect(f); f.connect(g); g.connect(this.master);
+    s.start(t0); s.stop(t0+dur+0.03);
+  },
+
+  skip:function(step, hydro){
+    // pentatonic ladder
+    var PENT = [0,2,4,7,9,12,14,16,19,21,24,26];
+    var i = clamp(step|0, 0, PENT.length-1);
+    var f = 392 * Math.pow(2, PENT[i]/12);
+    this.tone(f, hydro?0.18:0.13, 'triangle', hydro?0.20:0.16, 0);
+    this.tone(f*2, 0.055, 'sine', 0.07, 0);
+    this.burst(0.06, 2600, hydro?0.05:0.075, 0, 'highpass', 0.7);
+  },
+  good:function(){
+    this.tone(330, 0.10, 'triangle', 0.11, 0);
+    this.burst(0.075, 1500, 0.085, 0, 'lowpass', 0.8);
+  },
+  sloppy:function(){
+    this.tone(92, 0.20, 'sine', 0.20, 0, 58);
+    this.burst(0.26, 1100, 0.19, 0, 'lowpass', 0.9, 260);
+  },
+  plunk:function(){
+    this.tone(400, 0.42, 'sine', 0.19, 0, 62);
+    this.burst(0.34, 700, 0.15, 0.02, 'lowpass', 1.1, 140);
+    this.tone(150, 0.30, 'sine', 0.09, 0.05, 70);
+  },
+  thup:function(){
+    this.tone(190, 0.10, 'sine', 0.16, 0, 110);
+    this.burst(0.13, 480, 0.14, 0, 'lowpass', 1.0);
+  },
+  bonk:function(){
+    this.tone(160, 0.22, 'square', 0.13, 0, 96);
+    this.tone(320, 0.10, 'triangle', 0.08, 0, 210);
+    this.burst(0.10, 900, 0.09, 0, 'lowpass', 1.0);
+  },
+  quack:function(){
+    if (!this.ready || this.muted) return;
+    var self = this;
+    function q(delay, f0, f1, vol, dur){
+      var c = self.ctx, t0 = c.currentTime + delay;
+      var o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f0, t0);
+      o.frequency.linearRampToValueAtTime(f1, t0+dur*0.85);
+      var bp = c.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value = 1150; bp.Q.value = 2.4;
+      var lp = c.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = 2600;
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0+0.012);
+      g.gain.setValueAtTime(vol, t0+dur*0.55);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+      o.connect(bp); bp.connect(lp); lp.connect(g); g.connect(self.master);
+      o.start(t0); o.stop(t0+dur+0.03);
+    }
+    q(0.00, 560, 300, 0.20, 0.115);
+    q(0.145, 470, 250, 0.16, 0.135);
+  },
+  wasted:function(){
+    this.tone(240, 0.045, 'square', 0.055, 0, 170);
+  },
+  fanfare:function(){
+    var base = 392, seq = [0,4,7,12], i;
+    for (i=0;i<seq.length;i++){
+      var f = base*Math.pow(2,seq[i]/12);
+      this.tone(f, 0.34, 'triangle', 0.17, i*0.105);
+      this.tone(f*2, 0.22, 'sine', 0.06, i*0.105);
+    }
+    this.tone(base*Math.pow(2,16/12), 0.72, 'triangle', 0.15, 0.44);
+    this.tone(base*Math.pow(2,19/12), 0.72, 'sine', 0.09, 0.46);
+  },
+  sad:function(){
+    var seq = [0,-3,-5,-12], i;
+    for (i=0;i<seq.length;i++){
+      this.tone(330*Math.pow(2,seq[i]/12), 0.42, 'triangle', 0.13, i*0.16);
+    }
+  },
+  win:function(){
+    var base = 523.25, seq = [0,4,7,12,16,19];
+    for (var i=0;i<seq.length;i++){
+      this.tone(base*Math.pow(2,seq[i]/12), 0.5, 'triangle', 0.15, i*0.09);
+      this.tone(base*Math.pow(2,seq[i]/12)*0.5, 0.5, 'sine', 0.07, i*0.09);
+    }
+  },
+  throwWhoosh:function(p){
+    this.burst(0.20, 700+p*1400, 0.10+p*0.06, 0, 'bandpass', 1.2, 300);
+  },
+  chargeStart:function(){
+    if (!this.ready || this.muted || this.chargeOsc) return;
+    var c = this.ctx, t = c.currentTime;
+    var o = c.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(110, t);
+    var o2 = c.createOscillator(); o2.type='sine'; o2.frequency.setValueAtTime(220, t);
+    var f = c.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(700,t); f.Q.value=2;
+    var g = c.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.055, t+0.07);
+    o.connect(f); o2.connect(f); f.connect(g); g.connect(this.master);
+    o.start(t); o2.start(t);
+    this.chargeOsc = o; this.chargeOsc2 = o2; this.chargeGain = g; this.chargeFilt = f;
+  },
+  chargeSet:function(p){
+    if (!this.chargeOsc || !this.ctx) return;
+    var t = this.ctx.currentTime;
+    this.chargeOsc.frequency.setTargetAtTime(104 + p*150, t, 0.03);
+    this.chargeOsc2.frequency.setTargetAtTime(208 + p*320, t, 0.03);
+    this.chargeFilt.frequency.setTargetAtTime(560 + p*1500, t, 0.04);
+  },
+  chargeStop:function(){
+    if (!this.chargeOsc || !this.ctx) return;
+    var t = this.ctx.currentTime, g = this.chargeGain, o = this.chargeOsc, o2 = this.chargeOsc2;
+    try{
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(Math.max(0.0002, g.gain.value), t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+0.06);
+      o.stop(t+0.09); o2.stop(t+0.09);
+    }catch(e){}
+    this.chargeOsc = null; this.chargeOsc2 = null; this.chargeGain = null; this.chargeFilt = null;
+  }
+};
+
+/* ------------------------------ pools ------------------------------- */
+// particles: one flat pool, reused, never reallocated during play
+var PMAX = 380;
+var P = new Array(PMAX);
+(function(){
+  for (var i=0;i<PMAX;i++) P[i] = { on:false, x:0,y:0, vx:0,vy:0, g:0, life:0, max:1, r:1, kind:0, rot:0, spin:0, col:0 };
+})();
+var pIdx = 0;
+function spawnP(x,y,vx,vy,g,life,r,kind,col){
+  var tries = 0, p;
+  do { p = P[pIdx]; pIdx = (pIdx+1)%PMAX; tries++; } while (p.on && tries < PMAX);
+  p.on = true; p.x=x; p.y=y; p.vx=vx; p.vy=vy; p.g=g;
+  p.life = life; p.max = life; p.r = r; p.kind = kind; p.col = col||0;
+  p.rot = Math.random()*6.283; p.spin = (Math.random()-0.5)*6;
+  return p;
+}
+function clearP(){ for (var i=0;i<PMAX;i++) P[i].on = false; }
+
+// ripple rings on the water
+var RMAX = 26;
+var R = new Array(RMAX);
+(function(){ for (var i=0;i<RMAX;i++) R[i] = { on:false, x:0, r:0, life:0, max:1, str:1, w:1 }; })();
+var rIdx = 0;
+function spawnR(x, str, life){
+  var r = R[rIdx]; rIdx = (rIdx+1)%RMAX;
+  r.on = true; r.x = x; r.r = 0.12; r.life = life; r.max = life; r.str = str;
+  return r;
+}
+function clearR(){ for (var i=0;i<RMAX;i++) R[i].on = false; }
+
+// floating grade labels
+var LMAX = 8;
+var L = new Array(LMAX);
+(function(){ for (var i=0;i<LMAX;i++) L[i] = { on:false, x:0,y:0, life:0, max:1, txt:'', sub:'', col:'#fff', big:0 }; })();
+var lIdx = 0;
+function popLabel(x,y,txt,col,big,sub){
+  var l = L[lIdx]; lIdx = (lIdx+1)%LMAX;
+  l.on = true; l.x = x; l.y = y; l.life = big?1.15:0.92; l.max = l.life;
+  l.txt = txt; l.col = col; l.big = big||0; l.sub = sub||'';
+  return l;
+}
+function clearL(){ for (var i=0;i<LMAX;i++) L[i].on = false; }
+
+/* ------------------------------ state ------------------------------- */
+var TRAIL = 14;
+var S = {
+  state: 'title',      // title | ready | charge | fly | skid | sink | shore | clear | over | win
+  paused: false,
+  lakeIdx: 0,
+  score: 0,
+  best: 0,             // session only, never persisted
+  stones: STONES_PER_LAKE,
+  chain: 0,
+  hydro: false,
+  lakeSkips: 0, lakePerfects: 0, lakeBestChain: 0,
+  runSkips: 0, runPerfects: 0, runBestChain: 0,
+  stone: { x: LAUNCH_X, y: LAUNCH_Y, vx: 0, vy: 0, spin: 0, sunk: false },
+  trailX: new Float32Array(TRAIL),
+  trailY: new Float32Array(TRAIL),
+  trailN: 0, trailI: 0,
+  chargeT: 0, power: 0,
+  pendingTap: 0,       // sim-ms timestamp of an unconsumed tap (0 = none)
+  wasted: false, wastedCue: 0,
+  contactSim: 0, skidUntil: 0, lastGrade: '',
+  cam: 0, shake: 0, flash: 0, goldFlash: 0,
+  simNow: 0, lockUntil: 0,
+  titleT: 0, stateT: 0,
+  endReason: '',
+  warnedGroup: -1,
+  tapCount: 0,
+  seed: (Math.random()*1e9)|0,
+  sinkT: 0, shoreT: 0,
+  hydroGlow: 0
+};
+
+/* world content for the current lake */
+var W = {
+  dist: 76, wind: 0, ducks: [], buoys: [], pads: [], reeds: [], shoreReeds: [],
+  hillSeed: 1, name: ''
+};
+
+/* wind streak particles, screen-space normalised */
+var WSN = 30;
+var WS = new Array(WSN);
+(function(){
+  for (var i=0;i<WSN;i++) WS[i] = { x: Math.random(), y: Math.random(), s: 0.4+Math.random()*0.9, l: 0.02+Math.random()*0.06, a: 0.1+Math.random()*0.5 };
+})();
+
+/* ------------------------------ lake build --------------------------- */
+function buildLake(idx){
+  var cfg = LAKES[idx];
+  var rng = mulberry32(S.seed * 7919 + idx * 104729 + 17);
+  W.dist = cfg.dist;
+  W.name = cfg.name;
+  W.hillSeed = 100 + idx * 37 + (S.seed % 61);
+  // wind sign varies per run/lake, magnitude from config
+  W.wind = cfg.wind === 0 ? 0 : (rng() < 0.40 ? -cfg.wind : cfg.wind);
+
+  W.ducks.length = 0; W.buoys.length = 0; W.pads.length = 0;
+  W.reeds.length = 0; W.shoreReeds.length = 0;
+
+  // the first skip of a throw lands somewhere around 10-18m out, so the whole
+  // launch corridor is kept clear: your opening skip is always a clean one.
+  var xMin = 26, xMax = cfg.dist - 12;
+  if (xMax < xMin + 6) xMax = xMin + 6;
+  var span = xMax - xMin;
+  var used = [];                     // occupied spans, so nothing stacks
+  function free(a, b, pad){
+    for (var i=0;i<used.length;i++){
+      if (b + pad > used[i][0] && a - pad < used[i][1]) return false;
+    }
+    return true;
+  }
+  function take(a,b){ used.push([a,b]); }
+
+  // --- duck groups, spread evenly with jitter
+  var g, gi, n, k;
+  for (gi=0; gi<cfg.groups; gi++){
+    var slot0 = xMin + span * (gi / cfg.groups);
+    var slot1 = xMin + span * ((gi+1) / cfg.groups);
+    var cx = lerp(slot0 + 4, slot1 - 4, rng());
+    if (!isFinite(cx) || slot1 - slot0 < 9) cx = (slot0 + slot1) * 0.5;
+    cx = clamp(cx, xMin + 3, xMax - 3);
+    n = idx === 0 ? 2 : 2 + (rng() < 0.45 ? 1 : 0) + (idx >= 3 && rng() < 0.4 ? 1 : 0);
+    var patrol = 2.0 + rng() * 1.6;
+    var groupLo = cx, groupHi = cx;
+    for (k=0; k<n; k++){
+      var ox = (k - (n-1)/2) * (1.7 + rng()*0.9);
+      var hx = clamp(cx + ox, xMin, xMax);
+      // ducks may never wander into the launch zone or onto the landing shore
+      var lo = clamp(hx - patrol, 24, cfg.dist - 9);
+      var hi = clamp(hx + patrol, 24, cfg.dist - 9);
+      if (hi - lo < 0.6) { hi = lo + 0.6; }
+      if (lo < groupLo) groupLo = lo;
+      if (hi > groupHi) groupHi = hi;
+      W.ducks.push({
+        g: gi, x: clamp(hx, lo, hi), min: lo, max: hi,
+        dir: rng() < 0.5 ? -1 : 1,
+        spd: cfg.dspd * (0.75 + rng()*0.55),
+        bob: rng()*6.283, ph: rng(),
+        st: 0, y: 0, vx: 0, vy: 0, flap: rng()*6.283, t: 0,
+        size: 0.86 + rng()*0.3
+      });
+    }
+    take(groupLo - 2.6, groupHi + 2.6);
+  }
+
+  // --- buoys
+  for (gi=0; gi<cfg.buoys; gi++){
+    for (k=0; k<24; k++){
+      var bx = xMin + rng() * span;
+      if (free(bx-1.4, bx+1.4, 3.0)) { W.buoys.push({ x: bx, ph: rng()*6.283, blink: rng()*6.283 }); take(bx-1.4, bx+1.4); break; }
+    }
+  }
+  // --- lily pads
+  for (gi=0; gi<cfg.pads; gi++){
+    for (k=0; k<24; k++){
+      var px = xMin + rng() * span;
+      if (free(px-PAD_HW-0.6, px+PAD_HW+0.6, 2.2)) {
+        W.pads.push({ x: px, ph: rng()*6.283, flower: rng()<0.35, hw: PAD_HW*(0.88+rng()*0.3) });
+        take(px-PAD_HW-0.6, px+PAD_HW+0.6); break;
+      }
+    }
+  }
+  // --- reed clumps along both banks. They sit on the bank, not in the lane,
+  //     so the launch corridor stays visually clean.
+  var rr;
+  for (gi=0; gi<5; gi++){
+    rr = -5.0 + gi * 1.05 + rng()*0.4;
+    W.reeds.push({ x: rr, n: 3+((rng()*3)|0), h: 0.85+rng()*1.15, ph: rng()*6.283,
+                   base: 0.50, front: false });
+  }
+  for (gi=0; gi<2; gi++){
+    rr = -2.1 + gi * 0.9 + rng()*0.3;
+    W.reeds.push({ x: rr, n: 2+((rng()*3)|0), h: 1.05+rng()*1.15, ph: rng()*6.283,
+                   base: 0.42, front: true });
+  }
+  for (gi=0; gi<9; gi++){
+    rr = cfg.dist + 0.2 + rng()*6.5;
+    W.shoreReeds.push({ x: rr, n: 3+((rng()*4)|0), h: 1.0+rng()*1.6, ph: rng()*6.283,
+                        base: 0.75, front: false });
+  }
+  // open water is kept clear of scenery on purpose: anything sitting on the
+  // water out there has to read as a hazard, never as decoration.
+}
+
+/* ------------------------------ run flow ----------------------------- */
+function resetStone(){
+  var st = S.stone;
+  st.x = LAUNCH_X; st.y = LAUNCH_Y; st.vx = 0; st.vy = 0; st.spin = 0; st.sunk = false;
+  S.trailN = 0; S.trailI = 0;
+  S.chain = 0; S.hydro = false; S.hydroGlow = 0;
+  S.pendingTap = 0; S.wasted = false; S.wastedCue = 0;
+  S.lastGrade = ''; S.warnedGroup = -1; S.tapCount = 0;
+}
+
+function startRun(){
+  S.seed = (Math.random()*1e9)|0;
+  S.score = 0; S.lakeIdx = 0; S.stones = STONES_PER_LAKE;
+  S.runSkips = 0; S.runPerfects = 0; S.runBestChain = 0;
+  S.endReason = '';
+  clearP(); clearR(); clearL();
+  startLake(0);
+}
+
+function startLake(i){
+  S.lakeIdx = i;
+  S.stones = STONES_PER_LAKE;
+  S.lakeSkips = 0; S.lakePerfects = 0; S.lakeBestChain = 0;
+  buildLake(i);
+  clearP(); clearR(); clearL();
+  resetStone();
+  S.cam = 4;
+  setState('ready');
+  hudSync(true);
+  hideScreen();
+}
+
+function setState(s){
+  S.state = s;
+  S.stateT = 0;
+}
+
+function newStone(){
+  resetStone();
+  // re-home any ducks that flew off, so the lake stays populated between stones
+  for (var i=0;i<W.ducks.length;i++){
+    var d = W.ducks[i];
+    if (d.st !== 0){
+      d.st = 0; d.y = 0; d.vx = 0; d.vy = 0; d.t = 0;
+      d.x = clamp(d.x, d.min, d.max);
+    }
+  }
+  setState('ready');
+  hudSync(true);
+}
+
+function beginCharge(){
+  S.chargeT = 0; S.power = 0;
+  setState('charge');
+  Snd.chargeStart();
+}
+
+function releaseThrow(){
+  var p = S.power;
+  var v = lerp(PWR_V0, PWR_V1, p);
+  var a = lerp(PWR_A0, PWR_A1, p);
+  var st = S.stone;
+  st.x = LAUNCH_X; st.y = LAUNCH_Y;
+  st.vx = Math.cos(a) * v;
+  st.vy = Math.sin(a) * v;
+  st.spin = 0;
+  S.trailN = 0; S.trailI = 0;
+  S.pendingTap = 0; S.wasted = false; S.wastedCue = 0; S.tapCount = 0;
+  setState('fly');
+  Snd.chargeStop();
+  Snd.throwWhoosh(p);
+  hudSync(true);
+}
+
+/* ------------------------------ scoring ------------------------------ */
+function addScore(n){
+  S.score += n;
+  if (S.score > S.best) S.best = S.score;
+  hudScorePop();
+}
+
+/* ------------------------------ skip logic --------------------------- */
+function onContact(cx, cSim){
+  var st = S.stone;
+  st.y = 0; st.vy = 0; st.x = cx;
+  S.contactSim = cSim;
+  S.tapCount = 0;
+
+  // hazards resolve at the contact point, before any grade
+  var i, d;
+  for (i=0;i<W.pads.length;i++){
+    if (Math.abs(cx - W.pads[i].x) <= W.pads[i].hw){
+      padStop(W.pads[i]);
+      return;
+    }
+  }
+  for (i=0;i<W.ducks.length;i++){
+    d = W.ducks[i];
+    if (d.st === 0 && Math.abs(cx - d.x) <= DUCK_R){
+      spookGroup(d.g, cx);
+      return;
+    }
+  }
+
+  spawnR(cx, 0.55, 1.05);
+  splash(cx, 0.35, 4);
+
+  if (S.wasted){
+    resolve('sloppy');
+    return;
+  }
+  if (S.pendingTap){
+    var delta = Math.abs(cSim - S.pendingTap);
+    if (delta <= GOOD_MS){
+      S.pendingTap = 0;
+      resolve(delta <= PERFECT_MS ? 'perfect' : 'good');
+      return;
+    }
+    S.pendingTap = 0;  // stale flick, discarded - the grace window can still save it
+  }
+  // skid along the surface, waiting for a late tap
+  setState('skid');
+  S.skidUntil = cSim + LATE_MS;
+}
+
+function tapDuringSkid(tSim){
+  var delta = Math.abs(tSim - S.contactSim);
+  if (S.wasted){ resolve('sloppy'); return; }
+  resolve(delta <= PERFECT_MS ? 'perfect' : (delta <= GOOD_MS ? 'good' : 'sloppy'));
+}
+
+function resolve(grade){
+  var st = S.stone;
+  var ret, bnc, hydroSkip = false;
+
+  if (grade === 'perfect'){
+    S.chain++;
+    if (S.chain > S.lakeBestChain) S.lakeBestChain = S.chain;
+    if (S.chain > S.runBestChain) S.runBestChain = S.chain;
+    if (!S.hydro && S.chain >= HYDRO_CHAIN){
+      S.hydro = true;
+      popLabel(st.x, 1.9, 'HYDROPLANE', '#7fe3d2', 1);
+      S.goldFlash = 1;
+    }
+    hydroSkip = S.hydro;
+    ret = hydroSkip ? RET_HYDRO : RET_PERFECT;
+    bnc = hydroSkip ? BNC_HYDRO : BNC_PERFECT;
+  } else if (grade === 'good'){
+    S.chain = 0; S.hydro = false;
+    ret = RET_GOOD; bnc = BNC_GOOD;
+  } else {
+    S.chain = 0; S.hydro = false;
+    ret = RET_SLOPPY; bnc = BNC_SLOPPY;
+  }
+
+  st.vx *= ret;
+  if (hydroSkip) st.vx += HYDRO_ADD;
+  if (st.vx > VX_MAX) st.vx = VX_MAX;
+  S.lastGrade = grade;
+  S.lakeSkips++; S.runSkips++;
+
+  // feedback
+  var pts;
+  if (grade === 'perfect'){
+    S.lakePerfects++; S.runPerfects++;
+    pts = Math.round(10 * (1 + S.chain * 0.5));
+    addScore(pts);
+    popLabel(st.x, 0.85, 'PERFECT!', hydroSkip ? '#9defdd' : '#ffd98a', 1, '+' + pts);
+    Snd.skip(S.chain - 1, hydroSkip);
+    spawnR(st.x, 0.85, 1.25);
+    S.goldFlash = Math.max(S.goldFlash, 0.7);
+    splash(st.x, 0.5, 5);
+    if (hydroSkip) S.hydroGlow = 1;
+  } else if (grade === 'good'){
+    pts = 10;
+    addScore(pts);
+    popLabel(st.x, 0.75, 'good', 'rgba(246,236,223,.86)', 0, '+' + pts);
+    Snd.good();
+    splash(st.x, 0.8, 7);
+  } else {
+    pts = 4;
+    addScore(pts);
+    popLabel(st.x, 0.8, 'sloppy', '#ff9a7a', 0, '+' + pts);
+    Snd.sloppy();
+    S.shake = Math.max(S.shake, 0.85);
+    spawnR(st.x, 1.25, 1.5);
+    splash(st.x, 1.6, 14);
+  }
+
+  // drown checks
+  if (st.vx < PLUNK_VX || (grade === 'sloppy' && st.vx <= SLOPPY_PLUNK_VX)){
+    plunk(grade === 'sloppy' ? 'ONE SKIP TOO MANY' : 'OUT OF PUFF');
+    return;
+  }
+
+  st.vy = Math.max(bnc * st.vx, MIN_VY);
+  st.y = 0.001;
+  S.wasted = false;
+  setState('fly');
+}
+
+function splash(x, mag, n){
+  var i, c = Math.min(n, 16);
+  for (i=0;i<c;i++){
+    var a = (-0.15 + Math.random()*1.3) * Math.PI;
+    var sp = (1.6 + Math.random()*4.2) * (0.5 + mag);
+    spawnP(x + (Math.random()-0.5)*0.5, 0.03 + Math.random()*0.1,
+           Math.cos(a)*sp*0.55 + S.stone.vx*0.05, Math.abs(Math.sin(a))*sp,
+           G*0.85, 0.35+Math.random()*0.5, 0.045+Math.random()*0.06, 0);
+  }
+}
+
+function plunk(reason){
+  var st = S.stone;
+  st.vy = -1.2; st.vx *= 0.4;
+  S.endReason = reason || '';
+  S.hydro = false; S.chain = 0;
+  setState('sink');
+  S.sinkT = 0;
+  Snd.plunk();
+  spawnR(st.x, 1.0, 1.4);
+  splash(st.x, 1.1, 9);
+  if (reason) popLabel(st.x, 1.5, reason, 'rgba(246,236,223,.7)', 0);
+}
+
+function padStop(pad){
+  var st = S.stone;
+  st.x = pad.x + (st.x - pad.x) * 0.3;
+  st.vx *= 0.06; st.vy = 0;
+  Snd.thup();
+  popLabel(st.x, 1.35, 'LILY PAD', '#a8dba0', 0);
+  S.endReason = 'CAUGHT ON A LILY PAD';
+  S.shake = Math.max(S.shake, 0.35);
+  for (var i=0;i<6;i++){
+    spawnP(pad.x + (Math.random()-0.5)*1.6, 0.06, (Math.random()-0.5)*1.4, 0.8+Math.random()*1.6, G*0.6, 0.5, 0.05, 0);
+  }
+  setState('sink'); S.sinkT = 0;
+  S.hydro = false; S.chain = 0;
+}
+
+function buoyHit(b){
+  var st = S.stone;
+  st.x = b.x - (BUOY_R + STONE_R) * 0.5;
+  st.vx = 0; st.vy = -0.6;
+  Snd.bonk();
+  popLabel(st.x, 1.9, 'BUOY', '#ffb27a', 0);
+  S.endReason = 'RANG THE BUOY';
+  S.shake = Math.max(S.shake, 1.0);
+  spawnR(b.x, 0.9, 1.2);
+  splash(b.x, 1.0, 8);
+  S.hydro = false; S.chain = 0;
+  setState('sink'); S.sinkT = 0;
+}
+
+function spookGroup(g, cx){
+  var i, d, any = false;
+  for (i=0;i<W.ducks.length;i++){
+    d = W.ducks[i];
+    if (d.g === g && d.st === 0){
+      d.st = 1;
+      d.vx = (d.x < cx ? -1 : 1) * (2.2 + Math.random()*1.8);
+      d.vy = 5.2 + Math.random()*1.6;
+      d.t = 0; d.flap = 0;
+      any = true;
+      // feather puff
+      for (var k=0;k<7;k++){
+        spawnP(d.x + (Math.random()-0.5)*0.8, 0.35 + Math.random()*0.5,
+               (Math.random()-0.5)*2.2, 0.6 + Math.random()*2.0,
+               G*0.10, 1.1 + Math.random()*0.7, 0.07+Math.random()*0.05, 1);
+      }
+    }
+  }
+  if (any) Snd.quack();
+  spawnR(cx, 1.1, 1.4);
+  splash(cx, 1.2, 10);
+  S.shake = Math.max(S.shake, 0.7);
+  popLabel(cx, 1.6, 'SPOOKED THE DUCKS', '#ffd98a', 1);
+  S.endReason = 'SPOOKED THE DUCKS';
+  S.hydro = false; S.chain = 0;
+  var st = S.stone;
+  st.vx *= 0.25; st.vy = -0.9;
+  setState('sink'); S.sinkT = 0;
+  Snd.plunk();
+}
+
+/* ------------------------------ end of throw -------------------------- */
+function endThrow(){
+  var travelled = Math.max(0, Math.floor(S.stone.x));
+  if (travelled > 0){
+    addScore(travelled);
+    popLabel(S.stone.x, 1.2, '+' + travelled, 'rgba(255,214,150,.9)', 0, 'DISTANCE');
+  }
+  S.stones--;
+  if (S.stones <= 0){
+    gameOver();
+  } else {
+    newStone();
+  }
+}
+
+function reachShore(){
+  setState('shore');
+  S.shoreT = 0;
+  var st = S.stone;
+  st.vx *= 0.8;
+  if (st.vy < 0) st.vy = Math.abs(st.vy) * 0.4 + 1.5;
+  popLabel(W.dist + 1.2, 2.4, 'LAKE CLEAR', '#ffd98a', 1);
+  Snd.fanfare();
+  S.goldFlash = 1;
+  for (var i=0;i<16;i++){
+    spawnP(W.dist + 0.6 + Math.random()*2.5, 0.4 + Math.random()*1.6,
+           (Math.random()-0.3)*3.0, 1.5+Math.random()*4.0, G*0.5, 0.9+Math.random()*0.6,
+           0.05+Math.random()*0.05, 2);
+  }
+}
+
+function lakeClear(){
+  var stonesLeft = S.stones;              // the stone in flight is not spent
+  var distPts = W.dist;
+  var stonePts = stonesLeft * 250;
+  var lakePts = 1000;
+  addScore(distPts + stonePts + lakePts);
+  var isLast = (S.lakeIdx >= LAKES.length - 1);
+  setState('clear');
+  S.lockUntil = S.simNow + 700;
+  showTally(isLast, distPts, stonePts, lakePts, stonesLeft);
+  if (isLast){
+    S.state = 'win';
+    Snd.win();
+    S.goldFlash = 1;
+    for (var i=0;i<26;i++){
+      spawnP(W.dist - 2 + Math.random()*7, 0.5 + Math.random()*2.5,
+             (Math.random()-0.5)*4.5, 2.5 + Math.random()*6.5, G*0.45,
+             1.4 + Math.random()*1.2, 0.05 + Math.random()*0.05, 2);
+    }
+  }
+}
+
+function gameOver(){
+  setState('over');
+  S.lockUntil = S.simNow + 800;
+  if (S.score > S.best) S.best = S.score;
+  Snd.sad();
+  showGameOver();
+}
+
+/* ============================== SIMULATION ============================ */
+
+function pushTrail(x,y){
+  S.trailX[S.trailI] = x; S.trailY[S.trailI] = y;
+  S.trailI = (S.trailI + 1) % TRAIL;
+  if (S.trailN < TRAIL) S.trailN++;
+}
+
+function checkBuoys(){
+  var st = S.stone, i, b;
+  for (i=0;i<W.buoys.length;i++){
+    b = W.buoys[i];
+    if (st.y <= BUOY_H && st.y > -0.4 && Math.abs(st.x - b.x) <= BUOY_R + STONE_R){
+      buoyHit(b);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Ducks are startled by the stone *touching the water* near them - never by it
+// flying overhead. (An overflight rule was tried and thrown out: a hydroplaning
+// stone never rises far enough to clear it, which made the game's best mechanic
+// an instant death sentence at every group.) The skid counts, since the stone
+// is skating along the surface for those milliseconds.
+function checkDuckSkid(){
+  var st = S.stone, i, d;
+  for (i=0;i<W.ducks.length;i++){
+    d = W.ducks[i];
+    if (d.st === 0 && Math.abs(st.x - d.x) <= DUCK_R){
+      spookGroup(d.g, st.x);
+      return true;
+    }
+  }
+  return false;
+}
+
+function flyStep(dt){
+  var st = S.stone;
+  st.vy -= G * dt;
+  st.vx += W.wind * dt;
+  st.vx -= st.vx * AIR * dt;
+  if (st.vx < 0) st.vx = 0;
+
+  var py = st.y;
+  st.x += st.vx * dt;
+  st.y += st.vy * dt;
+  st.spin += st.vx * dt * 2.4;
+  pushTrail(st.x, st.y);
+
+  if (st.x >= W.dist){ reachShore(); return; }
+  if (checkBuoys()) return;
+
+  if (py > 0 && st.y <= 0 && st.vy < 0){
+    var den = py - st.y;
+    var frac = den > 1e-6 ? (py / den) : 1;
+    frac = clamp(frac, 0, 1);
+    var cx = st.x - st.vx * dt * (1 - frac);
+    var cSim = S.simNow - dt * 1000 * (1 - frac);
+    onContact(cx, cSim);
+  }
+}
+
+function skidStep(dt){
+  var st = S.stone;
+  st.y = 0;
+  st.vx -= st.vx * SKID_FRICTION * dt;  // surface friction while it hesitates
+  st.vx += W.wind * dt * 0.5;
+  st.x += st.vx * dt;
+  st.spin += st.vx * dt * 2.4;
+  pushTrail(st.x, 0);
+
+  if (S.stateT > 0.02 && Math.random() < 0.35){
+    spawnP(st.x - 0.15, 0.02, -st.vx*0.06 + (Math.random()-0.5)*1.2, 0.5+Math.random()*1.4,
+           G*0.9, 0.28, 0.035, 0);
+  }
+
+  if (st.x >= W.dist){ reachShore(); return; }
+  if (checkBuoys()) return;
+  if (checkDuckSkid()) return;
+  var i;
+  for (i=0;i<W.pads.length;i++){
+    if (Math.abs(st.x - W.pads[i].x) <= W.pads[i].hw){ padStop(W.pads[i]); return; }
+  }
+  if (S.simNow >= S.skidUntil){
+    resolve('sloppy');
+  }
+}
+
+function sinkStep(dt){
+  var st = S.stone;
+  S.sinkT += dt;
+  st.vy -= G * 0.30 * dt;
+  if (st.vy < -3.4) st.vy = -3.4;
+  st.vx -= st.vx * 2.4 * dt;
+  st.x += st.vx * dt;
+  st.y += st.vy * dt;
+  if (st.y < -0.05 && Math.random() < 0.30){
+    spawnP(st.x + (Math.random()-0.5)*0.35, st.y + 0.1,
+           (Math.random()-0.5)*0.35, 0.55 + Math.random()*0.7, -1.2,
+           0.9 + Math.random()*0.6, 0.03 + Math.random()*0.045, 3);
+  }
+  if (S.sinkT > 1.15) endThrow();
+}
+
+function shoreStep(dt){
+  var st = S.stone;
+  S.shoreT += dt;
+  st.vy -= G * dt;
+  st.vx -= st.vx * 1.5 * dt;
+  st.x += st.vx * dt;
+  st.y += st.vy * dt;
+  var bank = 0.62;
+  if (st.y < bank){
+    st.y = bank;
+    if (st.vy < -0.6){
+      st.vy = -st.vy * 0.36;
+      st.vx *= 0.62;
+      for (var i=0;i<4;i++){
+        spawnP(st.x, bank, (Math.random()-0.5)*2.2, 0.5+Math.random()*1.6, G*0.8, 0.4, 0.035, 2);
+      }
+    } else { st.vy = 0; }
+  }
+  st.spin += st.vx * dt * 3.0;
+  if (S.shoreT > 1.25) lakeClear();
+}
+
+/* ---------------------------- world updates -------------------------- */
+function updateDucks(dt){
+  var i, d;
+  for (i=0;i<W.ducks.length;i++){
+    d = W.ducks[i];
+    if (d.st === 0){
+      d.x += d.dir * d.spd * dt;
+      if (d.x <= d.min){ d.x = d.min; d.dir = 1; }
+      else if (d.x >= d.max){ d.x = d.max; d.dir = -1; }
+      d.bob += dt * (1.25 + d.ph * 0.5);
+    } else {
+      d.t += dt;
+      d.flap += dt * 13;
+      d.vy = Math.max(1.1, d.vy - 3.2 * dt);
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      if (d.y > 40) d.st = 2;              // gone; parked until the next stone
+    }
+  }
+}
+
+function updateParticles(dt){
+  var i, p;
+  for (i=0;i<PMAX;i++){
+    p = P[i];
+    if (!p.on) continue;
+    p.life -= dt;
+    if (p.life <= 0){ p.on = false; continue; }
+    p.vy -= p.g * dt;
+    if (p.kind === 1){                      // feathers flutter
+      p.vx += Math.sin(p.life*7 + p.rot) * 1.6 * dt;
+      p.vy -= p.vy * 1.6 * dt;
+    } else if (p.kind === 3){                // bubbles wobble upward
+      p.vx = Math.sin(p.life*5 + p.rot) * 0.35;
+    }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rot += p.spin * dt;
+    if (p.kind === 0 && p.y < 0){            // droplets die at the surface
+      if (p.life > 0.08) p.life = 0.08;
+      p.y = 0; p.vy = 0; p.vx *= 0.5;
+    }
+    if (p.kind === 3 && p.y >= 0){ p.on = false; }
+  }
+}
+
+function updateRipples(dt){
+  var i, r;
+  for (i=0;i<RMAX;i++){
+    r = R[i];
+    if (!r.on) continue;
+    r.life -= dt;
+    if (r.life <= 0){ r.on = false; continue; }
+    r.r += (2.6 + r.str * 2.4) * dt;
+  }
+}
+
+function updateLabels(dt){
+  var i, l;
+  for (i=0;i<LMAX;i++){
+    l = L[i];
+    if (!l.on) continue;
+    l.life -= dt;
+    if (l.life <= 0){ l.on = false; continue; }
+    l.y += dt * (l.big ? 1.15 : 0.85);
+  }
+}
+
+function updateWindStreaks(dt){
+  var i, s, dir = W.wind >= 0 ? 1 : -1, mag = Math.abs(W.wind);
+  var spd = 0.035 + mag * 0.075;
+  for (i=0;i<WSN;i++){
+    s = WS[i];
+    s.x += dir * s.s * spd * dt * 6;
+    if (dir > 0 && s.x > 1.12){ s.x = -0.12; s.y = Math.random(); }
+    else if (dir < 0 && s.x < -0.12){ s.x = 1.12; s.y = Math.random(); }
+  }
+}
+
+/* ------------------------------ camera ------------------------------- */
+function cameraTarget(){
+  var st = S.stone;
+  switch (S.state){
+    case 'title':
+      return 9 + Math.sin(S.titleT * 0.19) * 6.5;
+    case 'ready':
+    case 'charge':
+      return 6.0 + S.power * 2.2;
+    case 'clear':
+    case 'win':
+      return Math.min(W.dist + 3, st.x + 2);
+    case 'over':
+      return st.x + 1.5;
+    default:
+      return st.x + clamp(st.vx * 0.30, 0, 9.5);
+  }
+}
+
+function updateCamera(dt){
+  var tgt = cameraTarget();
+  var rate = (S.state === 'fly' || S.state === 'skid') ? 7.5 : 3.2;
+  S.cam = smoothTo(S.cam, tgt, rate, dt);
+  if (S.cam < -1) S.cam = -1;
+  if (S.cam > W.dist + 14) S.cam = W.dist + 14;
+}
+
+/* ---------------------------- main step ------------------------------ */
+var chargeAudioTick = 0;
+function stepPhysics(dt){
+  S.simNow += dt * 1000;
+  S.stateT += dt;
+  S.titleT += dt;
+
+  if (S.shake > 0){ S.shake -= dt * 2.4; if (S.shake < 0) S.shake = 0; }
+  if (S.goldFlash > 0){ S.goldFlash -= dt * 2.6; if (S.goldFlash < 0) S.goldFlash = 0; }
+  if (S.wastedCue > 0){ S.wastedCue -= dt * 1.6; if (S.wastedCue < 0) S.wastedCue = 0; }
+  if (S.hydroGlow > 0){ S.hydroGlow -= dt * 1.4; if (S.hydroGlow < 0) S.hydroGlow = 0; }
+
+  updateDucks(dt);
+  updateParticles(dt);
+  updateRipples(dt);
+  updateLabels(dt);
+  updateWindStreaks(dt);
+
+  switch (S.state){
+    case 'charge':
+      S.chargeT += dt;
+      var f = (S.chargeT % CHARGE_PERIOD) / CHARGE_PERIOD;
+      S.power = 1 - Math.abs(1 - 2 * f);
+      chargeAudioTick++;
+      if (chargeAudioTick >= 4){ chargeAudioTick = 0; Snd.chargeSet(S.power); }
+      break;
+    case 'fly':  flyStep(dt); break;
+    case 'skid': skidStep(dt); break;
+    case 'sink': sinkStep(dt); break;
+    case 'shore': shoreStep(dt); break;
+  }
+
+  // hold-through on results screens (see advanceFromScreen)
+  if (wasHeld && !S.paused &&
+      (S.state === 'clear' || S.state === 'over' || S.state === 'win')){
+    advanceFromScreen();
+  }
+
+  // a plane rides too low to clear a duck: warn once per group, per throw
+  if (S.hydro && (S.state === 'fly' || S.state === 'skid')){
+    for (var wi=0; wi<W.ducks.length; wi++){
+      var wd = W.ducks[wi];
+      if (wd.st !== 0 || wd.g === S.warnedGroup) continue;
+      var ahead = wd.x - S.stone.x;
+      if (ahead > 0 && ahead < DUCK_WARN){
+        S.warnedGroup = wd.g;
+        popLabel(S.stone.x + 3, 2.3, 'DUCKS AHEAD', '#ff9a7a', 0, 'mind where you land');
+        break;
+      }
+    }
+  }
+
+  // a flick with no contact anywhere near it is wasted; the next contact is sloppy
+  if (S.pendingTap && (S.state === 'fly') && S.simNow - S.pendingTap > WASTE_MS){
+    S.pendingTap = 0;
+    S.wasted = true;
+    S.wastedCue = 1;
+    Snd.wasted();
+    popLabel(S.stone.x, 1.0, 'flick wasted', 'rgba(255,140,120,.85)', 0);
+  }
+}
+
+/* ============================== RENDERING ============================= */
+var cv = document.getElementById('game');
+var ctx = cv.getContext('2d', { alpha: false });
+var VW = 1, VH = 1, DPR = 1, scale = 40, waterY = 400;
+var ox = 0, oy = 0;                       // screen shake offset
+var GR = { sky: null, water: null };
+var TAU = Math.PI * 2;
+
+var MAX_BACKING_PX = 2450000;   // fill-rate budget; beyond this we trade crispness for frames
+
+function resize(){
+  VW = Math.max(240, window.innerWidth  || document.documentElement.clientWidth  || 320);
+  VH = Math.max(200, window.innerHeight || document.documentElement.clientHeight || 480);
+  // Cap at 2x for crispness, then back off on very large viewports so a big
+  // retina desktop does not have to paint five megapixels of gradient a frame.
+  DPR = Math.min(2, window.devicePixelRatio || 1, Math.sqrt(MAX_BACKING_PX / (VW * VH)));
+  if (DPR < 1) DPR = 1;
+  cv.width  = Math.round(VW * DPR);
+  cv.height = Math.round(VH * DPR);
+  cv.style.width = VW + 'px';
+  cv.style.height = VH + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // Width normally sets the zoom, height caps it. The inner max() is a floor:
+  // on a tall phone, showing 24 world units across would shrink the stone to a
+  // few pixels, so we never draw more than ~26 units of height either.
+  scale = Math.min(VH / VIEW_H, Math.max(VW / VIEW_W, VH / 26), SCALE_MAX);
+  // keep at least ~4.5 units of water visible below the surface, but never
+  // push the horizon past 68% of the screen
+  waterY = Math.min(VH * 0.665, Math.max(VH * 0.44, VH - 4.6 * scale));
+  buildGradients();
+}
+
+function buildGradients(){
+  var g = ctx.createLinearGradient(0, 0, 0, waterY);
+  g.addColorStop(0.00, '#080a1e');
+  g.addColorStop(0.22, '#191140');
+  g.addColorStop(0.46, '#452050');
+  g.addColorStop(0.68, '#93343f');
+  g.addColorStop(0.84, '#d9652f');
+  g.addColorStop(0.94, '#f59a3c');
+  g.addColorStop(1.00, '#ffc75f');
+  GR.sky = g;
+
+  var w = ctx.createLinearGradient(0, waterY, 0, VH);
+  w.addColorStop(0.00, '#40243a');
+  w.addColorStop(0.035, '#221a34');
+  w.addColorStop(0.14, '#0f1128');
+  w.addColorStop(0.45, '#080a1a');
+  w.addColorStop(1.00, '#04050e');
+  GR.water = w;
+
+  buildLayers();
+}
+
+/* Radial gradients are the expensive fills, and these two never change between
+   resizes - so they get baked into offscreen canvases once and blitted. */
+var LAY = { bg: null, sun: null, sunR: 0 };
+function makeLayer(w, h){
+  var c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w));
+  c.height = Math.max(1, Math.ceil(h));
+  return c;
+}
+function buildLayers(){
+  // Sky + water gradients baked into one opaque bitmap. Blitting this once is
+  // markedly cheaper than evaluating two full-screen gradients every frame.
+  var bc = makeLayer(VW, VH), bx = bc.getContext('2d');
+  bx.fillStyle = GR.sky;   bx.fillRect(0, 0, VW, waterY + 1);
+  bx.fillStyle = GR.water; bx.fillRect(0, waterY, VW, VH - waterY + 1);
+  // The vignette lives in the same bitmap rather than as a second full-screen
+  // pass on top: it is the bright sky and water it needs to darken, and leaving
+  // the silhouettes and the stone undimmed at the edges only helps readability.
+  var v = bx.createRadialGradient(VW*0.5, VH*0.5, Math.min(VW,VH)*0.24, VW*0.5, VH*0.52, Math.max(VW,VH)*0.78);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(2,3,10,0.66)');
+  bx.fillStyle = v;
+  bx.fillRect(0, 0, VW, VH);
+  LAY.bg = bc;
+
+  // sun: disc plus its glow, drawn at device resolution so the edge stays crisp
+  var r = Math.max(14, VH * 0.052);
+  var R = r * 6.2;
+  LAY.sunR = R;
+  var sc = makeLayer(R*2*DPR, R*2*DPR), sx2 = sc.getContext('2d');
+  sx2.setTransform(DPR, 0, 0, DPR, 0, 0);
+  var g2 = sx2.createRadialGradient(R, R, r*0.4, R, R, R);
+  g2.addColorStop(0.00, 'rgba(255,203,120,0.52)');
+  g2.addColorStop(0.26, 'rgba(255,150,70,0.20)');
+  g2.addColorStop(0.62, 'rgba(210,80,60,0.07)');
+  g2.addColorStop(1.00, 'rgba(120,40,70,0)');
+  sx2.fillStyle = g2;
+  sx2.beginPath(); sx2.arc(R, R, R, 0, TAU); sx2.fill();
+  sx2.fillStyle = '#ffe6ab';
+  sx2.beginPath(); sx2.arc(R, R, r, 0, TAU); sx2.fill();
+  sx2.fillStyle = 'rgba(255,246,225,0.9)';
+  sx2.beginPath(); sx2.arc(R, R - r*0.12, r*0.72, 0, TAU); sx2.fill();
+  LAY.sun = sc;
+}
+
+function SX(wx){ return (wx - S.cam) * scale + VW * ANCHOR + ox; }
+function SY(wy){ return waterY - wy * scale + oy; }
+function sunX(){ return VW * 0.70 - (S.cam * scale) * 0.006 + ox * 0.2; }
+function sunY(){ return waterY - VH * 0.115; }
+
+/* ------------------------------- sky --------------------------------- */
+function drawSky(t){
+  var sxp = sunX(), syp = sunY(), R = LAY.sunR;
+  if (LAY.sun) ctx.drawImage(LAY.sun, sxp - R, syp - R, R*2, R*2);
+
+  // long, soft dusk streaks - drawn with a fading gradient so the ends dissolve
+  ctx.save();
+  for (var i=0;i<5;i++){
+    var cy = waterY - VH * (0.13 + i * 0.068) - Math.sin(t*0.05 + i)*2;
+    var cw = VW * (0.26 + hash1(i*3.1) * 0.34);
+    var span = VW * 1.9 + cw;
+    var cx = ((hash1(i*7.7) * span + t * (2.4 + i*1.1) - S.cam*scale*0.010) % span) - cw*0.5;
+    var ch = Math.max(2, VH * 0.0075 * (1 + hash1(i*2.3)));
+    var warm = i % 2 === 0;
+    var a = (warm ? 0.11 : 0.07) + hash1(i*5.5)*0.05;
+    var cg = ctx.createLinearGradient(cx - cw*0.5, 0, cx + cw*0.5, 0);
+    var col = warm ? '255,205,150' : '120,70,120';
+    cg.addColorStop(0,    'rgba(' + col + ',0)');
+    cg.addColorStop(0.42, 'rgba(' + col + ',' + a.toFixed(3) + ')');
+    cg.addColorStop(0.62, 'rgba(' + col + ',' + (a*0.75).toFixed(3) + ')');
+    cg.addColorStop(1,    'rgba(' + col + ',0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, cw*0.5, ch, 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // birds
+  ctx.save();
+  ctx.strokeStyle = 'rgba(24,14,30,0.75)';
+  ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+  for (var b=0;b<5;b++){
+    var sp = 8 + hash1(b*11.3) * 12;
+    var bx = ((hash1(b*4.1) * VW + t * sp) % (VW + 160)) - 80;
+    var by = VH * (0.10 + hash1(b*9.7) * 0.24) + Math.sin(t * 0.7 + b) * 6;
+    var wsp = 3.2 + hash1(b*13.1) * 2.6;
+    var fl = Math.sin(t * (5.5 + hash1(b)*2) + b * 2) * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(bx - wsp, by + fl * wsp);
+    ctx.quadraticCurveTo(bx, by - fl * 1.2, bx + wsp, by + fl * wsp);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ------------------------------- hills -------------------------------- */
+function hillH(x, s){
+  return 0.55*Math.sin(x*0.0021 + s) + 0.30*Math.sin(x*0.0053 + s*1.7) + 0.15*Math.sin(x*0.0117 + s*2.9);
+}
+function drawHills(par, base, amp, col, trees, seed){
+  var off = S.cam * scale * par;
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(-4, waterY + 2);
+  var step = trees ? 7 : 16;
+  for (var x = -4; x <= VW + 8; x += step){
+    var wxp = x + off;
+    var h = base + amp * (0.5 + 0.5 * hillH(wxp, seed));
+    if (trees){
+      var hs = hash1(Math.floor(wxp / step) * 0.613 + seed);
+      h += hs * hs * amp * 0.55;
+    }
+    ctx.lineTo(x, waterY - h);
+  }
+  ctx.lineTo(VW + 8, waterY + 2);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* ------------------------------- water -------------------------------- */
+function drawWater(t){
+  // sun glitter band
+  var sxp = sunX();
+  var bandH = Math.min(VH - waterY, VH * 0.30);
+  var bandW = VW * 0.30;
+  ctx.save();
+  ctx.fillStyle = '#ffca7d';
+  for (var i=0;i<64;i++){
+    var f = i / 64;
+    var yy = waterY + Math.pow(f, 1.75) * bandH + Math.sin(t*1.4 + i*2.1) * 1.2;
+    var spread = bandW * (0.22 + f * 1.55);
+    var xx = sxp + (hash1(i*1.37) - 0.5) * spread + Math.sin(t*(0.7 + f) + i) * 5;
+    var w = (1 - f) * 34 + 5 + hash1(i*3.7) * 14;
+    var a = (1 - f*0.85) * 0.42 * (0.35 + 0.65 * Math.abs(Math.sin(t*2.0 + i*1.7)));
+    ctx.globalAlpha = a;
+    ctx.fillRect(xx - w*0.5, yy, w, Math.max(1, 1.5 - f));
+  }
+  ctx.restore();
+
+  // gentle chop lines
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (var L2=0; L2<6; L2++){
+    var depth = Math.pow(L2/6, 1.5) * Math.min(VH - waterY, VH*0.22);
+    var amp = 1.6 + L2 * 0.9;
+    var alpha = 0.10 - L2 * 0.012;
+    if (alpha <= 0) continue;
+    ctx.strokeStyle = 'rgba(255,190,130,' + alpha.toFixed(3) + ')';
+    ctx.beginPath();
+    var first = true;
+    for (var x2 = -6; x2 <= VW + 6; x2 += 22){
+      var yy2 = waterY + depth + Math.sin((x2 + S.cam*scale*0.35) * 0.013 + t * (1.1 + L2*0.22) + L2) * amp;
+      if (first){ ctx.moveTo(x2, yy2); first = false; } else ctx.lineTo(x2, yy2);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // bright surface line
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,206,150,0.34)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  for (var x3 = -6, f3 = true; x3 <= VW + 6; x3 += 16){
+    var y3 = waterY + Math.sin((x3 + S.cam*scale*0.4) * 0.019 + t * 1.5) * 1.3;
+    if (f3){ ctx.moveTo(x3, y3); f3 = false; } else ctx.lineTo(x3, y3);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRipples(){
+  ctx.save();
+  ctx.lineWidth = 1.6;
+  for (var i=0;i<RMAX;i++){
+    var r = R[i];
+    if (!r.on) continue;
+    var k = r.life / r.max;
+    var a = k * k * 0.55 * (0.5 + r.str * 0.6);
+    var rx = r.r * scale, ry = rx * 0.22;
+    var cx = SX(r.x), cy = SY(0);
+    if (cx + rx < -20 || cx - rx > VW + 20) continue;
+    ctx.strokeStyle = 'rgba(255,205,150,' + a.toFixed(3) + ')';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, Math.max(1, ry), 0, 0, TAU); ctx.stroke();
+    if (r.str > 0.7){
+      ctx.strokeStyle = 'rgba(255,225,190,' + (a*0.5).toFixed(3) + ')';
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx*0.6, Math.max(1, ry*0.6), 0, 0, TAU); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/* ------------------------------ banks --------------------------------- */
+function drawNearBank(t){
+  var x0 = SX(0.35);
+  if (x0 < -40) return;
+  var top = SY(0.55);
+  ctx.fillStyle = '#0d0a19';
+  ctx.beginPath();
+  ctx.moveTo(-40, VH + 10);
+  ctx.lineTo(-40, top - 6);
+  ctx.quadraticCurveTo(x0 - scale*0.9, top - 2, x0, SY(0.02));
+  ctx.lineTo(x0, VH + 10);
+  ctx.closePath();
+  ctx.fill();
+  // warm rim along the waterline edge
+  ctx.strokeStyle = 'rgba(255,160,90,0.30)';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-40, top - 6);
+  ctx.quadraticCurveTo(x0 - scale*0.9, top - 2, x0, SY(0.02));
+  ctx.stroke();
+  // wet gravel speckle
+  ctx.fillStyle = 'rgba(255,180,120,0.14)';
+  for (var i=0;i<14;i++){
+    var gx = -30 + hash1(i*2.7) * (x0 + 30);
+    var gy = top + 4 + hash1(i*5.1) * Math.max(6, SY(0) - top);
+    if (gy > SY(0)) continue;
+    ctx.fillRect(gx, gy, 2.2, 1.4);
+  }
+}
+
+// bank profile: water's edge, a rounded shoulder, then rolling ground
+function farBankPath(x0, topY){
+  ctx.beginPath();
+  ctx.moveTo(x0 - scale*0.25, SY(0.02));
+  ctx.quadraticCurveTo(x0 + scale*0.45, topY + scale*0.10, x0 + scale*1.25, topY);
+  for (var px = x0 + scale*1.25; px <= VW + 60; px += 18){
+    var n = hillH((px - x0) * 0.9 + 400, W.hillSeed * 0.7);
+    ctx.lineTo(px, topY - scale*0.10 - n * scale*0.17);
+  }
+  ctx.lineTo(VW + 60, topY - scale*0.12);
+}
+
+function drawFarBank(t){
+  var x0 = SX(W.dist);
+  if (x0 > VW + 60) return;
+  var topY = SY(1.05);
+  ctx.save();
+  // reflection of the bank on the water
+  var rg = ctx.createLinearGradient(0, SY(0), 0, SY(0) + scale * 0.9);
+  rg.addColorStop(0, 'rgba(10,8,18,0.55)');
+  rg.addColorStop(1, 'rgba(10,8,18,0)');
+  ctx.fillStyle = rg;
+  ctx.fillRect(Math.max(0, x0), SY(0), VW - Math.max(0, x0) + 40, scale * 0.9);
+  ctx.restore();
+
+  ctx.fillStyle = '#0c0917';
+  farBankPath(x0, topY);
+  ctx.lineTo(VW + 60, VH + 10);
+  ctx.lineTo(x0 - scale*0.25, VH + 10);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,170,95,0.42)';
+  ctx.lineWidth = Math.max(1.4, scale*0.035);
+  farBankPath(x0, topY);
+  ctx.stroke();
+
+  // shimmer at the goal line
+  var pulse = 0.30 + 0.22 * Math.sin(t * 2.4);
+  var g = ctx.createLinearGradient(x0 - scale*1.4, 0, x0 + scale*0.3, 0);
+  g.addColorStop(0, 'rgba(255,200,120,0)');
+  g.addColorStop(1, 'rgba(255,200,120,' + pulse.toFixed(3) + ')');
+  ctx.fillStyle = g;
+  ctx.fillRect(x0 - scale*1.4, SY(0) - 3, scale*1.4, 5);
+}
+
+/* ------------------------------ reeds --------------------------------- */
+function drawReedClump(c, t, col, rim){
+  var bx = SX(c.x);
+  if (bx < -60 || bx > VW + 60) return;
+  var by = SY(c.base);
+  var w0 = Math.max(1.3, scale * 0.032);
+  for (var i=0;i<c.n;i++){
+    var hs = hash1(i*3.3 + c.ph);
+    var o = (i - (c.n-1)/2) * scale * 0.16 + (hs - 0.5) * scale * 0.09;
+    var h = c.h * scale * (0.62 + hs * 0.75);
+    var sway = Math.sin(t * 1.0 + c.ph + i * 0.8) * (4 + Math.abs(W.wind) * 6) + W.wind * 6;
+    var tipX = bx + o + sway, tipY = by - h;
+    // tapered blade
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(bx + o - w0, by + 1);
+    ctx.quadraticCurveTo(bx + o + sway*0.30 - w0*0.35, by - h*0.58, tipX, tipY);
+    ctx.quadraticCurveTo(bx + o + sway*0.30 + w0*0.35, by - h*0.58, bx + o + w0, by + 1);
+    ctx.closePath();
+    ctx.fill();
+    // seed head on some of them
+    if (hs > 0.62){
+      ctx.beginPath();
+      ctx.ellipse(tipX, tipY + h*0.05, w0*0.85, h*0.055 + 1.5, sway*0.008, 0, TAU);
+      ctx.fill();
+    }
+    if (rim && hs > 0.45){
+      ctx.strokeStyle = 'rgba(255,170,100,0.20)';
+      ctx.lineWidth = Math.max(0.7, scale*0.011);
+      ctx.beginPath();
+      ctx.moveTo(bx + o + w0*0.6, by);
+      ctx.quadraticCurveTo(bx + o + sway*0.30 + w0*0.6, by - h*0.58, tipX + w0*0.35, tipY);
+      ctx.stroke();
+    }
+  }
+}
+function drawReeds(t, front){
+  var i;
+  for (i=0;i<W.reeds.length;i++){
+    if (!!W.reeds[i].front === front) drawReedClump(W.reeds[i], t, front ? '#07060f' : '#100c1c', !front);
+  }
+  if (!front){
+    for (i=0;i<W.shoreReeds.length;i++) drawReedClump(W.shoreReeds[i], t, '#0a0814', true);
+  }
+}
+
+/* ------------------------------ hazards ------------------------------- */
+function drawPads(t){
+  for (var i=0;i<W.pads.length;i++){
+    var p = W.pads[i];
+    var cx = SX(p.x);
+    if (cx < -60 || cx > VW + 60) continue;
+    var bob = Math.sin(t * 1.3 + p.ph) * scale * 0.035;
+    var cy = SY(0) + bob;
+    var rx = p.hw * scale, ry = rx * 0.20;
+    ctx.save();
+    ctx.fillStyle = '#0e1a14';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, Math.max(2, ry), 0, 0, TAU); ctx.fill();
+    // sunward rim, kept cool-green so it never reads as a duck
+    ctx.strokeStyle = 'rgba(168,222,168,0.26)';
+    ctx.lineWidth = Math.max(1, scale*0.022);
+    ctx.beginPath(); ctx.ellipse(cx, cy - 0.5, rx, Math.max(2, ry), 0, Math.PI*1.02, Math.PI*1.98); ctx.stroke();
+    // the little wedge notch every lily pad has
+    ctx.fillStyle = 'rgba(9,12,26,0.95)';
+    ctx.beginPath();
+    ctx.moveTo(cx + rx*0.42, cy);
+    ctx.lineTo(cx + rx*0.99, cy - ry*0.55);
+    ctx.lineTo(cx + rx*0.99, cy + ry*0.55);
+    ctx.closePath(); ctx.fill();
+    if (p.flower){
+      ctx.fillStyle = 'rgba(255,196,214,0.6)';
+      ctx.beginPath(); ctx.arc(cx - rx*0.34, cy - ry*1.7, Math.max(1.4, scale*0.042), 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawBuoys(t){
+  for (var i=0;i<W.buoys.length;i++){
+    var b = W.buoys[i];
+    var cx = SX(b.x);
+    if (cx < -60 || cx > VW + 60) continue;
+    var bob = Math.sin(t * 1.05 + b.ph) * scale * 0.05;
+    var base = SY(0) + bob;
+    var bodyY = SY(0.34) + bob;                  // float rides mostly above water
+    var topY  = SY(BUOY_H) + bob;
+    var rx = BUOY_R * scale * 0.92, ry = BUOY_R * scale * 1.02;
+    ctx.save();
+    // waterline shadow
+    ctx.fillStyle = 'rgba(4,6,16,0.5)';
+    ctx.beginPath(); ctx.ellipse(cx, base + 1, rx*1.15, Math.max(1.5, rx*0.22), 0, 0, TAU); ctx.fill();
+    // mast
+    ctx.strokeStyle = '#0b0813'; ctx.lineWidth = Math.max(1.6, scale*0.055); ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(cx, bodyY); ctx.lineTo(cx, topY + scale*0.10); ctx.stroke();
+    // float body
+    ctx.fillStyle = '#14111f';
+    ctx.beginPath(); ctx.ellipse(cx, bodyY, rx, ry, 0, 0, TAU); ctx.fill();
+    // band + sunward rim
+    ctx.strokeStyle = 'rgba(255,150,80,0.55)'; ctx.lineWidth = Math.max(1.3, scale*0.032);
+    ctx.beginPath(); ctx.ellipse(cx, bodyY, rx, ry, 0, -Math.PI*0.92, -Math.PI*0.06); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,120,80,0.30)'; ctx.lineWidth = Math.max(1.1, scale*0.05);
+    ctx.beginPath(); ctx.moveTo(cx - rx*0.86, bodyY); ctx.lineTo(cx + rx*0.86, bodyY); ctx.stroke();
+    // lamp, always lit, pulsing brighter
+    var blink = 0.45 + 0.55 * Math.pow(Math.max(0, Math.sin(t*2.2 + b.blink)), 4);
+    var lampY = topY + scale*0.08, lampR = Math.max(2, scale*0.07);
+    ctx.globalAlpha = blink * 0.30;
+    ctx.fillStyle = '#ff7a5a';
+    ctx.beginPath(); ctx.arc(cx, lampY, lampR*3.4, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(255,' + Math.round(110 + blink*90) + ',90,1)';
+    ctx.beginPath(); ctx.arc(cx, lampY, lampR, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawDuck(d, t){
+  var cx = SX(d.x);
+  if (cx < -80 || cx > VW + 80) return;
+  var sz = d.size * scale;
+  ctx.save();
+  if (d.st === 0){
+    var bob = Math.sin(d.bob) * scale * 0.045;
+    var cy = SY(0) + bob;
+    // wake
+    ctx.strokeStyle = 'rgba(255,190,140,0.13)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.ellipse(cx, cy + sz*0.10, sz*0.85, sz*0.16, 0, 0, TAU); ctx.stroke();
+    ctx.translate(cx, cy);
+    ctx.scale(d.dir >= 0 ? 1 : -1, 1);
+    // body
+    ctx.fillStyle = '#100c1b';
+    ctx.beginPath();
+    ctx.moveTo(-sz*0.52, 0);
+    ctx.quadraticCurveTo(-sz*0.62, -sz*0.30, -sz*0.18, -sz*0.30);
+    ctx.quadraticCurveTo(sz*0.30, -sz*0.34, sz*0.44, -sz*0.06);
+    ctx.quadraticCurveTo(sz*0.30, sz*0.06, -sz*0.52, 0);
+    ctx.closePath(); ctx.fill();
+    // tail
+    ctx.beginPath();
+    ctx.moveTo(-sz*0.45, -sz*0.10);
+    ctx.lineTo(-sz*0.80, -sz*0.30);
+    ctx.lineTo(-sz*0.44, -sz*0.24);
+    ctx.closePath(); ctx.fill();
+    // neck + head
+    ctx.beginPath();
+    ctx.moveTo(sz*0.20, -sz*0.22);
+    ctx.quadraticCurveTo(sz*0.42, -sz*0.34, sz*0.40, -sz*0.62);
+    ctx.lineTo(sz*0.24, -sz*0.58);
+    ctx.quadraticCurveTo(sz*0.24, -sz*0.36, sz*0.06, -sz*0.26);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(sz*0.34, -sz*0.66, sz*0.17, 0, TAU); ctx.fill();
+    // beak
+    ctx.fillStyle = '#e8863c';
+    ctx.beginPath();
+    ctx.moveTo(sz*0.46, -sz*0.68);
+    ctx.lineTo(sz*0.72, -sz*0.63);
+    ctx.lineTo(sz*0.46, -sz*0.58);
+    ctx.closePath(); ctx.fill();
+    // rim light
+    ctx.strokeStyle = 'rgba(255,168,92,0.55)';
+    ctx.lineWidth = Math.max(1.1, sz*0.035);
+    ctx.beginPath();
+    ctx.moveTo(-sz*0.16, -sz*0.31);
+    ctx.quadraticCurveTo(sz*0.30, -sz*0.35, sz*0.44, -sz*0.07);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(sz*0.34, -sz*0.66, sz*0.17, -Math.PI*0.9, Math.PI*0.1); ctx.stroke();
+    // eye glint
+    ctx.fillStyle = 'rgba(255,225,190,0.75)';
+    ctx.beginPath(); ctx.arc(sz*0.40, -sz*0.69, Math.max(0.9, sz*0.032), 0, TAU); ctx.fill();
+  } else if (d.st === 1){
+    var cy2 = SY(d.y);
+    if (cy2 < -100) { ctx.restore(); return; }
+    ctx.translate(cx, cy2);
+    ctx.scale(d.vx >= 0 ? 1 : -1, 1);
+    ctx.rotate(-0.22);
+    ctx.fillStyle = '#100c1b';
+    ctx.beginPath(); ctx.ellipse(0, 0, sz*0.50, sz*0.24, 0, 0, TAU); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(sz*0.30, -sz*0.10);
+    ctx.quadraticCurveTo(sz*0.56, -sz*0.20, sz*0.56, -sz*0.42);
+    ctx.lineTo(sz*0.36, -sz*0.40);
+    ctx.quadraticCurveTo(sz*0.34, -sz*0.22, sz*0.16, -sz*0.14);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(sz*0.48, -sz*0.46, sz*0.16, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#e8863c';
+    ctx.beginPath();
+    ctx.moveTo(sz*0.60, -sz*0.48); ctx.lineTo(sz*0.84, -sz*0.44); ctx.lineTo(sz*0.60, -sz*0.39);
+    ctx.closePath(); ctx.fill();
+    // wings
+    var fl = Math.sin(d.flap);
+    ctx.fillStyle = '#171126';
+    ctx.beginPath();
+    ctx.moveTo(-sz*0.06, -sz*0.06);
+    ctx.quadraticCurveTo(-sz*0.30, -sz*0.30 - fl*sz*0.75, sz*0.30, -sz*0.16 - fl*sz*0.62);
+    ctx.quadraticCurveTo(sz*0.10, -sz*0.02, -sz*0.06, -sz*0.06);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#0c0916';
+    ctx.beginPath();
+    ctx.moveTo(-sz*0.02, sz*0.02);
+    ctx.quadraticCurveTo(-sz*0.24, sz*0.26 + fl*sz*0.5, sz*0.26, sz*0.14 + fl*sz*0.44);
+    ctx.quadraticCurveTo(sz*0.10, sz*0.04, -sz*0.02, sz*0.02);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,168,92,0.4)';
+    ctx.lineWidth = Math.max(1, sz*0.03);
+    ctx.beginPath(); ctx.ellipse(0, 0, sz*0.50, sz*0.24, 0, -Math.PI*0.95, -Math.PI*0.1); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawDuckTelegraph(t){
+  if (!(S.state === 'fly' || S.state === 'skid' || S.state === 'charge' || S.state === 'ready')) return;
+  var refX = (S.state === 'fly' || S.state === 'skid') ? S.stone.x : 0;
+  ctx.save();
+  ctx.lineWidth = 1.4;
+  for (var i=0;i<W.ducks.length;i++){
+    var d = W.ducks[i];
+    if (d.st !== 0) continue;
+    var dd = d.x - refX;
+    if (dd < -4 || dd > 30) continue;
+    var near = 1 - clamp((dd - 2) / 26, 0, 1);
+    var a = (0.10 + near * 0.26) * (0.62 + 0.38 * Math.sin(t * 3.4 + i));
+    var cx = SX(d.x), cy = SY(0);
+    var rx = DUCK_R * scale;
+    if (cx + rx < -20 || cx - rx > VW + 20) continue;
+    ctx.strokeStyle = 'rgba(255,140,110,' + a.toFixed(3) + ')';
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 1, rx, Math.max(2, rx*0.20), 0, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+/* ------------------------------ thrower ------------------------------- */
+function drawThrower(t){
+  var bx = SX(0.55), by = SY(0.55);
+  if (bx < -80 || bx > VW + 80) return;
+  var u = scale;
+  var aiming = (S.state === 'ready' || S.state === 'charge' || S.state === 'title');
+  var arm;
+  if (S.state === 'charge')      arm = lerp(-0.45, -2.55, S.power);
+  else if (aiming)               arm = -0.55 + Math.sin(t*1.4)*0.05;
+  else                           arm = clamp(0.9 - (S.stateT * 2.2), -0.4, 0.9);
+
+  ctx.save();
+  ctx.strokeStyle = '#0a0813';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // legs
+  ctx.lineWidth = Math.max(2, u*0.085);
+  ctx.beginPath();
+  ctx.moveTo(bx - u*0.16, by); ctx.lineTo(bx - u*0.02, by - u*0.55);
+  ctx.moveTo(bx + u*0.16, by); ctx.lineTo(bx + u*0.02, by - u*0.55);
+  ctx.stroke();
+  // torso
+  ctx.lineWidth = Math.max(3, u*0.14);
+  var shX = bx + u*0.02, shY = by - u*1.02;
+  ctx.beginPath(); ctx.moveTo(bx, by - u*0.52); ctx.lineTo(shX, shY); ctx.stroke();
+  // head
+  ctx.fillStyle = '#0a0813';
+  ctx.beginPath(); ctx.arc(shX + u*0.03, shY - u*0.20, u*0.135, 0, TAU); ctx.fill();
+  // arm
+  ctx.lineWidth = Math.max(2, u*0.075);
+  var ax = shX + Math.cos(arm) * u*0.52, ay = shY + Math.sin(arm) * u*0.52;
+  ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(ax, ay); ctx.stroke();
+  // rim light on the sunward side
+  ctx.strokeStyle = 'rgba(255,164,88,0.34)';
+  ctx.lineWidth = Math.max(1, u*0.03);
+  ctx.beginPath();
+  ctx.moveTo(shX + u*0.06, shY + u*0.02); ctx.lineTo(bx + u*0.06, by - u*0.52);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(shX + u*0.03, shY - u*0.20, u*0.135, -Math.PI*0.75, Math.PI*0.15); ctx.stroke();
+  // the stone in hand
+  if (aiming){
+    ctx.fillStyle = '#2e3040';
+    ctx.beginPath(); ctx.ellipse(ax, ay, u*0.085, u*0.055, arm*0.4, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,222,175,0.9)'; ctx.lineWidth = Math.max(0.9, u*0.020);
+    ctx.beginPath(); ctx.ellipse(ax, ay, u*0.085, u*0.055, arm*0.4, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* --------------------------- aim UI ---------------------------------- */
+function drawTrajectory(){
+  var v = lerp(PWR_V0, PWR_V1, S.power);
+  var a = lerp(PWR_A0, PWR_A1, S.power);
+  var x = LAUNCH_X, y = LAUNCH_Y;
+  var vx = Math.cos(a)*v, vy = Math.sin(a)*v;
+  var dt = 1/70, i, landX = null;
+  ctx.save();
+  for (i=0;i<150;i++){
+    vy -= G*dt; vx += W.wind*dt; vx -= vx*AIR*dt;
+    var py = y;
+    x += vx*dt; y += vy*dt;
+    if (py > 0 && y <= 0){ landX = x; break; }
+    if (x > W.dist) { landX = x; break; }
+    if (i % 4 === 0){
+      var sxp = SX(x), syp = SY(y);
+      if (sxp > -10 && sxp < VW + 10){
+        var f = 1 - i/170;
+        var rr = Math.max(1.8, scale*0.052) * (0.55 + f*0.45);
+        ctx.fillStyle = 'rgba(24,12,20,' + (0.16 + f*0.20).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(sxp, syp + 1.2, rr*1.25, 0, TAU); ctx.fill();
+        ctx.fillStyle = 'rgba(255,226,180,' + (0.22 + f*0.55).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(sxp, syp, rr, 0, TAU); ctx.fill();
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+  if (landX !== null){
+    var lx = SX(landX), ly = SY(0);
+    ctx.strokeStyle = 'rgba(255,206,150,0.7)';
+    ctx.lineWidth = Math.max(1.4, scale*0.03);
+    ctx.beginPath(); ctx.ellipse(lx, ly, scale*0.40, scale*0.12, 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,226,180,0.28)';
+    ctx.beginPath(); ctx.ellipse(lx, ly, scale*0.66, scale*0.19, 0, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawMeter(){
+  var w = Math.min(VW * 0.44, 240), h = 9;
+  var x = SX(0.55) - w*0.5, y = SY(2.55);
+  x = clamp(x, 12, VW - w - 12);
+  y = clamp(y, 44, VH - 60);
+  ctx.save();
+  // track
+  ctx.fillStyle = 'rgba(6,8,20,0.55)';
+  roundRect(x-3, y-3, w+6, h+6, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,236,210,0.10)';
+  roundRect(x, y, w, h, 4.5); ctx.fill();
+  // flat-skim zone
+  ctx.fillStyle = 'rgba(127,227,210,0.16)';
+  roundRect(x + w*0.72, y, w*0.28, h, 4.5); ctx.fill();
+  // fill
+  var p = S.power;
+  var g = ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, '#ff8f4d');
+  g.addColorStop(0.55, '#ffc773');
+  g.addColorStop(1, '#7fe3d2');
+  ctx.fillStyle = g;
+  roundRect(x, y, Math.max(3, w*p), h, 4.5); ctx.fill();
+  // head
+  ctx.fillStyle = '#fff3dd';
+  ctx.fillRect(x + w*p - 1.2, y - 4, 2.4, h + 8);
+  ctx.globalAlpha = 0.5;
+  ctx.fillRect(x + w*p - 4, y - 6, 8, h + 12);
+  ctx.globalAlpha = 1;
+  // labels
+  ctx.font = '600 9px ' + UIFONT;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(246,236,223,0.42)';
+  ctx.fillText('LOFT', x, y - 7);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(127,227,210,0.7)';
+  ctx.fillText('FLAT SKIM', x + w, y - 7);
+  ctx.restore();
+}
+
+function roundRect(x,y,w,h,r){
+  if (w < 2*r) r = w/2; if (h < 2*r) r = h/2;
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+/* ------------------------------ stone --------------------------------- */
+function drawStone(t){
+  var st = S.stone;
+  if (S.state === 'ready' || S.state === 'charge' || S.state === 'title') return;
+  var cx = SX(st.x), cy = SY(st.y);
+
+  // hydroplane wake
+  if (S.trailN > 2 && (S.hydro || S.hydroGlow > 0)){
+    ctx.save();
+    ctx.lineCap = 'round';
+    var a0 = S.hydro ? 0.62 : S.hydroGlow * 0.45;
+    ctx.shadowColor = 'rgba(127,227,210,0.75)';
+    ctx.shadowBlur = 10;
+    // tapered wake: one short segment per trail sample, thinning to nothing
+    for (var i=0;i<S.trailN-1;i++){
+      var iA = (S.trailI - 1 - i + TRAIL*2) % TRAIL;
+      var iB = (S.trailI - 2 - i + TRAIL*2) % TRAIL;
+      var f = 1 - i / S.trailN;
+      ctx.strokeStyle = 'rgba(150,232,218,' + (a0 * f * f).toFixed(3) + ')';
+      ctx.lineWidth = Math.max(0.7, scale * 0.075 * f);
+      ctx.beginPath();
+      ctx.moveTo(SX(S.trailX[iA]), SY(S.trailY[iA]));
+      ctx.lineTo(SX(S.trailX[iB]), SY(S.trailY[iB]));
+      ctx.stroke();
+    }
+    ctx.restore();
+  } else if (S.trailN > 1){
+    ctx.save();
+    for (var j=1;j<S.trailN;j+=2){
+      var id2 = (S.trailI - 1 - j + TRAIL*2) % TRAIL;
+      var f = 1 - j/S.trailN;
+      ctx.globalAlpha = f * 0.20;
+      ctx.fillStyle = '#ffd8a8';
+      ctx.beginPath();
+      ctx.arc(SX(S.trailX[id2]), SY(S.trailY[id2]), Math.max(0.8, STONE_R*scale*f*0.7), 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  if (cx < -60 || cx > VW + 60) return;
+  var r = STONE_R * scale;
+
+  // Shadow on the water. It closes on the stone as it falls, which is the
+  // honest way to telegraph the moment of contact without spelling it out.
+  if (S.state === 'fly' && st.y > 0.02){
+    var sh = clamp(st.y, 0, 6);
+    ctx.save();
+    ctx.globalAlpha = clamp(0.42 - sh * 0.055, 0.07, 0.42);
+    ctx.fillStyle = '#05060f';
+    ctx.beginPath();
+    ctx.ellipse(cx, SY(0) + 1, r * (0.85 + sh * 0.30), Math.max(1, r * 0.26), 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = clamp(0.30 - sh * 0.05, 0.04, 0.30);
+    ctx.strokeStyle = '#ffcf9a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(cx, SY(0) + 1, r * (0.85 + sh * 0.30), Math.max(1, r * 0.26), 0, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+  var ang = Math.atan2(-st.vy, Math.max(0.1, st.vx)) * 0.45 + Math.sin(st.spin) * 0.10;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  // halo first, so the stone reads against both bright sky and black water
+  ctx.shadowColor = 'rgba(255,196,124,0.9)';
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = '#2b2d38';
+  ctx.beginPath(); ctx.ellipse(0, 0, r, r*0.68, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, r, r*0.68, 0, 0, TAU); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#4d5060';
+  ctx.beginPath(); ctx.ellipse(-r*0.16, -r*0.15, r*0.52, r*0.30, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = '#ffe3b8';
+  ctx.lineWidth = Math.max(1.6, r*0.26);
+  ctx.beginPath(); ctx.ellipse(0, 0, r, r*0.68, 0, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+  ctx.lineWidth = Math.max(0.8, r*0.11);
+  ctx.beginPath(); ctx.ellipse(0, 0, r, r*0.68, 0, Math.PI*1.06, Math.PI*1.78); ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------------------------- particles ------------------------------- */
+function drawParticles(){
+  ctx.save();
+  for (var i=0;i<PMAX;i++){
+    var p = P[i];
+    if (!p.on) continue;
+    var cx = SX(p.x), cy = SY(p.y);
+    if (cx < -30 || cx > VW + 30) continue;
+    var f = p.life / p.max;
+    var r = p.r * scale;
+    if (p.kind === 0){
+      ctx.globalAlpha = Math.min(1, f * 1.5) * 0.85;
+      ctx.fillStyle = '#ffd9b0';
+      ctx.beginPath(); ctx.arc(cx, cy, Math.max(0.7, r), 0, TAU); ctx.fill();
+    } else if (p.kind === 1){
+      ctx.globalAlpha = Math.min(1, f * 1.8) * 0.8;
+      ctx.fillStyle = '#f2e4d2';
+      ctx.save();
+      ctx.translate(cx, cy); ctx.rotate(p.rot);
+      ctx.beginPath(); ctx.ellipse(0, 0, Math.max(1, r*1.5), Math.max(0.6, r*0.5), 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    } else if (p.kind === 2){
+      ctx.globalAlpha = Math.min(1, f * 1.6);
+      ctx.fillStyle = '#ffce85';
+      ctx.beginPath(); ctx.arc(cx, cy, Math.max(0.8, r*(0.4+f*0.8)), 0, TAU); ctx.fill();
+    } else {
+      ctx.globalAlpha = Math.min(1, f * 1.2) * 0.5;
+      ctx.strokeStyle = '#bfe6ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, r), 0, TAU); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+/* ------------------------------ labels -------------------------------- */
+function drawLabels(){
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (var i=0;i<LMAX;i++){
+    var l = L[i];
+    if (!l.on) continue;
+    var age = 1 - l.life / l.max;
+    var pop = easeOut(age * 5.2);
+    var alpha = age < 0.75 ? 1 : (1 - (age-0.75)/0.25);
+    var cx = SX(l.x), cy = SY(l.y) - pop * 8;
+    if (cx < -160 || cx > VW + 160) continue;
+    cx = clamp(cx, 74, VW - 74);          // never let a callout fall off the edge
+    var size = l.big ? Math.max(15, Math.min(30, scale*0.42)) : Math.max(11, Math.min(20, scale*0.27));
+    var s = 0.7 + pop*0.35;
+    ctx.globalAlpha = alpha;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(s, s);
+    ctx.font = (l.big ? '800 ' : '650 ') + size + 'px ' + UIFONT;
+    if (l.big){
+      ctx.shadowColor = 'rgba(255,170,80,0.7)'; ctx.shadowBlur = 16;
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(6,8,18,0.65)';
+      ctx.strokeText(l.txt, 0, 0);
+    } else {
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(6,8,18,0.55)';
+      ctx.strokeText(l.txt, 0, 0);
+    }
+    ctx.fillStyle = l.col;
+    ctx.fillText(l.txt, 0, 0);
+    ctx.shadowBlur = 0;
+    if (l.sub){
+      ctx.font = '700 ' + Math.max(9, size*0.5) + 'px ' + UIFONT;
+      ctx.fillStyle = 'rgba(255,226,180,0.85)';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(6,8,18,0.5)';
+      ctx.strokeText(l.sub, 0, size*0.86);
+      ctx.fillText(l.sub, 0, size*0.86);
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+/* ---------------------------- wind streaks ---------------------------- */
+function drawWindStreaks(){
+  if (W.wind === 0) return;
+  var mag = Math.abs(W.wind), dir = W.wind >= 0 ? 1 : -1;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,214,170,0.20)';
+  ctx.lineWidth = 1;
+  ctx.lineCap = 'round';
+  for (var i=0;i<WSN;i++){
+    var s = WS[i];
+    var xx = s.x * VW, yy = s.y * (waterY * 0.94) + waterY * 0.03;
+    var ln = s.l * VW * (0.4 + mag*0.5);
+    ctx.globalAlpha = s.a * 0.32 * Math.min(1, 0.35 + mag*0.5);
+    ctx.beginPath();
+    ctx.moveTo(xx, yy); ctx.lineTo(xx - dir*ln, yy);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+/* ---------------------------- wasted cue ------------------------------ */
+function drawWastedCue(){
+  if (S.wastedCue <= 0) return;
+  var st = S.stone;
+  var cx = SX(st.x), cy = SY(st.y) - scale*0.55;
+  var a = S.wastedCue;
+  ctx.save();
+  ctx.globalAlpha = a * 0.9;
+  ctx.strokeStyle = '#ff8f7a';
+  ctx.lineWidth = Math.max(1.6, scale*0.05);
+  ctx.lineCap = 'round';
+  var r = scale*0.22 * (1.4 - a*0.4);
+  ctx.beginPath();
+  ctx.moveTo(cx-r, cy-r); ctx.lineTo(cx+r, cy+r);
+  ctx.moveTo(cx+r, cy-r); ctx.lineTo(cx-r, cy+r);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ------------------------------ compose ------------------------------- */
+var UIFONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
+function render(t){
+  ox = 0; oy = 0;
+  if (S.shake > 0){
+    var m = S.shake * S.shake * 9;
+    ox = (Math.random()-0.5) * m;
+    oy = (Math.random()-0.5) * m * 0.7;
+  }
+
+  if (LAY.bg) ctx.drawImage(LAY.bg, 0, 0, VW, VH);
+  else { ctx.fillStyle = '#0a0b23'; ctx.fillRect(0, 0, VW, VH); }
+  drawSky(t);
+  drawHills(0.10, VH*0.030, VH*0.075, '#251a3a', false, W.hillSeed);
+  drawHills(0.20, VH*0.018, VH*0.058, '#180f2a', true,  W.hillSeed*1.7);
+  drawWindStreaks();
+  drawWater(t);
+  drawRipples();
+  drawFarBank(t);
+  drawReeds(t, false);
+  drawDuckTelegraph(t);
+  drawPads(t);
+  for (var i=0;i<W.ducks.length;i++) drawDuck(W.ducks[i], t);
+  drawBuoys(t);
+  drawNearBank(t);
+  drawThrower(t);
+  if (S.state === 'charge') { drawTrajectory(); }
+  drawStone(t);
+  drawParticles();
+  drawWastedCue();
+  drawReeds(t, true);
+  drawLabels();
+  if (S.state === 'charge' || S.state === 'ready') drawMeter();
+
+  // warm flash on perfect / clear
+  if (S.goldFlash > 0){
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.30, S.goldFlash * 0.22);
+    ctx.fillStyle = '#ffd9a0';
+    ctx.fillRect(0, 0, VW, VH);
+    ctx.restore();
+  }
+}
+
+/* ================================ HUD ================================= */
+var elHud    = document.getElementById('hud');
+var elScore  = document.getElementById('hScore');
+var elStones = document.getElementById('stones');
+var elLake   = document.getElementById('hLakeLbl');
+var elChain  = document.getElementById('hChain');
+var elDist   = document.getElementById('hDist');
+var elWindA  = document.getElementById('windArrow');
+var elWindB  = document.getElementById('windBars');
+var elScreen = document.getElementById('screen');
+var elCard   = document.getElementById('card');
+var elEye    = document.getElementById('scEyebrow');
+var elTitle  = document.getElementById('scTitle');
+var elRule   = document.getElementById('scRule');
+var elSub    = document.getElementById('scSub');
+var elBody   = document.getElementById('scBody');
+var elBest   = document.getElementById('best');
+var elPrompt = document.getElementById('scPrompt');
+var elFoot   = document.getElementById('scFoot');
+var elMute   = document.getElementById('mute');
+
+var sdots = [];
+(function(){
+  for (var i=0;i<STONES_PER_LAKE;i++){
+    var d = document.createElement('div');
+    d.className = 'sdot';
+    elStones.appendChild(d);
+    sdots.push(d);
+  }
+  for (var j=0;j<3;j++){
+    var b = document.createElement('div');
+    b.className = 'wbar';
+    elWindB.appendChild(b);
+  }
+})();
+var wbars = elWindB.children;
+
+var lastHud = { score:-1, stones:-1, lake:-1, chain:'', dist:'', wind:-99 };
+
+function fmt(n){
+  n = Math.round(n);
+  var s = String(n), out = '', c = 0, i;
+  for (i = s.length - 1; i >= 0; i--){
+    out = s.charAt(i) + out;
+    if (++c % 3 === 0 && i > 0) out = ',' + out;
+  }
+  return out;
+}
+
+function hudScorePop(){
+  elScore.classList.add('pop');
+  setTimeout(function(){ elScore.classList.remove('pop'); }, 150);
+}
+
+function hudSync(force){
+  if (force || lastHud.score !== S.score){
+    lastHud.score = S.score;
+    elScore.textContent = fmt(S.score);
+  }
+  if (force || lastHud.stones !== S.stones){
+    lastHud.stones = S.stones;
+    for (var i=0;i<sdots.length;i++){
+      if (i < S.stones) sdots[i].classList.remove('spent');
+      else sdots[i].classList.add('spent');
+    }
+  }
+  if (force || lastHud.lake !== S.lakeIdx){
+    lastHud.lake = S.lakeIdx;
+    elLake.innerHTML = 'Lake ' + (S.lakeIdx+1) + ' of ' + LAKES.length +
+                       '<span class="lname"> · ' + W.name + '</span>';
+  }
+  if (force || lastHud.wind !== W.wind){
+    lastHud.wind = W.wind;
+    var mag = Math.abs(W.wind);
+    var lvl = mag === 0 ? 0 : (mag <= 0.6 ? 1 : (mag <= 1.1 ? 2 : 3));
+    for (var k=0;k<wbars.length;k++){
+      if (k < lvl) wbars[k].className = 'wbar on'; else wbars[k].className = 'wbar';
+    }
+    elWindA.textContent = mag === 0 ? '—' : (W.wind > 0 ? '→' : '←');
+    elWindA.style.color = mag === 0 ? 'rgba(246,236,223,.35)' : (W.wind > 0 ? '#7fe3d2' : '#ff9a7a');
+  }
+}
+
+function hudTick(){
+  hudSync(false);
+  var d;
+  if (S.state === 'ready' || S.state === 'charge' || S.state === 'title') d = W.dist;
+  else d = Math.max(0, W.dist - S.stone.x);
+  var ds = Math.round(d) + 'm';
+  if (ds !== lastHud.dist){ lastHud.dist = ds; elDist.textContent = ds; }
+  var c;
+  if (S.hydro) c = 'HYDROPLANE';
+  else if (S.chain >= 2) c = 'CHAIN ×' + S.chain;
+  else c = ' ';
+  if (c !== lastHud.chain){
+    lastHud.chain = c;
+    elChain.textContent = c;
+    elChain.style.color = S.hydro ? '#7fe3d2' : '#fff5e6';
+  }
+  var showHud = (S.state !== 'title');
+  if (showHud !== elHud.classList.contains('on')) elHud.classList.toggle('on', showHud);
+}
+
+/* ============================== SCREENS =============================== */
+var KEYS_PLAY =
+  '<div class="keys">' +
+    '<div class="key"><b>HOLD</b> charge the throw</div>' +
+    '<div class="key"><b>RELEASE</b> let it fly</div>' +
+    '<div class="key"><b>TAP</b> at every touch of water</div>' +
+  '</div>';
+
+function showScreen(o){
+  elEye.innerHTML    = o.eyebrow || '';
+  elTitle.innerHTML  = o.title || '';
+  elTitle.className  = o.small ? 'sm' : '';
+  elSub.innerHTML    = o.sub || '';
+  elBody.innerHTML   = o.body || '';
+  elBest.innerHTML   = o.best || '';
+  elPrompt.innerHTML = o.prompt || '';
+  elFoot.innerHTML   = o.foot || '';
+  elRule.style.display = o.title ? '' : 'none';
+  elScreen.classList.add('on');
+}
+function hideScreen(){ elScreen.classList.remove('on'); }
+
+function bestLine(){
+  return S.best > 0 ? 'Best this session <b>' + fmt(S.best) + '</b>' : '';
+}
+
+function showTitle(){
+  showScreen({
+    eyebrow: 'An old lakeside pastime',
+    title: 'Ducks <span class="amp">&amp;</span> Drakes',
+    sub: 'Skim one flat stone across five dusk lakes. Time every kiss of the water, keep your speed &mdash; and whatever you do, mind the ducks.',
+    body: KEYS_PLAY,
+    best: bestLine(),
+    prompt: 'Hold anywhere <span class="sp">or hold</span> Space <span class="sp">to begin</span>',
+    foot: 'P pause &nbsp;&middot;&nbsp; M mute &nbsp;&middot;&nbsp; R restart run'
+  });
+}
+
+function tallyRow(k, v, i, cls){
+  return '<div class="trow ' + (cls||'') + '" style="animation-delay:' + (0.06 + i*0.075).toFixed(3) + 's">' +
+         '<span class="tk">' + k + '</span><span class="tv">' + v + '</span></div>';
+}
+
+function showTally(isLast, distPts, stonePts, lakePts, stonesLeft){
+  var rows = '', i = 0;
+  rows += tallyRow('Skips', S.lakeSkips, i++);
+  rows += tallyRow('Perfects', S.lakePerfects, i++);
+  rows += tallyRow('Best chain', '×' + S.lakeBestChain, i++);
+  rows += tallyRow('Distance', '+' + fmt(distPts), i++);
+  rows += tallyRow('Stones left ×' + stonesLeft, '+' + fmt(stonePts), i++);
+  rows += tallyRow(isLast ? 'Final lake' : 'Lake cleared', '+' + fmt(lakePts), i++);
+  rows += tallyRow('Score', fmt(S.score), i++, 'tot');
+  if (isLast){
+    showScreen({
+      eyebrow: 'Five lakes, one stone at a time',
+      title: 'The Long Loch<br>is crossed',
+      small: true,
+      sub: 'The last skip carries clean onto the far bank. The ducks never even looked up.',
+      body: '<div class="tally">' + rows + '</div>',
+      best: bestLine(),
+      prompt: 'Hold <span class="sp">to play again</span>'
+    });
+  } else {
+    showScreen({
+      eyebrow: 'Lake ' + (S.lakeIdx+1) + ' of ' + LAKES.length + ' cleared',
+      title: W.name,
+      small: true,
+      sub: 'Fresh stones on the next bank. It gets wider from here.',
+      body: '<div class="tally">' + rows + '</div>',
+      best: '',
+      prompt: 'Hold <span class="sp">for lake ' + (S.lakeIdx+2) + '</span>'
+    });
+  }
+}
+
+function showGameOver(){
+  var rows = '', i = 0;
+  rows += tallyRow('Lakes cleared', S.lakeIdx, i++);
+  rows += tallyRow('Skips', S.runSkips, i++);
+  rows += tallyRow('Perfects', S.runPerfects, i++);
+  rows += tallyRow('Best chain', '×' + S.runBestChain, i++);
+  rows += tallyRow('Final score', fmt(S.score), i++, 'tot');
+  showScreen({
+    eyebrow: S.endReason ? S.endReason : 'The water wins',
+    title: 'All three<br>stones sunk',
+    small: true,
+    sub: 'The lake goes flat again. Somewhere out there a duck is telling the story.',
+    body: '<div class="tally">' + rows + '</div>',
+    best: bestLine(),
+    prompt: 'Hold <span class="sp">to try again</span>',
+    foot: 'Restarts from lake 1'
+  });
+}
+
+function showPause(){
+  showScreen({
+    eyebrow: '',
+    title: 'Paused',
+    small: true,
+    sub: '',
+    body: KEYS_PLAY,
+    best: bestLine(),
+    prompt: 'Press <span class="sp">to resume</span>',
+    foot: 'P resume &nbsp;&middot;&nbsp; M mute &nbsp;&middot;&nbsp; R restart the whole run'
+  });
+}
+
+/* =============================== INPUT ================================ */
+var holdPointer = false, holdKey = false, activePointer = null;
+var simOffset = 0;
+
+function tapSim(){
+  var n = (window.performance && performance.now) ? performance.now() : Date.now();
+  return n - simOffset;
+}
+function playing(){
+  var s = S.state;
+  return s === 'ready' || s === 'charge' || s === 'fly' || s === 'skid' || s === 'sink' || s === 'shore';
+}
+
+function press(){
+  Snd.unlock();
+  if (S.paused){ resumeGame(); return; }
+  switch (S.state){
+    case 'title':
+      startRun();
+      beginCharge();
+      break;
+    case 'ready':
+      beginCharge();
+      break;
+    case 'charge':
+      break;
+    case 'fly':
+      if (S.wasted) break;
+      S.tapCount++;
+      if (S.tapCount >= 3){
+        // One nervous re-flick is forgiven (the later one counts). Three flicks
+        // between two touches of the water is mashing, and mashing costs you.
+        S.pendingTap = 0;
+        S.wasted = true;
+        S.wastedCue = 1;
+        Snd.wasted();
+        popLabel(S.stone.x, 1.0, 'flick wasted', 'rgba(255,140,120,.85)', 0);
+      } else {
+        S.pendingTap = tapSim();
+      }
+      break;
+    case 'skid':
+      tapDuringSkid(tapSim());
+      break;
+    case 'clear':
+    case 'win':
+    case 'over':
+      advanceFromScreen();
+      break;
+  }
+}
+
+// Leaving a results screen. Also called from the sim, so that a player who is
+// already holding when the screen appears simply carries on into the next
+// throw the moment the short input lock expires, instead of having to re-press.
+function advanceFromScreen(){
+  if (S.simNow < S.lockUntil) return false;
+  if (S.state === 'clear'){ startLake(S.lakeIdx + 1); beginCharge(); return true; }
+  if (S.state === 'over' || S.state === 'win'){ startRun(); beginCharge(); return true; }
+  return false;
+}
+
+function release(){
+  if (S.paused) return;
+  if (S.state === 'charge') releaseThrow();
+}
+
+var wasHeld = false;
+function holdChanged(){
+  // edge-triggered on the *combined* hold state, so a device that fires both
+  // touch and mouse - or a player holding SPACE while clicking - cannot double-fire
+  var h = holdPointer || holdKey;
+  if (h === wasHeld) return;
+  wasHeld = h;
+  if (h) press(); else release();
+}
+function clearHolds(){
+  holdPointer = false; holdKey = false; activePointer = null; wasHeld = false;
+}
+
+/* pointer (mouse + touch + pen, one unified path) */
+window.addEventListener('pointerdown', function(e){
+  if (e.target === elMute || (elMute && elMute.contains && elMute.contains(e.target))) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  try { window.focus(); } catch(err){}   // keep SPACE working after a click
+  if (activePointer !== null && activePointer !== e.pointerId) return;
+  activePointer = e.pointerId;
+  if (!holdPointer){ holdPointer = true; holdChanged(); }
+}, { passive: false });
+
+function pointerRelease(e){
+  if (activePointer !== null && e && e.pointerId !== undefined && e.pointerId !== activePointer) return;
+  activePointer = null;
+  if (holdPointer){ holdPointer = false; holdChanged(); }
+}
+window.addEventListener('pointerup', pointerRelease, { passive: true });
+window.addEventListener('pointercancel', pointerRelease, { passive: true });
+window.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+window.addEventListener('dragstart', function(e){ e.preventDefault(); });
+
+/* keyboard */
+window.addEventListener('keydown', function(e){
+  var k = e.key;
+  if (k === ' ' || k === 'Spacebar' || e.code === 'Space'){
+    e.preventDefault();
+    if (e.repeat) return;
+    if (!holdKey){ holdKey = true; holdChanged(); }
+    return;
+  }
+  if (k === 'p' || k === 'P'){ e.preventDefault(); togglePause(); return; }
+  if (k === 'm' || k === 'M'){ e.preventDefault(); toggleMute(); return; }
+  if (k === 'r' || k === 'R'){
+    e.preventDefault();
+    if (S.state !== 'title'){
+      S.paused = false;
+      Snd.chargeStop();
+      clearHolds();
+      startRun();
+      hideScreen();
+    }
+    return;
+  }
+}, { passive: false });
+
+window.addEventListener('keyup', function(e){
+  if (e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space'){
+    e.preventDefault();
+    if (holdKey){ holdKey = false; holdChanged(); }
+  }
+}, { passive: false });
+
+/* mute button */
+function toggleMute(){
+  Snd.init();
+  Snd.setMuted(!Snd.muted);
+  elMute.classList.toggle('off', Snd.muted);
+}
+elMute.addEventListener('pointerdown', function(e){
+  e.preventDefault();
+  e.stopPropagation();
+  Snd.unlock();
+  toggleMute();
+}, { passive: false });
+elMute.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); });
+
+/* pause */
+function togglePause(){
+  if (S.paused) resumeGame();
+  else pauseGame();
+}
+function pauseGame(){
+  if (S.paused || !playing()) return;
+  S.paused = true;
+  if (S.state === 'charge'){ setState('ready'); S.power = 0; }
+  Snd.chargeStop();
+  clearHolds();
+  S.pendingTap = 0;
+  showPause();
+}
+function resumeGame(){
+  if (!S.paused) return;
+  S.paused = false;
+  S.pendingTap = 0;
+  hideScreen();
+}
+window.addEventListener('blur', function(){ pauseGame(); });
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) pauseGame();
+});
+
+/* resize / orientation */
+var resizeTimer = 0;
+function doResize(){ resize(); }
+window.addEventListener('resize', function(){
+  doResize();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(doResize, 220);
+});
+window.addEventListener('orientationchange', function(){
+  doResize();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(doResize, 260);
+});
+
+/* =============================== LOOP ================================= */
+var lastT = 0, acc = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  if (!lastT) lastT = now;
+  var d = (now - lastT) / 1000;
+  lastT = now;
+  if (!(d > 0)) d = 0;
+  if (d > MAXFRAME) d = MAXFRAME;
+
+  if (!S.paused){
+    acc += d;
+    var n = 0;
+    while (acc >= DT && n < 16){ stepPhysics(DT); acc -= DT; n++; }
+    if (acc > DT * 4) acc = 0;
+  }
+  simOffset = now - S.simNow;
+
+  hudTick();
+  render(S.simNow / 1000);
+}
+
+/* =============================== BOOT ================================= */
+function boot(){
+  S.simNow = 0;
+  simOffset = (window.performance && performance.now) ? performance.now() : 0;
+  resize();
+  buildLake(0);
+  S.cam = 6;
+  setState('title');
+  hudSync(true);
+  showTitle();
+  requestAnimationFrame(frame);
+}
+boot();
+
+})();
+</script>
+</body>
+</html>
