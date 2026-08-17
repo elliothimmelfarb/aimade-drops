@@ -1,0 +1,2424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="WILDCAT - 1901, the Texas oil boom. Steer a drill bit down through living geology, dodge granite, cap the gusher.">
+<title>WILDCAT</title>
+<style>
+  :root{
+    --ink:#f3e3c8;
+    --dim:#a58d6d;
+    --dimmer:#6f5c46;
+    --gold:#e8b34c;
+    --rust:#c0642f;
+    --hot:#e8622a;
+    --red:#d33a22;
+    --green:#9fd08a;
+    --blue:#5f9dc0;
+    --night:#140d09;
+    --panel:rgba(20,13,9,.82);
+    --serif: "Hoefler Text", "Iowan Old Style", Georgia, "Times New Roman", Times, serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:#0c0806;color:var(--ink);
+    font-family:var(--mono);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;
+    touch-action:none;
+  }
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#0c0806;}
+  canvas#game{position:absolute;left:0;top:0;display:block;touch-action:none;}
+
+  /* ============ HUD ============ */
+  #hud{
+    position:absolute;left:0;right:0;top:0;z-index:10;pointer-events:none;
+    padding:max(8px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) 0 max(10px,env(safe-area-inset-left));
+    opacity:0;transition:opacity .45s cubic-bezier(.22,1,.36,1);
+  }
+  #hud.on{opacity:1;}
+  .hrow{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+  .cell{display:flex;flex-direction:column;min-width:0;}
+  .cell.c{align-items:center;flex:1 1 auto;}
+  .cell.r{align-items:flex-end;padding-right:36px;}
+  .lbl{color:var(--dim);font-size:8.5px;letter-spacing:.24em;text-transform:uppercase;line-height:1.6;
+       text-shadow:0 1px 3px rgba(0,0,0,.85);}
+  .val{font-size:clamp(17px,4.6vw,26px);line-height:1;font-variant-numeric:tabular-nums;
+       text-shadow:0 2px 9px rgba(0,0,0,.85);letter-spacing:.01em;}
+  .val .u{font-size:.5em;color:var(--dim);margin-left:2px;letter-spacing:.1em;}
+  #bblV{color:var(--gold);text-shadow:0 0 16px rgba(232,179,76,.3),0 2px 9px rgba(0,0,0,.85);
+        transition:transform .1s cubic-bezier(.3,1.6,.6,1);transform-origin:50% 50%;}
+  #bblV.pop{transform:scale(1.17);}
+  #cashV{color:var(--ink);transition:color .3s;}
+  #cashV.low{color:var(--red);animation:cashpulse 1s ease-in-out infinite;}
+  @keyframes cashpulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+  .hrow2{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:7px;}
+  .gauge{display:flex;flex-direction:column;gap:3px;flex:0 1 128px;min-width:78px;}
+  .gbar{position:relative;height:7px;border-radius:4px;background:rgba(0,0,0,.55);
+        box-shadow:inset 0 0 0 1px rgba(243,227,200,.16);overflow:hidden;}
+  .gfill{position:absolute;inset:0;transform-origin:0 50%;transform:scaleX(0);
+         background:linear-gradient(90deg,#7fa86a 0%,#d9b445 52%,#e8622a 80%,#d33a22 100%);
+         transition:none;}
+  .gred{position:absolute;top:0;bottom:0;left:82%;width:1px;background:rgba(243,227,200,.5);}
+  .gbar.hotglow{box-shadow:inset 0 0 0 1px rgba(211,58,34,.9),0 0 14px rgba(211,58,34,.55);}
+  .strat{color:var(--dim);font-size:9px;letter-spacing:.2em;text-transform:uppercase;text-align:center;
+         flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+         text-shadow:0 1px 3px rgba(0,0,0,.85);transition:color .4s;}
+  .pips{display:flex;gap:5px;flex:0 0 auto;}
+  .pips i{display:block;width:13px;height:8px;border-radius:2px;background:var(--gold);
+     box-shadow:0 0 8px rgba(232,179,76,.4),inset 0 -3px 0 rgba(0,0,0,.28);
+     transition:opacity .3s,transform .3s,background .3s;}
+  .pips i.gone{opacity:.17;transform:scale(.66);background:#6f5c46;box-shadow:none;}
+
+  /* ============ toast ============ */
+  #toast{
+    position:absolute;left:50%;top:31%;transform:translate(-50%,8px);z-index:12;
+    pointer-events:none;text-align:center;opacity:0;
+    transition:opacity .3s ease,transform .35s cubic-bezier(.22,1,.36,1);
+  }
+  #toast.on{opacity:1;transform:translate(-50%,0);}
+  #toast .t1{font-family:var(--serif);font-size:clamp(19px,5.4vw,31px);letter-spacing:.05em;
+    color:var(--gold);text-shadow:0 0 22px rgba(232,179,76,.4),0 3px 10px rgba(0,0,0,.9);}
+  #toast .t2{font-size:10px;letter-spacing:.2em;color:var(--ink);opacity:.78;margin-top:5px;
+    text-transform:uppercase;text-shadow:0 2px 8px rgba(0,0,0,.9);}
+
+  /* ============ BOP prompt ============ */
+  #bop{
+    position:absolute;left:50%;top:47%;transform:translate(-50%,-50%) scale(.86);z-index:14;
+    display:flex;flex-direction:column;align-items:center;gap:9px;
+    opacity:0;visibility:hidden;pointer-events:none;
+    transition:opacity .16s ease,transform .22s cubic-bezier(.3,1.5,.6,1),visibility .16s;
+  }
+  #bop.on{opacity:1;visibility:visible;transform:translate(-50%,-50%) scale(1);pointer-events:auto;}
+  #bop .cap{font-family:var(--serif);font-size:clamp(15px,4.2vw,22px);letter-spacing:.1em;color:#fff;
+    text-shadow:0 0 20px rgba(211,58,34,.8),0 3px 10px #000;text-align:center;}
+  #bopBtn{
+    font-family:var(--mono);font-size:clamp(13px,3.5vw,17px);letter-spacing:.16em;
+    padding:15px 26px;border-radius:9px;border:2px solid #ffd9a0;color:#fff2dd;
+    background:linear-gradient(180deg,#e0562a,#96280f);cursor:pointer;
+    box-shadow:0 0 30px rgba(224,86,42,.6),inset 0 1px 0 rgba(255,255,255,.3);
+    animation:bopflash .42s steps(2,end) infinite;touch-action:none;
+  }
+  @keyframes bopflash{0%{filter:brightness(1)}50%{filter:brightness(1.45)}}
+  #bopBar{width:min(230px,58vw);height:6px;border-radius:3px;background:rgba(0,0,0,.6);
+    box-shadow:inset 0 0 0 1px rgba(255,220,180,.35);overflow:hidden;}
+  #bopFill{height:100%;width:100%;transform-origin:0 50%;background:linear-gradient(90deg,#ffd07a,#d33a22);}
+
+  /* ============ cap minigame ============ */
+  #capw{
+    position:absolute;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translate(-50%,10px);
+    z-index:15;width:min(430px,94vw);display:flex;flex-direction:column;align-items:center;gap:9px;
+    opacity:0;visibility:hidden;pointer-events:none;
+    transition:opacity .25s ease,transform .3s cubic-bezier(.22,1,.36,1),visibility .25s;
+  }
+  #capw.on{opacity:1;visibility:visible;transform:translate(-50%,0);pointer-events:auto;}
+  #capHead{font-family:var(--serif);font-size:clamp(14px,4vw,19px);letter-spacing:.09em;text-align:center;
+    color:#ffe7bd;text-shadow:0 3px 12px #000;}
+  #capSub{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);text-align:center;margin-top:-4px;}
+  #capBarO{width:100%;height:13px;border-radius:7px;background:rgba(0,0,0,.66);
+    box-shadow:inset 0 0 0 1px rgba(243,227,200,.25);overflow:hidden;position:relative;}
+  #capFill{position:absolute;inset:0;transform-origin:0 50%;transform:scaleX(0);
+    background:linear-gradient(90deg,#8a6a2e,#e8b34c 60%,#ffe6a8);}
+  #capMult{font-family:var(--serif);font-size:clamp(17px,5vw,25px);color:var(--gold);
+    text-shadow:0 0 18px rgba(232,179,76,.45),0 2px 8px #000;}
+  #capBtns{display:flex;gap:12px;width:100%;}
+  .capB{flex:1 1 0;padding:16px 6px;border-radius:11px;font-family:var(--mono);font-size:19px;
+    letter-spacing:.1em;border:2px solid rgba(243,227,200,.28);color:var(--dim);
+    background:rgba(28,18,12,.85);cursor:pointer;touch-action:none;
+    transition:transform .09s ease,border-color .16s,color .16s,background .16s,box-shadow .16s;}
+  .capB.next{border-color:var(--gold);color:#ffeec4;background:rgba(72,46,16,.9);
+    box-shadow:0 0 22px rgba(232,179,76,.4);}
+  .capB.hit{transform:scale(.94);}
+
+  /* ============ touch controls ============ */
+  #touch{
+    position:absolute;left:0;right:0;bottom:0;z-index:11;display:none;
+    padding:0 max(6px,env(safe-area-inset-left)) max(6px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-right));
+    gap:8px;align-items:stretch;pointer-events:none;
+    opacity:0;transition:opacity .4s ease;
+  }
+  #touch.show{display:flex;}
+  #touch.on{opacity:1;pointer-events:auto;}
+  .tb{
+    flex:1 1 0;height:clamp(58px,11.5vh,86px);border-radius:13px;
+    border:1.5px solid rgba(243,227,200,.2);background:rgba(22,14,10,.5);
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    color:var(--dim);font-family:var(--mono);font-size:20px;letter-spacing:.06em;
+    touch-action:none;cursor:pointer;transition:background .1s,border-color .1s,color .1s,transform .08s;
+  }
+  .tb .sub{font-size:8px;letter-spacing:.18em;text-transform:uppercase;opacity:.7;}
+  .tb.down{background:rgba(224,110,42,.32);border-color:rgba(232,179,76,.75);color:#ffeac6;transform:scale(.975);}
+  #tThr{flex:1.5 1 0;}
+
+  /* ============ mute ============ */
+  #muteBtn{
+    position:absolute;z-index:16;right:max(9px,env(safe-area-inset-right));
+    top:max(9px,env(safe-area-inset-top));
+    width:31px;height:31px;border-radius:50%;border:1px solid rgba(243,227,200,.22);
+    background:rgba(18,11,8,.6);color:var(--dim);font-family:var(--mono);font-size:13px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;line-height:1;
+    transition:color .2s,border-color .2s,opacity .3s;opacity:.55;
+  }
+  #muteBtn:hover{opacity:1;color:var(--ink);}
+  #muteBtn.off{color:var(--dimmer);}
+
+  /* ============ overlays ============ */
+  .ovl{
+    position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    padding:max(18px,env(safe-area-inset-top)) 18px max(18px,env(safe-area-inset-bottom));
+    background:radial-gradient(120% 90% at 50% 40%,rgba(24,14,9,.78),rgba(8,5,3,.95));
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+    opacity:0;visibility:hidden;pointer-events:none;
+    transition:opacity .38s cubic-bezier(.22,1,.36,1),visibility .38s;
+    overflow-y:auto;overscroll-behavior:contain;
+  }
+  .ovl.on{opacity:1;visibility:visible;pointer-events:auto;}
+  .inner{
+    width:100%;max-width:520px;text-align:center;margin:auto;
+    transform:translateY(14px) scale(.985);opacity:0;
+    transition:transform .46s cubic-bezier(.22,1,.36,1),opacity .46s ease;
+  }
+  .ovl.on .inner{transform:none;opacity:1;}
+  h1{
+    font-family:var(--serif);font-weight:400;margin:0;
+    font-size:clamp(46px,15vw,86px);letter-spacing:.13em;line-height:1;
+    color:#f7e9cd;text-shadow:0 0 42px rgba(224,110,42,.35),0 5px 0 rgba(0,0,0,.35);
+  }
+  .rule{width:64px;height:1px;background:linear-gradient(90deg,transparent,var(--rust),transparent);margin:14px auto;}
+  .kicker{font-size:9.5px;letter-spacing:.42em;text-transform:uppercase;color:var(--rust);margin-top:9px;}
+  .prem{font-family:var(--serif);font-size:clamp(13px,3.4vw,15.5px);line-height:1.62;color:var(--dim);
+    margin:0 auto;max-width:430px;}
+  .prem b{color:var(--ink);font-weight:400;}
+  h2{font-family:var(--serif);font-weight:400;margin:0;font-size:clamp(28px,8.5vw,50px);
+    letter-spacing:.07em;line-height:1.05;color:#f7e9cd;text-shadow:0 4px 26px rgba(0,0,0,.7);}
+  h2.bad{color:#e88a63;text-shadow:0 0 30px rgba(211,58,34,.4);}
+  h2.good{color:var(--gold);text-shadow:0 0 34px rgba(232,179,76,.42);}
+  .epi{font-family:var(--serif);font-style:italic;font-size:clamp(12.5px,3.3vw,15px);color:var(--dim);
+    line-height:1.55;margin:14px auto 0;max-width:400px;}
+  .stats{display:flex;justify-content:center;gap:clamp(16px,7vw,44px);margin:22px 0 4px;flex-wrap:wrap;}
+  .st{display:flex;flex-direction:column;gap:4px;}
+  .st .n{font-size:clamp(20px,6vw,32px);line-height:1;font-variant-numeric:tabular-nums;color:var(--ink);}
+  .st .n.g{color:var(--gold);}
+  .st .l{font-size:8.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--dimmer);}
+  .keys{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:6px 14px;
+    margin:20px auto 0;max-width:440px;text-align:left;
+  }
+  .kr{display:flex;align-items:baseline;gap:8px;font-size:10px;letter-spacing:.06em;color:var(--dim);}
+  .kk{
+    font-family:var(--mono);font-size:9px;letter-spacing:.09em;color:var(--ink);
+    border:1px solid rgba(243,227,200,.26);border-radius:4px;padding:2.5px 6px;flex:0 0 auto;
+    background:rgba(243,227,200,.05);white-space:nowrap;
+  }
+  .act{
+    margin-top:22px;font-family:var(--mono);font-size:12px;letter-spacing:.19em;text-transform:uppercase;
+    padding:13px 27px;border-radius:8px;border:1px solid var(--rust);color:#ffe9cc;
+    background:linear-gradient(180deg,rgba(192,100,47,.32),rgba(120,52,20,.3));cursor:pointer;
+    transition:background .2s,transform .1s,box-shadow .2s;
+  }
+  .act:hover{background:linear-gradient(180deg,rgba(192,100,47,.55),rgba(120,52,20,.5));box-shadow:0 0 26px rgba(192,100,47,.3);}
+  .act:active{transform:translateY(1px);}
+  .act.gold{border-color:var(--gold);color:#fff3d6;background:linear-gradient(180deg,rgba(232,179,76,.3),rgba(140,98,26,.28));}
+  .act.gold:hover{background:linear-gradient(180deg,rgba(232,179,76,.5),rgba(140,98,26,.45));box-shadow:0 0 28px rgba(232,179,76,.32);}
+  .btns{display:flex;gap:11px;justify-content:center;flex-wrap:wrap;}
+  .hint{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dimmer);margin-top:13px;}
+  #backer{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);opacity:.85;margin-top:14px;}
+  .hide{display:none !important;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="hrow">
+      <div class="cell"><div class="lbl">Depth</div><div class="val" id="depthV">0<span class="u">FT</span></div></div>
+      <div class="cell c"><div class="lbl">Barrels</div><div class="val" id="bblV">0</div></div>
+      <div class="cell r"><div class="lbl">Grubstake</div><div class="val" id="cashV">$0</div></div>
+    </div>
+    <div class="hrow2">
+      <div class="gauge">
+        <div class="lbl">Bit Heat</div>
+        <div class="gbar" id="gbar"><div class="gfill" id="heatFill"></div><div class="gred"></div></div>
+      </div>
+      <div class="strat" id="stratV">TOPSOIL</div>
+      <div class="pips" id="pips"><i></i><i></i><i></i></div>
+    </div>
+  </div>
+
+  <div id="toast"><div class="t1" id="toast1"></div><div class="t2" id="toast2"></div></div>
+
+  <div id="bop">
+    <div class="cap">GAS KICK &mdash; SHUT THE WELL IN</div>
+    <button id="bopBtn">BLOWOUT PREVENTER &nbsp;[F]</button>
+    <div id="bopBar"><div id="bopFill"></div></div>
+  </div>
+
+  <div id="capw">
+    <div id="capHead">CAP THE WELL</div>
+    <div id="capSub">alternate &#9668; and &#9658; &mdash; do not press both</div>
+    <div id="capBarO"><div id="capFill"></div></div>
+    <div id="capMult">&times;2.60</div>
+    <div id="capBtns">
+      <button class="capB" id="capL">&#9668;</button>
+      <button class="capB" id="capR">&#9658;</button>
+    </div>
+  </div>
+
+  <div id="touch">
+    <div class="tb" id="tL">&#9668;<span class="sub">steer</span></div>
+    <div class="tb" id="tThr">&#9679;<span class="sub">lean on it</span></div>
+    <div class="tb" id="tR">&#9658;<span class="sub">steer</span></div>
+  </div>
+
+  <button id="muteBtn" title="Mute (M)">&#9834;</button>
+
+  <div class="ovl on" id="startOvl">
+    <div class="inner">
+      <div class="kicker">Beaumont, Texas &middot; 1901</div>
+      <h1>WILDCAT</h1>
+      <div class="rule"></div>
+      <p class="prem">You have a leased quarter-section, a wooden derrick, and other men's money.
+        Somewhere under this pasture the limestone humps up into a dome and holds a lake of
+        <b>black gold</b> against the rock. Lean on the bit to make hole &mdash; but heat kills bits,
+        granite kills bits, and a gas kick will burn your rig to the sills.
+        Find <b>the big pay</b> before the backers pull out.</p>
+      <div class="keys">
+        <div class="kr"><span class="kk">&#8592; &#8594; / A D</span> steer the bit</div>
+        <div class="kr"><span class="kk">SPACE / W</span> lean on the bit</div>
+        <div class="kr"><span class="kk">F / ENTER</span> blowout preventer</div>
+        <div class="kr"><span class="kk">A D / &#8592; &#8594;</span> cap the gusher</div>
+        <div class="kr"><span class="kk">P</span> pause</div>
+        <div class="kr"><span class="kk">M</span> mute</div>
+        <div class="kr"><span class="kk">R</span> restart</div>
+        <div class="kr"><span class="kk">TOUCH</span> buttons at the bottom</div>
+      </div>
+      <button class="act" id="startBtn">Spud In</button>
+      <div class="hint">Space or tap to spud in</div>
+      <div id="backer" class="hide"></div>
+    </div>
+  </div>
+
+  <div class="ovl" id="pauseOvl">
+    <div class="inner">
+      <h2>TOOLS DOWN</h2>
+      <div class="hint" style="margin-top:16px">P to resume</div>
+      <button class="act" id="resumeBtn">Resume</button>
+    </div>
+  </div>
+
+  <div class="ovl" id="overOvl">
+    <div class="inner">
+      <h2 class="bad" id="overTitle">BIT DESTROYED</h2>
+      <p class="epi" id="overEpi"></p>
+      <div class="stats">
+        <div class="st"><div class="n g" id="ovBbl">0</div><div class="l">Barrels</div></div>
+        <div class="st"><div class="n" id="ovDep">0</div><div class="l">Feet Made</div></div>
+        <div class="st"><div class="n" id="ovCash">$0</div><div class="l">Final Purse</div></div>
+      </div>
+      <button class="act" id="againBtn">Drill Again</button>
+      <div class="hint">or press R</div>
+    </div>
+  </div>
+
+  <div class="ovl" id="winOvl">
+    <div class="inner">
+      <div class="kicker">She blew in at <span id="winDep">0</span> feet</div>
+      <h2 class="good">THE BIG PAY</h2>
+      <p class="epi" id="winEpi">Capped and flowing. The whole county heard it come in.</p>
+      <div class="stats">
+        <div class="st"><div class="n g" id="winBbl">0</div><div class="l">Barrels</div></div>
+        <div class="st"><div class="n" id="winMult">&times;1.0</div><div class="l">Cap Bonus</div></div>
+        <div class="st"><div class="n" id="winCash">$0</div><div class="l">Purse</div></div>
+      </div>
+      <div class="btns" style="margin-top:22px">
+        <button class="act gold" id="keepBtn">Keep Drilling &nbsp;[ENTER]</button>
+        <button class="act" id="retireBtn">Bank It &amp; Retire &nbsp;[B]</button>
+      </div>
+      <div class="hint">Your score banks when the run ends</div>
+    </div>
+  </div>
+</div>
+
+<!-- aimade.games Arcade SDK -->
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+  window.__arcade = null;
+  (function(){ try { Arcade.ready().then(function(a){ window.__arcade = a; }); } catch(e){} })();
+  function arcadeSubmit(score, meta){ try { if (typeof score==='number' && isFinite(score)) Arcade.ready().then(function(a){ a.scores.submit(score, meta||{}); }).catch(function(){}); } catch(e){} }
+  function arcadeUnlock(slug){ try { Arcade.ready().then(function(a){ a.achievements.unlock(slug); }).catch(function(){}); } catch(e){} }
+</script>
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   WILDCAT -- 1901 Texas oil-boom directional drilling
+   ========================================================================= */
+
+var TAU = Math.PI*2;
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function ease(t){ return t<0?0:(t>1?1:t*t*(3-2*t)); }
+
+/* ---------------- seeded rng (geology only) ---------------- */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a>>>15, 1|a);
+    t = t + Math.imul(t ^ t>>>7, 61|t) ^ t;
+    return ((t ^ t>>>14) >>> 0) / 4294967296;
+  };
+}
+var rnd = mulberry32(1);
+function rr(a,b){ return a + (b-a)*rnd(); }
+function ri(a,b){ return Math.floor(a + (b-a+1)*rnd()); }
+function pick(arr){ return arr[Math.floor(rnd()*arr.length)]; }
+
+/* ---------------- tuning ---------------- */
+var THR_BASE   = 9.0;    // ft/s at full throttle in hardness 1.0
+var IDLE_BASE  = 2.35;   // ft/s idling
+var MAXSLOPE   = 0.58;   // max lateral ft per ft of descent
+var LAT_MINV   = 3.0;    // lateral authority floor (ft/s of "virtual" descent)
+var HEAT_RATE  = 0.168;  // heat/sec at hardness 1.0 under throttle
+var COOL_RATE  = 0.335;  // heat/sec dissipating
+var BURN_TIME  = 1.25;   // seconds at redline max before a pip goes
+var WAGE       = 15.5;   // $/sec crew + steam
+var FT_IDLE    = 2.8;    // $/ft idling
+var FT_THR     = 5.2;    // $/ft leaning on it
+var PRICE      = 2.55;   // $ per barrel
+var GRUB       = 3400;   // starting grubstake
+var MAXPIP     = 3;
+var CHUNK      = 200;    // ft of geology generated at a time
+var BIGPAY_BBL = 12000;
+var CAP_NEED   = 16;     // alternations to cap the gusher
+var CAP_MULT0  = 2.6;
+var CAP_DECAY  = 6.5;   // seconds from 2.6 down to 1.0
+var FREEFALL_A = 62;     // ft/s^2 in a cavern
+var FREEFALL_M = 33;     // terminal ft/s
+
+/* ---------------- strata ---------------- */
+var S_SOIL  = {n:'TOPSOIL',    h:0.50, c:'#4e3823', c2:'#3a2a1a', chip:'#6f5031'};
+var S_CAL   = {n:'CALICHE',    h:0.98, c:'#a89272', c2:'#8a7755', chip:'#ccb795'};
+var S_SAND  = {n:'SANDSTONE',  h:0.80, c:'#a8623a', c2:'#89502c', chip:'#c9814f'};
+var S_RED   = {n:'RED BEDS',   h:0.88, c:'#8c4630', c2:'#713625', chip:'#b5654a'};
+var S_SHALE = {n:'SHALE',      h:1.22, c:'#413c35', c2:'#312d28', chip:'#615949'};
+var S_MARL  = {n:'MARL',       h:1.02, c:'#7d7358', c2:'#645c46', chip:'#9c9271'};
+var S_LIME  = {n:'LIMESTONE',  h:1.80, c:'#8d8672', c2:'#736d5b', chip:'#aea792'};
+var S_SALT  = {n:'SALT DOME',  h:0.66, c:'#cdbea2', c2:'#b2a288', chip:'#e8dcc4'};
+var S_DOLO  = {n:'DOLOMITE',   h:2.05, c:'#6e6a5c', c2:'#565247', chip:'#918b79'};
+var S_CHERT = {n:'CHERT',      h:2.35, c:'#5d5a55', c2:'#474440', chip:'#847f76'};
+var CAPROCK = {n:'CAP ROCK',   h:2.25, c:'#2f2a24', c2:'#231f1a', chip:'#544a3c'};
+
+/* ---------------- dom ---------------- */
+var wrap = document.getElementById('wrap');
+var cv   = document.getElementById('game');
+var ctx  = cv.getContext('2d', {alpha:false});
+var hudEl = document.getElementById('hud');
+var depthV = document.getElementById('depthV');
+var bblV = document.getElementById('bblV');
+var cashV = document.getElementById('cashV');
+var heatFill = document.getElementById('heatFill');
+var gbar = document.getElementById('gbar');
+var stratV = document.getElementById('stratV');
+var pipsEl = document.getElementById('pips');
+var pipEls = pipsEl.getElementsByTagName('i');
+var toastEl = document.getElementById('toast');
+var toast1 = document.getElementById('toast1');
+var toast2 = document.getElementById('toast2');
+var bopEl = document.getElementById('bop');
+var bopBtn = document.getElementById('bopBtn');
+var bopFill = document.getElementById('bopFill');
+var capw = document.getElementById('capw');
+var capFill = document.getElementById('capFill');
+var capMultEl = document.getElementById('capMult');
+var capL = document.getElementById('capL');
+var capR = document.getElementById('capR');
+var touchEl = document.getElementById('touch');
+var tL = document.getElementById('tL'), tR = document.getElementById('tR'), tThr = document.getElementById('tThr');
+var muteBtn = document.getElementById('muteBtn');
+var startOvl = document.getElementById('startOvl');
+var pauseOvl = document.getElementById('pauseOvl');
+var overOvl  = document.getElementById('overOvl');
+var winOvl   = document.getElementById('winOvl');
+var backerEl = document.getElementById('backer');
+
+/* ---------------- canvas ---------------- */
+var W=1, H=1, dpr=1, PPF=14, BITY=0.34;
+var VIEWW=40, VIEWH=48;
+function resize(){
+  dpr = Math.min(2, window.devicePixelRatio||1);
+  W = Math.max(200, wrap.clientWidth|0);
+  H = Math.max(240, wrap.clientHeight|0);
+  cv.width = (W*dpr)|0; cv.height = (H*dpr)|0;
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  var p = Math.min(W/30, H/46);
+  if (W/p > 96) p = W/96;
+  PPF = clamp(p, 7, 30);
+  VIEWW = W/PPF; VIEWH = H/PPF;
+  BITY = clamp(0.40 - 0.12*(VIEWH/VIEWW>1.4?1:0), 0.28, 0.40);
+  buildGrain();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 120); });
+
+/* grain tile ------------------------------------------------ */
+var grainC = document.createElement('canvas');
+var grainPat = null;
+function buildGrain(){
+  if (grainC.width) return;   // build once; it is resolution independent enough
+  grainC.width = grainC.height = 96;
+  var g = grainC.getContext('2d');
+  var img = g.createImageData(96,96);
+  var d = img.data;
+  for (var i=0;i<d.length;i+=4){
+    var v = (Math.random()*255)|0;
+    d[i]=d[i+1]=d[i+2]=v;
+    d[i+3] = 26 + ((Math.random()*46)|0);
+  }
+  g.putImageData(img,0,0);
+  grainPat = ctx.createPattern(grainC,'repeat');
+}
+
+/* =========================================================================
+   AUDIO -- everything synthesized
+   ========================================================================= */
+var AC=null, master=null, muted=false, audioOK=false;
+var engOsc=null, engGain=null, engFilt=null, chugOsc=null, chugGain=null;
+var grindSrc=null, grindGain=null, grindFilt=null;
+var rumbleSrc=null, rumbleGain=null, rumbleFilt=null;
+var noiseBuf=null;
+var lastTick=0;
+
+function makeNoise(sec){
+  var n = (AC.sampleRate*sec)|0;
+  var b = AC.createBuffer(1, n, AC.sampleRate);
+  var d = b.getChannelData(0);
+  for (var i=0;i<n;i++) d[i] = Math.random()*2-1;
+  return b;
+}
+function audioInit(){
+  if (audioOK) { if (AC.state==='suspended') AC.resume(); return; }
+  var Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return;
+  try { AC = new Ctor(); } catch(e){ return; }
+  audioOK = true;
+  master = AC.createGain(); master.gain.value = muted?0:0.85; master.connect(AC.destination);
+  noiseBuf = makeNoise(2.2);
+
+  engFilt = AC.createBiquadFilter(); engFilt.type='lowpass'; engFilt.frequency.value=380; engFilt.Q.value=3;
+  engGain = AC.createGain(); engGain.gain.value=0;
+  engOsc = AC.createOscillator(); engOsc.type='sawtooth'; engOsc.frequency.value=46;
+  engOsc.connect(engFilt); engFilt.connect(engGain); engGain.connect(master); engOsc.start();
+
+  chugOsc = AC.createOscillator(); chugOsc.type='sine'; chugOsc.frequency.value=8;
+  chugGain = AC.createGain(); chugGain.gain.value=0;
+  chugOsc.connect(chugGain); chugGain.connect(engGain.gain); chugOsc.start();
+
+  grindFilt = AC.createBiquadFilter(); grindFilt.type='bandpass'; grindFilt.frequency.value=900; grindFilt.Q.value=1.1;
+  grindGain = AC.createGain(); grindGain.gain.value=0;
+  grindSrc = AC.createBufferSource(); grindSrc.buffer=noiseBuf; grindSrc.loop=true;
+  grindSrc.connect(grindFilt); grindFilt.connect(grindGain); grindGain.connect(master); grindSrc.start();
+
+  rumbleFilt = AC.createBiquadFilter(); rumbleFilt.type='lowpass'; rumbleFilt.frequency.value=90;
+  rumbleGain = AC.createGain(); rumbleGain.gain.value=0;
+  rumbleSrc = AC.createBufferSource(); rumbleSrc.buffer=noiseBuf; rumbleSrc.loop=true;
+  rumbleSrc.connect(rumbleFilt); rumbleFilt.connect(rumbleGain); rumbleGain.connect(master); rumbleSrc.start();
+
+  if (AC.state==='suspended') AC.resume();
+}
+function setMute(m){
+  muted = m;
+  muteBtn.className = m ? 'off' : '';
+  muteBtn.innerHTML = m ? '&#10005;' : '&#9834;';
+  if (master) master.gain.setTargetAtTime(m?0:0.85, AC.currentTime, 0.02);
+}
+function env(node, t0, peak, atk, dec){
+  var g = node.gain;
+  g.cancelScheduledValues(t0);
+  g.setValueAtTime(0.0001, t0);
+  g.exponentialRampToValueAtTime(Math.max(0.0002,peak), t0+atk);
+  g.exponentialRampToValueAtTime(0.0001, t0+atk+dec);
+}
+function blip(freq, type, peak, dur, detune){
+  if (!audioOK||muted) return;
+  var t=AC.currentTime;
+  var o=AC.createOscillator(), g=AC.createGain();
+  o.type=type||'square'; o.frequency.setValueAtTime(freq,t);
+  if (detune) o.frequency.exponentialRampToValueAtTime(Math.max(20,freq*detune), t+dur);
+  o.connect(g); g.connect(master);
+  env(g,t,peak,0.006,dur);
+  o.start(t); o.stop(t+dur+0.06);
+}
+function noiseHit(dur, f0, f1, peak, q, type){
+  if (!audioOK||muted) return;
+  var t=AC.currentTime;
+  var s=AC.createBufferSource(); s.buffer=noiseBuf;
+  s.playbackRate.value = 0.8+Math.random()*0.5;
+  var bf=AC.createBiquadFilter(); bf.type=type||'bandpass'; bf.frequency.setValueAtTime(f0,t);
+  bf.frequency.exponentialRampToValueAtTime(Math.max(40,f1), t+dur); bf.Q.value=q||1.2;
+  var g=AC.createGain();
+  s.connect(bf); bf.connect(g); g.connect(master);
+  env(g,t,peak,0.01,dur);
+  s.start(t); s.stop(t+dur+0.08);
+}
+function sndChip(hard){
+  if (!audioOK||muted||Math.random()>0.34) return;
+  noiseHit(0.05, 1400+hard*900, 500, 0.045, 2.4);
+}
+function sndClank(){ noiseHit(0.13, 2600, 400, 0.30, 2.0); blip(150,'square',0.16,0.13,0.4); }
+function sndDamage(){ noiseHit(0.4, 900, 90, 0.42, 1.0, 'lowpass'); blip(88,'sawtooth',0.3,0.45,0.35); }
+function sndWhump(){ noiseHit(0.5, 320, 50, 0.34, 0.8, 'lowpass'); blip(64,'sine',0.34,0.55,0.4); }
+function sndLand(){ noiseHit(0.3, 700, 90, 0.36, 1.1, 'lowpass'); blip(52,'sine',0.3,0.4,0.5); }
+function sndSplash(){ noiseHit(0.55, 500, 1900, 0.24, 0.9); }
+function sndHissStart(){
+  if (!audioOK||muted) return;
+  var t=AC.currentTime;
+  var s=AC.createBufferSource(); s.buffer=noiseBuf; s.loop=true;
+  var bf=AC.createBiquadFilter(); bf.type='bandpass'; bf.frequency.setValueAtTime(700,t);
+  bf.frequency.exponentialRampToValueAtTime(3400,t+2.4); bf.Q.value=0.9;
+  var g=AC.createGain(); g.gain.setValueAtTime(0.0001,t);
+  g.exponentialRampToValueAtTime(0.20,t+0.35);
+  s.connect(bf); bf.connect(g); g.connect(master); s.start(t);
+  return {s:s,g:g,bf:bf};
+}
+function stopNode(h, fade){
+  if (!h||!audioOK) return;
+  try{
+    var t=AC.currentTime;
+    h.g.gain.cancelScheduledValues(t);
+    h.g.gain.setValueAtTime(Math.max(0.0002,h.g.gain.value),t);
+    h.g.gain.exponentialRampToValueAtTime(0.0001,t+(fade||0.25));
+    h.s.stop(t+(fade||0.25)+0.06);
+  }catch(e){}
+}
+function sndVent(){ noiseHit(0.85, 2600, 260, 0.34, 0.7); blip(420,'triangle',0.14,0.4,0.4); }
+function sndOil(bbl){
+  if (!audioOK||muted) return;
+  var t=AC.currentTime;
+  blip(64,'sine',0.34,1.1,1.7);
+  blip(96,'triangle',0.13,0.9,1.6);
+  noiseHit(0.9, 260, 1500, 0.16, 0.7);
+  var n=Math.min(5, 2+Math.floor(bbl/500));
+  for (var i=0;i<n;i++){
+    (function(k){ setTimeout(function(){ blip(392*Math.pow(1.1225,k*2), 'triangle', 0.09, 0.2); }, 70*k); })(i);
+  }
+}
+function sndHeatTick(){ blip(1500,'square',0.055,0.045); }
+function sndAlarm(){ blip(880,'square',0.11,0.1); setTimeout(function(){ blip(660,'square',0.11,0.12); },110); }
+function sndCapTick(i){ blip(300+i*24,'square',0.09,0.07); noiseHit(0.06,1800,700,0.07,2); }
+function sndWinSting(){
+  if (!audioOK||muted) return;
+  var seq=[[523.25,0],[659.25,110],[783.99,220],[1046.5,330],[783.99,470],[1046.5,560],[1318.5,700]];
+  for (var i=0;i<seq.length;i++){
+    (function(f,d){ setTimeout(function(){
+      blip(f,'triangle',0.16,0.28); blip(f*0.5,'square',0.07,0.24);
+    }, d); })(seq[i][0], seq[i][1]);
+  }
+  setTimeout(function(){ blip(130.8,'sawtooth',0.13,0.9,0.98); }, 0);
+}
+function sndFail(){
+  if (!audioOK||muted) return;
+  blip(196,'sawtooth',0.22,0.6,0.5);
+  setTimeout(function(){ blip(147,'sawtooth',0.22,0.9,0.45); },180);
+  noiseHit(1.6, 800, 60, 0.34, 0.6, 'lowpass');
+}
+function sndBoom(){
+  if (!audioOK||muted) return;
+  noiseHit(2.2, 500, 40, 0.6, 0.5, 'lowpass');
+  blip(70,'sawtooth',0.4,1.6,0.35);
+}
+var gusherNode=null;
+function sndGusherStart(){
+  if (!audioOK||muted) return;
+  var t=AC.currentTime;
+  var s=AC.createBufferSource(); s.buffer=noiseBuf; s.loop=true;
+  var bf=AC.createBiquadFilter(); bf.type='lowpass'; bf.frequency.setValueAtTime(160,t);
+  bf.frequency.exponentialRampToValueAtTime(900,t+1.2); bf.Q.value=1.4;
+  var g=AC.createGain(); g.gain.setValueAtTime(0.0001,t);
+  g.exponentialRampToValueAtTime(0.34,t+0.7);
+  s.connect(bf); bf.connect(g); g.connect(master); s.start(t);
+  gusherNode={s:s,g:g,bf:bf};
+  blip(48,'sine',0.4,2.4,1.9);
+}
+
+/* =========================================================================
+   GEOLOGY
+   ========================================================================= */
+var bands=[], feats=[], domes=[], genY=0, bandLo=0, featLo=0;
+var bigY=0, bigX=0, bigMade=false, bigFeat=null, nextDomeY=0;
+
+function funnelAt(y){ return Math.min(26, 8 + y*0.05); }
+
+function makeBand(y0, s){
+  /* the prairie surface is nearly flat; folding grows with depth */
+  var damp = y0 < 34 ? (0.16 + y0/34*0.84) : 1;
+  return {
+    y0:y0, s:s,
+    a1:rr(1.1,3.6)*damp, k1:rr(0.035,0.11), p1:rr(0,TAU),
+    a2:rr(0.3,1.3)*damp, k2:rr(0.14,0.34), p2:rr(0,TAU),
+    tint:rr(-0.06,0.06)
+  };
+}
+function boundaryY(b, x){
+  var y = b.y0 + b.a1*Math.sin(x*b.k1+b.p1) + b.a2*Math.sin(x*b.k2+b.p2);
+  for (var i=0;i<domes.length;i++){
+    var d = domes[i];
+    if (b.y0 > d.top && b.y0 < d.bot){
+      var dz = b.y0 - d.cy;
+      var dx = x - d.x;
+      y -= d.amp * Math.exp(-(dz*dz)/(2*d.zs*d.zs)) * Math.exp(-(dx*dx)/(2*d.xs*d.xs));
+    }
+  }
+  return y;
+}
+function bandIndexAt(x,y){
+  var n = bands.length;
+  if (n===0) return 0;
+  var lo=0, hi=n-1;
+  while (lo<hi){ var mid=(lo+hi+1)>>1; if (bands[mid].y0 <= y) lo=mid; else hi=mid-1; }
+  var i=lo, guard=0;
+  while (i>0 && boundaryY(bands[i],x) > y && guard++<8) i--;
+  guard=0;
+  while (i<n-1 && boundaryY(bands[i+1],x) <= y && guard++<8) i++;
+  return i;
+}
+function stratAt(x,y){
+  var b = bands[bandIndexAt(x,y)];
+  return b ? b.s : S_SHALE;
+}
+
+function pickStratum(y){
+  var t = [];
+  if (y < 26) return S_SOIL;
+  if (y < 90) return pick([S_CAL,S_CAL,S_SAND,S_RED]);
+  if (y < 300) t = [S_SAND,S_SAND,S_RED,S_SHALE,S_MARL,S_CAL];
+  else if (y < 700) t = [S_SHALE,S_SHALE,S_SAND,S_MARL,S_LIME,S_RED];
+  else if (y < 1200) t = [S_SHALE,S_LIME,S_LIME,S_MARL,S_SAND,S_SALT,S_DOLO];
+  else if (y < 2200) t = [S_LIME,S_SHALE,S_DOLO,S_SALT,S_SAND,S_LIME];
+  else t = [S_DOLO,S_LIME,S_CHERT,S_SHALE,S_DOLO,S_SALT];
+  return pick(t);
+}
+
+/* -------- features ------------------------------------------------------ */
+function newFeat(t,x,y,rx,ry){
+  return {t:t,x:x,y:y,rx:rx,ry:ry,done:false,cool:0,pts:null,bbl:0,seed:rnd()*TAU,hit:0};
+}
+function boulderPts(n){
+  var a=new Float32Array(n);
+  for (var i=0;i<n;i++) a[i] = 0.66 + rnd()*0.44;
+  return a;
+}
+function overlaps(x,y,rx,ry,pad,list,from){
+  for (var i=from;i<list.length;i++){
+    var f=list[i];
+    var dx=Math.abs(f.x-x), dy=Math.abs(f.y-y);
+    if (dx < f.rx+rx+pad && dy < f.ry+ry+pad) return true;
+  }
+  return false;
+}
+function tryPlace(list, from, t, xr, y, rx, ry, pad, tries){
+  for (var k=0;k<tries;k++){
+    var x = rr(-xr, xr);
+    if (!overlaps(x,y,rx,ry,pad,list,from)) return newFeat(t,x,y,rx,ry);
+  }
+  return null;
+}
+
+function addOilPool(list, from, y, xr, mult){
+  var rx = rr(4.2,7.4) * (1 + Math.min(0.7, y/2600));
+  var ry = rx*rr(0.42,0.62);
+  var capRy = ry*rr(1.0,1.35)+1.4;
+  var f = tryPlace(list, from, 'oil', xr, y, rx, ry+capRy, 5, 14);
+  if (!f) return null;
+  f.ry = ry;
+  f.bbl = Math.round((110 + y*0.9) * rr(0.78,1.45) * (mult||1));
+  var cap = newFeat('cap', f.x, f.y - ry*0.86, rx*1.3, capRy);
+  cap.oil = f;
+  list.push(cap); list.push(f);
+  return f;
+}
+
+function genFeatures(y0, y1){
+  var from = feats.length;
+  /* also honour the tail of the previous chunk and any big-pay geometry
+     pushed just before this call, so nothing spawns inside the dome */
+  var chk = Math.max(0, from - 24);
+  var span = y1-y0;
+  var d = y0/1000;
+
+  /* scripted opening beats */
+  if (y0 === 0){
+    var b0 = newFeat('rock', rr(-4,4), rr(52,64), rr(4.0,5.2), rr(3.2,4.4));
+    b0.pts = boulderPts(11); feats.push(b0);
+    var b1 = newFeat('rock', rr(-13,-6), rr(96,112), rr(4,5.4), rr(3.2,4.6));
+    b1.pts = boulderPts(11); feats.push(b1);
+    var b2 = newFeat('rock', rr(7,15), rr(120,140), rr(4,5.4), rr(3.2,4.6));
+    b2.pts = boulderPts(11); feats.push(b2);
+    addOilPool(feats, chk, rr(150,182), 11, 1.0);
+    var w0 = tryPlace(feats, chk, 'water', 13, rr(196,216), rr(5,7), rr(3,4.4), 5, 10);
+    if (w0) feats.push(w0);
+    feats.sort(function(a,b){ return a.y-b.y; });
+    return;
+  }
+
+  /* boulders */
+  var nb = Math.round(span * (0.0072 + d*0.0092) * rr(0.7,1.3));
+  for (var i=0;i<nb;i++){
+    var by = rr(y0,y1);
+    var brx = rr(3.6,5.6) + Math.min(4.6, d*1.9);
+    var f = tryPlace(feats, chk, 'rock', Math.min(33, funnelAt(by)+7), by, brx, brx*rr(0.66,0.95), 8.5, 16);
+    if (f){ f.pts = boulderPts(11); feats.push(f); }
+  }
+  /* gas pockets */
+  var ng = y0<150 ? 0 : Math.round(span * (0.0052 + d*0.0040) * rr(0.6,1.4));
+  for (i=0;i<ng;i++){
+    var gy = rr(y0,y1);
+    var g = tryPlace(feats, chk, 'gas', Math.min(26, funnelAt(gy)), gy, rr(4.2,6.6), rr(3.0,5.0), 5, 12);
+    if (g) feats.push(g);
+  }
+  /* aquifers */
+  var nw = Math.round(span * (0.0038 + d*0.0012) * rr(0.6,1.4));
+  for (i=0;i<nw;i++){
+    var wy = rr(y0,y1);
+    var w = tryPlace(feats, chk, 'water', Math.min(26, funnelAt(wy)), wy, rr(5,8), rr(3,4.6), 5, 12);
+    if (w) feats.push(w);
+  }
+  /* caverns */
+  if (y0 > 280 && rnd() < 0.34 + Math.min(0.3,d*0.13)){
+    var cy = rr(y0,y1);
+    var c = tryPlace(feats, chk, 'cave', Math.min(22, funnelAt(cy)), cy, rr(7,12), rr(6,11), 7, 14);
+    if (c) feats.push(c);
+  }
+  /* oil pools */
+  var np = Math.max(1, Math.round(span/rr(88,132)));
+  for (i=0;i<np;i++){
+    addOilPool(feats, chk, rr(y0+10,y1-10), Math.min(22, funnelAt(y0)), 1.0);
+  }
+  /* deep bonanza domes in endless play */
+  if (endless && y0 >= nextDomeY){
+    nextDomeY = y0 + rr(620,900);
+    var dy = rr(y0+40, y1-40);
+    var dm = {x:rr(-12,12), cy:dy, amp:16, zs:82, xs:24, top:dy-230, bot:dy+110};
+    domes.push(dm);
+    var p = addOilPool(feats, chk, dy, 12, 3.4);
+    if (p){ p.rx *= 1.7; p.ry *= 1.5; p.big2 = true; }
+  }
+
+  var slice = feats.slice(from);
+  slice.sort(function(a,b){ return a.y-b.y; });
+  feats.length = from;
+  for (i=0;i<slice.length;i++) feats.push(slice[i]);
+}
+
+function makeBigPay(){
+  bigMade = true;
+  bigX = rr(-11,11);
+  var dm = {x:bigX, cy:bigY, amp:20, zs:96, xs:27, top:bigY-260, bot:bigY+130};
+  domes.push(dm);
+  var rx = 26, ry = 13;
+  var cap = newFeat('bigcap', bigX, bigY-ry*0.9, rx*1.18, ry*1.35);
+  var oil = newFeat('bigoil', bigX, bigY, rx, ry);
+  oil.bbl = BIGPAY_BBL;
+  bigFeat = oil;
+  feats.push(cap); feats.push(oil);
+  /* seeps above the dome */
+  for (var i=0;i<7;i++){
+    var sy = bigY - rr(60,215);
+    var s = newFeat('seep', bigX + rr(-20,20), sy, 1.4, 1.0);
+    feats.push(s);
+  }
+}
+
+function generateTo(depth){
+  var guard = 0;
+  while (genY < depth && guard++ < 60){
+    var top = genY;
+    var chunkEnd = top + CHUNK;
+    while (genY < chunkEnd){
+      var th = rr(20,42) + Math.min(16, genY/300);
+      bands.push(makeBand(genY, pickStratum(genY)));
+      genY += th;
+    }
+    if (!bigMade && bigY >= top && bigY < genY) makeBigPay();
+    genFeatures(top, genY);
+    if (!bigMade && bigY >= top && bigY < genY) makeBigPay();
+    feats.sort(function(a,b){ return a.y-b.y; });
+  }
+}
+
+/* =========================================================================
+   PARTICLES  (ring-buffer pool, zero per-frame allocation)
+   ========================================================================= */
+var PMAX = 620;
+var parts = new Array(PMAX);
+(function(){
+  for (var i=0;i<PMAX;i++){
+    parts[i] = {a:0,t:0,x:0,y:0,vx:0,vy:0,l:0,ml:1,s:1,c:'#fff',g:0,d:0,r:0,vr:0,f:0};
+  }
+})();
+var pIdx = 0;
+/* t: 0 chip 1 mud 2 gaswisp 3 oil 4 spark 5 smoke 6 flame 7 bubble 8 oilrain 9 ring */
+function spawn(t,x,y,vx,vy,life,size,col,grav,drag){
+  var p = parts[pIdx]; pIdx = (pIdx+1)%PMAX;
+  p.a=1; p.t=t; p.x=x; p.y=y; p.vx=vx; p.vy=vy;
+  p.l=life; p.ml=life; p.s=size; p.c=col; p.g=grav||0; p.d=drag||0;
+  p.r=Math.random()*TAU; p.vr=(Math.random()-0.5)*11; p.f=Math.random();
+  return p;
+}
+function updateParts(dt){
+  for (var i=0;i<PMAX;i++){
+    var p = parts[i];
+    if (!p.a) continue;
+    p.l -= dt;
+    if (p.l <= 0){ p.a=0; continue; }
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.vy += p.g*dt;
+    if (p.d){ var k = 1 - p.d*dt; if (k<0) k=0; p.vx*=k; p.vy*=k; }
+    p.r += p.vr*dt;
+  }
+}
+function clearParts(){ for (var i=0;i<PMAX;i++) parts[i].a=0; pIdx=0; }
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+var mode='title', paused=false, runEnded=false, endless=false;
+var bit = {x:0,y:0,vy:0,latV:0,rot:0,wob:0};
+var camX=0, camY=0, shake=0, shakeX=0, shakeY=0;
+var heat=0, burn=0, pips=MAXPIP, cash=GRUB, barrels=0, maxDepth=0;
+var invT=0, bounceT=0, bounceDir=0, floodT=0, freefall=false, wasCave=false;
+var curStrat=S_SOIL, curHard=0.5, rumbleAmt=0, flashT=0, flashCol='#fff';
+var trail=[], trailAcc=0;
+var oilStruck=false, gasCount=0, capSeen=false;
+var achShow=false, achTool=false, achBoom=false;
+var kick = {active:false, t:0, win:2.8, node:null, f:null};
+var gush = {t:0, mult:CAP_MULT0, prog:0, last:0, ui:false, done:false, capT:0, banked:0};
+var bo = {t:0};
+var hints = {};
+var timeAlive=0;
+
+/* ---------------- input ---------------- */
+var keys = {};
+var padL=false, padR=false, padT=false;
+var mouseX=0, mouseDown=false, mouseT=-99, isTouch=false;
+var ptr = {};
+
+function steerDir(){
+  var k = (keys.left?-1:0) + (keys.right?1:0);
+  if (k) return k;
+  var p = (padL?-1:0) + (padR?1:0);
+  if (p) return p;
+  if (!isTouch && (timeAlive - mouseT) < 2.0){
+    var bx = (bit.x - camX)*PPF + W/2;
+    var d = mouseX - bx;
+    if (Math.abs(d) > 14) return d<0?-1:1;
+  }
+  return 0;
+}
+function throttleOn(){ return !!(keys.thr || padT || (!isTouch && mouseDown)); }
+
+function showTouch(){
+  if (isTouch) return;
+  isTouch = true;
+  touchEl.classList.add('show');
+  requestAnimationFrame(function(){ if (mode==='play'||mode==='gusher') touchEl.classList.add('on'); });
+}
+if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+  isTouch = true; touchEl.classList.add('show');
+}
+
+function bindPad(el, set){
+  function dn(e){
+    e.preventDefault(); e.stopPropagation();
+    if (e.pointerType && e.pointerType!=='mouse') showTouch();
+    audioInit();
+    set(true); el.classList.add('down');
+    try{ el.setPointerCapture(e.pointerId); }catch(err){}
+  }
+  function up(e){ e.preventDefault(); e.stopPropagation(); set(false); el.classList.remove('down'); }
+  el.addEventListener('pointerdown', dn);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+  el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+}
+bindPad(tL, function(v){ padL=v; });
+bindPad(tR, function(v){ padR=v; });
+bindPad(tThr, function(v){ padT=v; });
+
+/* canvas pointer: touch = lower-half steering, mouse = position steer + button throttle */
+cv.addEventListener('pointerdown', function(e){
+  audioInit();
+  if (e.pointerType === 'mouse'){
+    mouseDown = true; mouseX = e.clientX; mouseT = timeAlive;
+    if (mode==='title') startRun();
+    return;
+  }
+  showTouch();
+  if (mode==='title'){ startRun(); return; }
+  var r = cv.getBoundingClientRect();
+  var y = e.clientY - r.top, x = e.clientX - r.left;
+  if (y > H*0.30){
+    ptr[e.pointerId] = (x < W/2) ? 'L' : 'R';
+    if (ptr[e.pointerId]==='L') padL=true; else padR=true;
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  }
+});
+function relPtr(e){
+  var a = ptr[e.pointerId];
+  if (a){
+    delete ptr[e.pointerId];
+    var stillL=false, stillR=false;
+    for (var k in ptr){ if (ptr[k]==='L') stillL=true; else if (ptr[k]==='R') stillR=true; }
+    padL = stillL; padR = stillR;
+  }
+}
+cv.addEventListener('pointerup', function(e){ if (e.pointerType==='mouse') mouseDown=false; relPtr(e); });
+cv.addEventListener('pointercancel', function(e){ if (e.pointerType==='mouse') mouseDown=false; relPtr(e); });
+cv.addEventListener('pointermove', function(e){
+  if (e.pointerType==='mouse'){ var r=cv.getBoundingClientRect(); mouseX = e.clientX-r.left; mouseT = timeAlive; }
+});
+cv.addEventListener('pointerleave', function(e){ if (e.pointerType==='mouse'){ mouseDown=false; mouseT=-99; } });
+cv.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+window.addEventListener('touchstart', function(){ showTouch(); }, {passive:true});
+
+/* keyboard */
+var KEYMAP = {
+  ArrowLeft:'left', a:'left', A:'left',
+  ArrowRight:'right', d:'right', D:'right',
+  ' ':'thr', Spacebar:'thr', w:'thr', W:'thr', ArrowUp:'thr'
+};
+window.addEventListener('keydown', function(e){
+  var k = e.key;
+  if (k===' '||k==='ArrowLeft'||k==='ArrowRight'||k==='ArrowUp'||k==='ArrowDown') e.preventDefault();
+  if (e.repeat){ if (KEYMAP[k]) keys[KEYMAP[k]]=true; return; }
+  audioInit();
+
+  if (k==='m'||k==='M'){ setMute(!muted); return; }
+  if (k==='p'||k==='P'||k==='Escape'){ togglePause(); return; }
+  if (k==='r'||k==='R'){ if (mode!=='title') startRun(); return; }
+
+  if (mode==='title'){
+    if (k===' '||k==='Enter') startRun();
+    return;
+  }
+  if (mode==='over'){
+    if (k===' '||k==='Enter') startRun();
+    return;
+  }
+  if (mode==='win'){
+    if (k==='Enter'||k===' ') keepDrilling();
+    else if (k==='b'||k==='B') retire();
+    return;
+  }
+  if (mode==='gusher'){
+    if (k==='ArrowLeft'||k==='a'||k==='A') capPress(-1);
+    else if (k==='ArrowRight'||k==='d'||k==='D') capPress(1);
+    return;
+  }
+  if (mode==='play'){
+    if (kick.active && (k==='f'||k==='F'||k==='Enter')){ bopHit(); return; }
+    if (KEYMAP[k]) keys[KEYMAP[k]] = true;
+  }
+});
+window.addEventListener('keyup', function(e){
+  var a = KEYMAP[e.key];
+  if (a) keys[a] = false;
+});
+window.addEventListener('blur', function(){
+  keys.left=keys.right=keys.thr=false; padL=padR=padT=false; mouseDown=false;
+  ptr = {};
+  tL.classList.remove('down'); tR.classList.remove('down'); tThr.classList.remove('down');
+  if ((mode==='play'||mode==='gusher') && !paused) setPause(true);
+});
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden && (mode==='play'||mode==='gusher') && !paused) setPause(true);
+});
+
+bopBtn.addEventListener('pointerdown', function(e){ e.preventDefault(); e.stopPropagation(); audioInit(); bopHit(); });
+function capBind(el, side){
+  el.addEventListener('pointerdown', function(e){
+    e.preventDefault(); e.stopPropagation(); audioInit();
+    if (e.pointerType && e.pointerType!=='mouse') showTouch();
+    capPress(side);
+    el.classList.add('hit');
+    setTimeout(function(){ el.classList.remove('hit'); }, 90);
+  });
+  el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+}
+capBind(capL,-1); capBind(capR,1);
+muteBtn.addEventListener('click', function(e){ e.stopPropagation(); audioInit(); setMute(!muted); muteBtn.blur(); });
+
+/* =========================================================================
+   TOASTS / UI HELPERS
+   ========================================================================= */
+var toastT=0;
+function toast(a,b,dur){
+  toast1.textContent = a; toast2.textContent = b||'';
+  toastEl.classList.add('on'); toastT = dur||2.1;
+}
+function hint(id,a,b){ if (hints[id]) return; hints[id]=1; toast(a,b,2.6); }
+function fmt(n){
+  n = Math.round(n);
+  var s = String(Math.abs(n)), out='', c=0;
+  for (var i=s.length-1;i>=0;i--){ out = s.charAt(i)+out; if (++c%3===0 && i>0) out=','+out; }
+  return (n<0?'-':'')+out;
+}
+function showOvl(el){ el.classList.add('on'); }
+function hideOvl(el){ el.classList.remove('on'); }
+function hideAllOvl(){ hideOvl(startOvl); hideOvl(pauseOvl); hideOvl(overOvl); hideOvl(winOvl); }
+
+/* =========================================================================
+   RUN LIFECYCLE
+   ========================================================================= */
+function resetRun(){
+  rnd = mulberry32(((Math.random()*4294967295)>>>0) || 7);
+  bands.length=0; feats.length=0; domes.length=0;
+  genY=0; bandLo=0; featLo=0;
+  bigMade=false; bigFeat=null;
+  bigY = 1115 + rnd()*205;
+  nextDomeY = 0;
+  endless=false; runEnded=false;
+
+  bit.x=0; bit.y=0; bit.vy=0; bit.latV=0; bit.rot=0; bit.wob=0;
+  camX=0; camY=0; shake=0; shakeX=0; shakeY=0;
+  heat=0; burn=0; pips=MAXPIP; cash=GRUB; barrels=0; maxDepth=0;
+  invT=0; bounceT=0; bounceDir=0; floodT=0; freefall=false; wasCave=false;
+  curStrat=S_SOIL; curHard=0.5; rumbleAmt=0; flashT=0;
+  trail.length=0; trailAcc=0;
+  oilStruck=false; gasCount=0; capSeen=false; mouseT=-99; mouseDown=false;
+  achShow=false; achTool=false; achBoom=false;
+  hints = {};
+  timeAlive=0; toastT=0; toastEl.classList.remove('on');
+
+  if (kick.node){ stopNode(kick.node, 0.15); kick.node=null; }
+  kick.active=false; kick.t=0; kick.f=null;
+  bopEl.classList.remove('on');
+  gush.t=0; gush.mult=CAP_MULT0; gush.prog=0; gush.last=0; gush.ui=false; gush.done=false; gush.capT=0; gush.banked=0;
+  capw.classList.remove('on');
+  capL.classList.remove('next'); capR.classList.remove('next');
+  if (gusherNode){ stopNode(gusherNode, 0.2); gusherNode=null; }
+  bo.t=0;
+
+  clearParts();
+  keys.left=keys.right=keys.thr=false; padL=padR=padT=false; mouseDown=false; ptr={};
+  tL.classList.remove('down'); tR.classList.remove('down'); tThr.classList.remove('down');
+
+  generateTo(CHUNK*2);
+  trail.push({x:0,y:0});
+  for (var i=0;i<MAXPIP;i++) pipEls[i].classList.remove('gone');
+  lastHud.d=-1; lastHud.b=-1; lastHud.c=-1; lastHud.s='';
+  syncHud(true);
+}
+function startRun(){
+  audioInit();
+  hideAllOvl();
+  resetRun();
+  mode='play'; paused=false;
+  hudEl.classList.add('on');
+  if (isTouch) touchEl.classList.add('on');
+  hint('spud','LEAN ON THE BIT','hold space / tap the centre pad');
+}
+function setPause(p){
+  if (p===paused) return;
+  if (p && mode!=='play' && mode!=='gusher') return;
+  paused = p;
+  if (p){ showOvl(pauseOvl); if (audioOK){ engGain.gain.setTargetAtTime(0,AC.currentTime,0.03); grindGain.gain.setTargetAtTime(0,AC.currentTime,0.03); rumbleGain.gain.setTargetAtTime(0,AC.currentTime,0.05);} }
+  else { hideOvl(pauseOvl); if (audioOK && AC.state==='suspended') AC.resume(); }
+}
+function togglePause(){
+  if (mode==='play'||mode==='gusher') setPause(!paused);
+}
+
+var EPI = {
+  bit:  ['The bit come up in three pieces. The crew caught the noon train to Beaumont.',
+         'You burned the cones off her. Steel is dearer than pride out here.'],
+  blowout:['They saw the fire from Nacogdoches. Nobody found the crown block.',
+           'Gas got past the rams. The derrick went up like a matchstick church.'],
+  bust: ['The oil was real enough. The money just ran out first.',
+         'Your backers took the morning train and their checkbook with them.'],
+  dry:  ['A thousand feet of nothing and a note at the bank.',
+         'Every county has one hole that only ever produced opinions. This is yours.'],
+  win:  ['You sold a quarter interest before supper and bought the county by Sunday.',
+         'They named the road after you. It is mostly mud, but it is your mud.']
+};
+function endRun(cause){
+  if (runEnded) return;
+  runEnded = true;
+  paused = false;
+  var d = Math.round(maxDepth);
+  var bbl = Math.floor(barrels);
+  arcadeSubmit(bbl, {depth:d, cause:cause});
+
+  var dry = (cause==='bust' && !oilStruck);
+  if (dry) arcadeUnlock('dry-hole');
+
+  mode='over';
+  if (kick.node){ stopNode(kick.node,0.2); kick.node=null; }
+  if (gusherNode){ stopNode(gusherNode,0.3); gusherNode=null; }
+  kick.active=false; bopEl.classList.remove('on'); capw.classList.remove('on');
+  hudEl.classList.remove('on'); touchEl.classList.remove('on');
+
+  var t = document.getElementById('overTitle');
+  var e = document.getElementById('overEpi');
+  var key = dry ? 'dry' : cause;
+  if (cause==='win'){ t.textContent='RETIRED ON THE PAY'; t.className='good'; }
+  else if (dry){ t.textContent='DRY HOLE'; t.className='bad'; }
+  else if (cause==='bit'){ t.textContent='BIT DESTROYED'; t.className='bad'; }
+  else if (cause==='blowout'){ t.textContent='SHE BLEW OUT'; t.className='bad'; }
+  else { t.textContent='BACKERS PULLED OUT'; t.className='bad'; }
+  var pool = EPI[key] || EPI.bust;
+  e.textContent = pool[Math.floor(Math.random()*pool.length)];
+  document.getElementById('ovBbl').textContent = fmt(bbl);
+  document.getElementById('ovDep').textContent = fmt(d);
+  document.getElementById('ovCash').textContent = '$'+fmt(Math.max(0,cash));
+  showOvl(overOvl);
+  if (cause==='win') sndWinSting(); else sndFail();
+}
+
+/* =========================================================================
+   EVENTS
+   ========================================================================= */
+function addShake(v){ shake = Math.min(26, shake + v); }
+function flash(col, t){ flashCol=col; flashT=t; }
+
+function damage(kind){
+  if (pips<=0) return;
+  pips--;
+  if (pipEls[pips]) pipEls[pips].classList.add('gone');
+  addShake(14); flash('#d33a22',0.3); sndDamage();
+  invT = 1.15;
+  if (pips<=0){ endRun('bit'); }
+}
+
+function strikeOil(f){
+  oilStruck = true;
+  var bbl = f.bbl;
+  barrels += bbl; cash += bbl*PRICE;
+  bblV.classList.add('pop'); setTimeout(function(){ bblV.classList.remove('pop'); }, 130);
+  addShake(7); sndOil(bbl);
+  toast('OIL SHOW', '+'+fmt(bbl)+' barrels  ·  $'+fmt(bbl*PRICE), 2.2);
+  for (var i=0;i<34;i++){
+    var a = -Math.PI/2 + (Math.random()-0.5)*0.85;
+    var sp = 9+Math.random()*26;
+    spawn(3, bit.x+(Math.random()-0.5)*1.6, bit.y, Math.cos(a)*sp*0.35, Math.sin(a)*sp, 0.7+Math.random()*0.9, 0.16+Math.random()*0.3, '#0e0b08', 16, 0.5);
+  }
+  for (i=0;i<10;i++) spawn(9, bit.x, bit.y, 0,0, 0.5+Math.random()*0.3, 1.5, '#e8b34c', 0, 0);
+  if (!achShow){ achShow=true; arcadeUnlock('first-show'); }
+  checkBoom();
+}
+function checkBoom(){
+  if (!achBoom && barrels >= 50000){ achBoom=true; arcadeUnlock('boomtown'); }
+}
+
+function startFlood(f){
+  floodT = Math.max(floodT, 4.6);
+  sndSplash(); addShake(5);
+  toast('WATER SAND', 'hole flooded — she is sluggish', 1.9);
+  for (var i=0;i<26;i++){
+    var a = Math.random()*TAU, sp=4+Math.random()*13;
+    spawn(1, f.x+(Math.random()-0.5)*f.rx, f.y+(Math.random()-0.5)*f.ry*0.7,
+      Math.cos(a)*sp, Math.sin(a)*sp-6, 0.8+Math.random(), 0.2+Math.random()*0.35, '#5f8fa8', 13, 1.1);
+  }
+}
+
+function startKick(f){
+  gasCount++;
+  kick.active = true;
+  kick.f = f;
+  kick.win = gasCount===1 ? 3.2 : clamp(2.7 - maxDepth*0.00085, 1.15, 2.7);
+  kick.t = kick.win;
+  kick.node = sndHissStart();
+  bopEl.classList.add('on');
+  bopFill.style.transform = 'scaleX(1)';
+  addShake(11); flash('#a9d8a0',0.22);
+  hint('gaskick','GAS KICK', 'hit the preventer');
+  for (var i=0;i<28;i++){
+    var a = Math.random()*TAU, sp=5+Math.random()*16;
+    spawn(2, f.x+(Math.random()-0.5)*f.rx, f.y+(Math.random()-0.5)*f.ry,
+      Math.cos(a)*sp, Math.sin(a)*sp-10, 1.0+Math.random()*1.2, 0.5+Math.random()*0.9, '#a9d8a0', -5, 0.7);
+  }
+}
+function bopHit(){
+  if (!kick.active) return;
+  kick.active=false;
+  bopEl.classList.remove('on');
+  stopNode(kick.node, 0.18); kick.node=null;
+  var bonus = Math.round(45 + maxDepth*0.12);
+  barrels += bonus; cash += bonus*PRICE;
+  sndVent(); addShake(6);
+  toast('WELL SHUT IN', 'flare bonus +'+fmt(bonus)+' bbl', 1.8);
+  for (var i=0;i<22;i++){
+    var a=-Math.PI/2+(Math.random()-0.5)*1.1, sp=12+Math.random()*22;
+    spawn(6, bit.x, bit.y-1, Math.cos(a)*sp*0.5, Math.sin(a)*sp, 0.35+Math.random()*0.4, 0.4+Math.random()*0.7, '#ffb44a', -8, 1.2);
+  }
+  checkBoom();
+}
+function blowout(){
+  kick.active=false;
+  bopEl.classList.remove('on');
+  stopNode(kick.node, 0.1); kick.node=null;
+  mode='blowout'; bo.t=0;
+  sndBoom(); addShake(26); flash('#ffd9a0',0.5);
+  hudEl.classList.remove('on'); touchEl.classList.remove('on');
+  clearParts();
+}
+
+function startGusher(f){
+  mode='gusher';
+  gush.t=0; gush.mult=CAP_MULT0; gush.prog=0; gush.last=0; gush.ui=false; gush.done=false; gush.capT=0;
+  oilStruck = true;
+  if (!achShow){ achShow=true; arcadeUnlock('first-show'); }
+  sndGusherStart();
+  addShake(24); flash('#000000',0.35);
+  hudEl.classList.remove('on'); touchEl.classList.remove('on');
+  keys.left=keys.right=keys.thr=false; padL=padR=padT=false; mouseDown=false; ptr={};
+  tL.classList.remove('down'); tR.classList.remove('down'); tThr.classList.remove('down');
+  clearParts();
+}
+function capPress(side){
+  if (mode!=='gusher' || !gush.ui || gush.done || paused) return;
+  if (side === gush.last) return;
+  gush.last = side;
+  gush.prog++;
+  sndCapTick(gush.prog);
+  capFill.style.transform = 'scaleX('+(gush.prog/CAP_NEED)+')';
+  capL.classList.toggle('next', gush.last===1);
+  capR.classList.toggle('next', gush.last===-1);
+  if (gush.prog >= CAP_NEED) finishGusher();
+}
+function finishGusher(){
+  gush.done = true;
+  capw.classList.remove('on');
+  stopNode(gusherNode, 0.5); gusherNode=null;
+  var payout = Math.round(BIGPAY_BBL * gush.mult);
+  gush.banked = payout;
+  barrels += payout; cash += payout*PRICE;
+  arcadeUnlock('gusher-capped');
+  checkBoom();
+  mode='win';
+  document.getElementById('winDep').textContent = fmt(Math.round(bigY));
+  document.getElementById('winBbl').textContent = fmt(payout);
+  document.getElementById('winMult').textContent = '×'+gush.mult.toFixed(2);
+  document.getElementById('winCash').textContent = '$'+fmt(Math.max(0,cash));
+  showOvl(winOvl);
+  sndWinSting();
+  touchEl.classList.remove('on');
+}
+function keepDrilling(){
+  if (mode!=='win') return;
+  hideOvl(winOvl);
+  endless = true;
+  mode='play'; paused=false;
+  hudEl.classList.add('on');
+  if (isTouch) touchEl.classList.add('on');
+  /* clear out the spent dome and drop below it */
+  if (bigFeat){ bigFeat.done=true; }
+  bit.y = bigY + (bigFeat?bigFeat.ry:13) + 3;
+  bit.x = clamp(bigX, -funnelAt(bit.y), funnelAt(bit.y));
+  bit.vy = 0; bit.latV = 0;
+  heat = 0; burn = 0; floodT=0; invT=1.2; bounceT=0; freefall=false; wasCave=false;
+  if (pips < MAXPIP){ pips++; pipEls[pips-1].classList.remove('gone'); }
+  camY = bit.y; camX = bit.x;
+  trail.length=0; trail.push({x:bit.x,y:bit.y-6}); trail.push({x:bit.x,y:bit.y});
+  maxDepth = Math.max(maxDepth, bit.y);
+  nextDomeY = bit.y + 500;
+  clearParts();
+  generateTo(bit.y + CHUNK*2);
+  toast('DEEPER', 'the geology gets meaner from here', 2.4);
+}
+function retire(){ if (mode!=='win') return; hideOvl(winOvl); endRun('win'); }
+document.getElementById('startBtn').addEventListener('click', function(e){ e.stopPropagation(); startRun(); });
+document.getElementById('againBtn').addEventListener('click', function(e){ e.stopPropagation(); startRun(); });
+document.getElementById('resumeBtn').addEventListener('click', function(e){ e.stopPropagation(); setPause(false); });
+document.getElementById('keepBtn').addEventListener('click', function(e){ e.stopPropagation(); keepDrilling(); });
+document.getElementById('retireBtn').addEventListener('click', function(e){ e.stopPropagation(); retire(); });
+startOvl.addEventListener('pointerdown', function(e){
+  if (e.target.tagName === 'BUTTON') return;
+  if (e.pointerType && e.pointerType!=='mouse') showTouch();
+  startRun();
+});
+
+/* =========================================================================
+   FEATURE SCAN
+   ========================================================================= */
+var fRock=null, fCave=null, fCap=null;
+function scanAt(x,y,trigger){
+  fRock=null; fCave=null; fCap=null;
+  for (var i=featLo;i<feats.length;i++){
+    var f = feats[i];
+    if (f.y - 38 > y) break;
+    if (f.done && (f.t==='gas'||f.t==='water'||f.t==='oil'||f.t==='bigoil')) continue;
+    var dx=(x-f.x)/f.rx, dy=(y-f.y)/f.ry;
+    if (dx*dx+dy*dy > 1) continue;
+    var t = f.t;
+    if (t==='rock'){ fRock = f; }
+    else if (t==='cave'){ fCave = f; }
+    else if (t==='cap' || t==='bigcap'){ if (y <= f.y) fCap = f; }
+    else if (trigger){
+      if (t==='gas'){ f.done=true; startKick(f); }
+      else if (t==='water'){ f.done=true; startFlood(f); }
+      else if (t==='oil'){ f.done=true; strikeOil(f); }
+      else if (t==='bigoil'){ f.done=true; startGusher(f); return; }
+    }
+  }
+}
+
+/* =========================================================================
+   UPDATE
+   ========================================================================= */
+function updatePlay(dt){
+  var sd = steerDir();
+  var thr = throttleOn() && !kick.active && !freefall;
+
+  /* ---- gas kick countdown ---- */
+  if (kick.active){
+    kick.t -= dt;
+    bopFill.style.transform = 'scaleX('+Math.max(0,kick.t/kick.win)+')';
+    addShake(0.85);
+    if (Math.random()<0.5){
+      spawn(2, bit.x+(Math.random()-0.5)*2, bit.y-Math.random()*4,
+        (Math.random()-0.5)*4, -9-Math.random()*9, 0.9, 0.4+Math.random()*0.6, '#a9d8a0', -3, 0.6);
+    }
+    if (kick.t <= 0){ blowout(); return; }
+  }
+
+  /* ---- what are we in ---- */
+  scanAt(bit.x, bit.y, true);
+  if (mode !== 'play') return;
+  var inCave = fCave, inCap = fCap;
+  curStrat = inCap ? CAPROCK : stratAt(bit.x, bit.y);
+  curHard = curStrat.h;
+
+  /* ---- cavern free fall ---- */
+  if (inCave){
+    if (!wasCave){ sndWhump(); addShake(8); bit.vy = Math.max(bit.vy, 6); }
+    wasCave = true; freefall = true;
+    bit.vy = Math.min(FREEFALL_M, bit.vy + FREEFALL_A*dt);
+    heat = Math.max(0, heat - COOL_RATE*1.7*dt);
+  } else {
+    if (wasCave){
+      wasCave = false; freefall = false;
+      var impact = bit.vy;
+      bit.vy = 0; bit.wob = 1;
+      addShake(4 + impact*0.4); sndLand();
+      scanAt(bit.x, bit.y+0.9, false);
+      if (fRock && invT<=0) damage('cavefall');
+      else for (var q=0;q<12;q++){
+        var aa = -Math.PI/2 + (Math.random()-0.5)*2.2;
+        spawn(0, bit.x, bit.y, Math.cos(aa)*(4+Math.random()*13), Math.sin(aa)*(5+Math.random()*13),
+          0.4+Math.random()*0.4, 0.13+Math.random()*0.2, curStrat.chip, 34, 0.8);
+      }
+    }
+    freefall = false;
+  }
+
+  /* ---- descent rate ---- */
+  var vy;
+  if (freefall){ vy = bit.vy; }
+  else if (bounceT > 0){
+    bounceT -= dt;
+    vy = bounceT > 0.30 ? -5.5 : 0;
+    bit.x += bounceDir * 8.5 * dt;
+  } else {
+    var base = thr ? THR_BASE : IDLE_BASE;
+    vy = base / curHard;
+    if (floodT > 0) vy *= 0.56;
+    /* rock in the way ---------------------------------------------- */
+    scanAt(bit.x, bit.y + 1.0, false);
+    if (fRock){
+      var f = fRock;
+      if (vy > 5.0 && invT <= 0 && f.hit <= 0){
+        f.hit = 1.4;
+        bounceT = 0.52;
+        bounceDir = (bit.x - f.x) >= 0 ? 1 : -1;
+        damage('rock');
+        if (mode !== 'play') return;
+        toast('GRANITE', 'steer around the boulders', 1.5);
+        for (var i=0;i<22;i++){
+          var a = -Math.PI/2 + (Math.random()-0.5)*2.6, sp=8+Math.random()*24;
+          spawn(4, bit.x, bit.y, Math.cos(a)*sp, Math.sin(a)*sp, 0.28+Math.random()*0.3,
+            0.1+Math.random()*0.16, Math.random()<0.5?'#ffd9a0':'#c9c2b4', 26, 1.0);
+        }
+        vy = 0;
+      } else {
+        vy = 0;
+        if (Math.random()<0.55){
+          var a2 = -Math.PI/2 + (Math.random()-0.5)*2.4;
+          spawn(4, bit.x, bit.y+0.6, Math.cos(a2)*(5+Math.random()*11), Math.sin(a2)*(5+Math.random()*11),
+            0.16+Math.random()*0.18, 0.08+Math.random()*0.11, '#ffe0b0', 20, 1.2);
+        }
+        if (Math.random()<0.09) noiseHit(0.07, 3200, 1200, 0.05, 3);
+        hint('granite','GRANITE BOULDER','it will not drill — steer past it');
+      }
+    }
+  }
+  bit.vy = vy;
+  if (invT > 0) invT -= dt;
+  for (var fi=featLo; fi<feats.length; fi++){
+    var ff = feats[fi];
+    if (ff.y - 38 > bit.y) break;
+    if (ff.hit > 0) ff.hit -= dt;
+  }
+
+  /* ---- lateral ---- */
+  var authority = Math.max(vy, LAT_MINV);
+  var target = sd * MAXSLOPE * authority * (floodT>0 ? 0.55 : 1);
+  var rate = (floodT>0 ? 4.2 : 9.5);
+  bit.latV += (target - bit.latV) * (1 - Math.exp(-rate*dt));
+  var nx = bit.x + bit.latV*dt;
+  if (Math.abs(nx - bit.x) > 0.0001){
+    scanAt(nx + (nx>bit.x?0.75:-0.75), bit.y, false);
+    if (fRock){ nx = bit.x; bit.latV *= 0.2; }
+  }
+  var lim = funnelAt(bit.y);
+  if (nx < -lim){ nx = -lim; bit.latV = Math.max(0,bit.latV); }
+  if (nx >  lim){ nx =  lim; bit.latV = Math.min(0,bit.latV); }
+  bit.x = nx;
+
+  /* ---- advance ---- */
+  var dy = vy*dt;
+  bit.y += dy;
+  if (bit.y < 0) bit.y = 0;
+  if (dy > 0){
+    var ftCost = (thr ? FT_THR : FT_IDLE) * dy;
+    cash -= ftCost;
+  }
+  cash -= WAGE*dt * (floodT>0 ? 1.25 : 1);
+  if (bit.y > maxDepth){
+    maxDepth = bit.y;
+    if (!achTool && maxDepth >= 3000){ achTool=true; arcadeUnlock('toolpusher'); }
+  }
+  if (cash <= 0){ cash = 0; endRun('bust'); return; }
+
+  /* ---- heat ---- */
+  if (thr && !freefall && vy > 0.2){
+    heat += HEAT_RATE * curHard * dt;
+    if (heat >= 1){
+      heat = 1;
+      burn += dt;
+      if (timeAlive - lastTick > 0.16){ lastTick = timeAlive; sndHeatTick(); }
+      if (burn >= BURN_TIME){
+        burn = 0; heat = 0.5;
+        damage('heat');
+        if (mode!=='play') return;
+        toast('BIT BURNED', 'let her cool', 1.6);
+      }
+    } else if (heat > 0.82){
+      if (timeAlive - lastTick > 0.34){ lastTick = timeAlive; sndHeatTick(); }
+      hint('heat','SHE IS RUNNING HOT','ease off to cool the bit');
+    }
+  } else {
+    heat = Math.max(0, heat - COOL_RATE*dt);
+    burn = Math.max(0, burn - dt*1.6);
+  }
+  if (floodT>0) floodT -= dt;
+
+  /* ---- cuttings / particles ---- */
+  if (!freefall && vy > 0.4 && Math.random() < (thr?0.85:0.35)){
+    var n = thr?2:1;
+    for (var c=0;c<n;c++){
+      var ang = -Math.PI/2 + (Math.random()-0.5)*2.5;
+      var spd = (thr?9:4)+Math.random()*(thr?18:8);
+      spawn(0, bit.x+(Math.random()-0.5)*1.2, bit.y+0.5, Math.cos(ang)*spd, Math.sin(ang)*spd,
+        0.35+Math.random()*0.5, 0.1+Math.random()*0.2, curStrat.chip, 30, 0.9);
+    }
+    sndChip(curHard);
+  }
+  if (floodT>0 && Math.random()<0.45){
+    spawn(1, bit.x+(Math.random()-0.5)*1.8, bit.y-Math.random()*2, (Math.random()-0.5)*7, -3-Math.random()*8,
+      0.5+Math.random()*0.5, 0.16+Math.random()*0.25, '#6f96ab', 11, 1.2);
+  }
+  /* seep bubbles near the big pay */
+  var toBig = bigY - bit.y;
+  if (!endless && toBig > 0 && toBig < 230 && Math.random() < 0.30){
+    spawn(7, bigX + (Math.random()-0.5)*40, bit.y + Math.random()*VIEWH*0.6,
+      (Math.random()-0.5)*1.2, -3-Math.random()*3, 1.4+Math.random(), 0.12+Math.random()*0.18, '#c9a24a', 0, 0.3);
+  }
+  rumbleAmt = (!endless && toBig>0 && toBig<230) ? clamp(1 - toBig/230, 0, 1) : 0;
+  if (rumbleAmt > 0.05){
+    addShake(rumbleAmt*1.1);
+    if (rumbleAmt>0.35) hint('big','SOMETHING BIG DOWN THERE','the strata are arching over it');
+  }
+
+  /* ---- cap rock hint ---- */
+  if (inCap && !capSeen){ capSeen=true; hint('cap','CAP ROCK','oil traps beneath the dome — drill through'); }
+
+  /* ---- trail ---- */
+  trailAcc += Math.abs(dy) + Math.abs(bit.latV*dt);
+  if (trailAcc > 1.1 || trail.length<2){
+    trailAcc = 0;
+    trail.push({x:bit.x, y:bit.y});
+    if (trail.length > 1400) trail.splice(0, 400);
+  } else {
+    var last = trail[trail.length-1];
+    last.x = bit.x; last.y = bit.y;
+  }
+
+  /* ---- bit spin / wobble ---- */
+  bit.rot += (freefall?2:(vy*0.9 + (thr?9:3))) * dt;
+  bit.wob *= Math.exp(-4.5*dt);
+
+  /* ---- camera + streaming ---- */
+  camY += (bit.y - camY) * (1 - Math.exp(-11*dt));
+  camX += (bit.x*0.92 - camX) * (1 - Math.exp(-6.5*dt));
+  var camBot = camY + VIEWH*(1-BITY);
+  generateTo(camBot + 240);
+  var camTop = camY - VIEWH*BITY;
+  while (featLo < feats.length && feats[featLo].y + feats[featLo].ry < camTop - 40) featLo++;
+  while (bandLo < bands.length-2 && bands[bandLo+1].y0 < camTop - 40) bandLo++;
+  for (var di=domes.length-1; di>=0; di--) if (domes[di].bot < camTop-120) domes.splice(di,1);
+
+  syncHud(false);
+}
+
+function updateGusher(dt){
+  gush.t += dt;
+  addShake(gush.done ? 2.5 : 7.5);
+  if (!gush.ui && gush.t > 0.95 && !gush.done){
+    gush.ui = true;
+    capw.classList.add('on');
+    capL.classList.add('next'); capR.classList.add('next');
+    capFill.style.transform = 'scaleX(0)';
+  }
+  if (gush.ui && !gush.done){
+    gush.capT += dt;
+    gush.mult = lerp(CAP_MULT0, 1.0, clamp(gush.capT/CAP_DECAY,0,1));
+    capMultEl.textContent = '×'+gush.mult.toFixed(2);
+  }
+}
+
+function updateBlowout(dt){
+  bo.t += dt;
+  addShake(Math.max(0, 12 - bo.t*3.4));
+  if (bo.t < 2.4){
+    for (var i=0;i<3;i++){
+      spawn(6, (Math.random()-0.5)*7, -Math.random()*10, (Math.random()-0.5)*10, -14-Math.random()*30,
+        0.5+Math.random()*0.7, 1.0+Math.random()*2.2, Math.random()<0.4?'#ffe08a':'#ff7a2a', -4, 0.6);
+      if (Math.random()<0.7)
+        spawn(5, (Math.random()-0.5)*11, -6-Math.random()*16, (Math.random()-0.5)*8, -8-Math.random()*16,
+          1.3+Math.random()*1.1, 2.2+Math.random()*3.4, '#231a14', -1.5, 0.5);
+    }
+  }
+  if (bo.t > 3.0) endRun('blowout');
+}
+
+/* ---------------- HUD ---------------- */
+var lastHud = {d:-1,b:-1,c:-1,s:''};
+function syncHud(force){
+  var d = Math.round(bit.y);
+  if (d !== lastHud.d){ lastHud.d = d; depthV.innerHTML = fmt(d)+'<span class="u">FT</span>'; }
+  var b = Math.floor(barrels);
+  if (b !== lastHud.b){ lastHud.b = b; bblV.textContent = fmt(b); }
+  var c = Math.round(cash);
+  if (c !== lastHud.c){
+    lastHud.c = c; cashV.textContent = '$'+fmt(Math.max(0,c));
+    var low = c < 800;
+    if (low !== cashV.classList.contains('low')) cashV.classList.toggle('low', low);
+  }
+  var s = curStrat.n;
+  if (s !== lastHud.s){ lastHud.s = s; stratV.textContent = s; }
+  heatFill.style.transform = 'scaleX('+clamp(heat,0,1)+')';
+  var hg = heat > 0.82;
+  if (hg !== gbar.classList.contains('hotglow')) gbar.classList.toggle('hotglow', hg);
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+var OX=0, OY=0;
+var NS=0, sxs=null, rows=[];
+(function(){ for (var i=0;i<34;i++) rows.push(new Float32Array(160)); })();
+
+function ensureSamples(){
+  var n = clamp(Math.ceil(W/15), 22, 150);
+  if (n !== NS){ NS = n; sxs = new Float32Array(NS+1); }
+}
+
+function shadeHex(hex, amt){
+  var r = parseInt(hex.substr(1,2),16), g = parseInt(hex.substr(3,2),16), b = parseInt(hex.substr(5,2),16);
+  r = clamp(Math.round(r + amt*255),0,255);
+  g = clamp(Math.round(g + amt*255),0,255);
+  b = clamp(Math.round(b + amt*255),0,255);
+  return 'rgb('+r+','+g+','+b+')';
+}
+
+/* ---------- derrick silhouette ---------- */
+function drawDerrick(x, gy, h, oil){
+  var bw = h*0.30, tw = h*0.085;
+  var top = gy - h;
+  ctx.save();
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  var body = oil>0.02 ? 'rgba(10,8,7,.98)' : 'rgba(22,15,10,.96)';
+  ctx.strokeStyle = body;
+  ctx.lineWidth = Math.max(1.2, h*0.019);
+  /* legs */
+  ctx.beginPath();
+  ctx.moveTo(x-bw, gy); ctx.lineTo(x-tw, top);
+  ctx.moveTo(x+bw, gy); ctx.lineTo(x+tw, top);
+  ctx.moveTo(x-bw*0.55, gy); ctx.lineTo(x-tw*0.55, top);
+  ctx.moveTo(x+bw*0.55, gy); ctx.lineTo(x+tw*0.55, top);
+  ctx.stroke();
+  /* girts + braces */
+  ctx.lineWidth = Math.max(0.8, h*0.012);
+  ctx.beginPath();
+  for (var i=1;i<=6;i++){
+    var t = i/7;
+    var y = gy - h*t;
+    var w = bw + (tw-bw)*t;
+    ctx.moveTo(x-w, y); ctx.lineTo(x+w, y);
+    var t2 = (i-1)/7, y2 = gy - h*t2, w2 = bw + (tw-bw)*t2;
+    if (i%2){ ctx.moveTo(x-w2,y2); ctx.lineTo(x+w,y); }
+    else { ctx.moveTo(x+w2,y2); ctx.lineTo(x-w,y); }
+  }
+  ctx.stroke();
+  /* crown block */
+  ctx.fillStyle = body;
+  ctx.fillRect(x-tw*1.5, top-h*0.045, tw*3, h*0.05);
+  ctx.fillRect(x-tw*0.35, top-h*0.11, tw*0.7, h*0.07);
+  /* shed */
+  ctx.beginPath();
+  ctx.moveTo(x+bw*0.9, gy);
+  ctx.lineTo(x+bw*0.9, gy-h*0.12);
+  ctx.lineTo(x+bw*2.05, gy-h*0.155);
+  ctx.lineTo(x+bw*2.05, gy);
+  ctx.closePath(); ctx.fill();
+  /* rim light */
+  ctx.strokeStyle = oil>0.02 ? 'rgba(190,150,90,.30)' : 'rgba(232,140,70,.42)';
+  ctx.lineWidth = Math.max(0.8, h*0.010);
+  ctx.beginPath();
+  ctx.moveTo(x-bw, gy); ctx.lineTo(x-tw, top);
+  ctx.moveTo(x-bw*0.55, gy); ctx.lineTo(x-tw*0.55, top);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------- sky ---------- */
+var skyGrad=null, skyKey='';
+function skyGradient(y0,y1){
+  var key = (y0|0)+'_'+(y1|0);
+  if (key !== skyKey){
+    skyKey = key;
+    var g = ctx.createLinearGradient(0,y0,0,y1);
+    g.addColorStop(0,   '#241733');
+    g.addColorStop(0.30,'#5c2b3a');
+    g.addColorStop(0.58,'#9c4530');
+    g.addColorStop(0.80,'#cf7434');
+    g.addColorStop(1,   '#efb35c');
+    skyGrad = g;
+  }
+  return skyGrad;
+}
+function drawSky(topPx, groundPx){
+  var h = groundPx - topPx;
+  ctx.fillStyle = skyGradient(groundPx - Math.max(h, H*1.1), groundPx);
+  ctx.fillRect(0, topPx, W, h);
+  /* sun */
+  var sy = groundPx - h*0.16, sx = W*0.72;
+  var g = ctx.createRadialGradient(sx,sy,0,sx,sy,Math.max(20,h*0.30));
+  g.addColorStop(0,'rgba(255,231,170,.95)');
+  g.addColorStop(0.35,'rgba(255,170,80,.45)');
+  g.addColorStop(1,'rgba(255,150,60,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(sx,sy,Math.max(20,h*0.30),0,TAU); ctx.fill();
+  ctx.fillStyle='rgba(255,240,200,.9)';
+  ctx.beginPath(); ctx.arc(sx,sy,Math.max(5,h*0.055),0,TAU); ctx.fill();
+  /* cloud bars */
+  ctx.fillStyle='rgba(60,26,32,.45)';
+  for (var i=0;i<5;i++){
+    var cy = groundPx - h*(0.30+i*0.11);
+    var cw = W*(0.22+((i*37)%50)/100);
+    var cx = ((i*211)%100)/100*W - cw*0.3;
+    ctx.fillRect(cx, cy, cw, Math.max(1.5,h*0.012));
+  }
+}
+
+/* ---------- strata ---------- */
+function drawStrata(worldT, worldB, worldL, worldR){
+  ensureSamples();
+  var i0 = bandLo;
+  while (i0 < bands.length-1 && bands[i0+1].y0 + 34 < worldT) i0++;
+  var i1 = i0;
+  while (i1 < bands.length-1 && bands[i1].y0 - 34 < worldB) i1++;
+  if (i1 - i0 > 30) i1 = i0 + 30;
+
+  var span = worldR - worldL;
+  for (var k=0;k<=NS;k++) sxs[k] = worldL + span*k/NS;
+
+  var nRows = (i1 - i0) + 2;
+  for (var r=0;r<nRows;r++){
+    var bi = i0 + r;
+    var arr = rows[r];
+    if (bi < bands.length){
+      var bd = bands[bi];
+      for (k=0;k<=NS;k++) arr[k] = boundaryY(bd, sxs[k]);
+    } else {
+      var base = (bands.length? bands[bands.length-1].y0 : 0) + 80;
+      for (k=0;k<=NS;k++) arr[k] = base;
+    }
+  }
+
+  var groundTopPx = H*2;
+  for (var i=i0;i<=i1 && i<bands.length;i++){
+    var b = bands[i];
+    var topR = rows[i-i0], botR = rows[i-i0+1];
+    ctx.beginPath();
+    ctx.moveTo(sxs[0]*PPF+OX, topR[0]*PPF+OY);
+    for (k=1;k<=NS;k++) ctx.lineTo(sxs[k]*PPF+OX, topR[k]*PPF+OY);
+    for (k=NS;k>=0;k--) ctx.lineTo(sxs[k]*PPF+OX, botR[k]*PPF+OY);
+    ctx.closePath();
+    var s = b.s;
+    var g = ctx.createLinearGradient(0, topR[0]*PPF+OY, 0, botR[0]*PPF+OY);
+    g.addColorStop(0, shadeHex(s.c, 0.045+b.tint*0.4));
+    g.addColorStop(1, shadeHex(s.c2, b.tint*0.3));
+    ctx.fillStyle = g;
+    ctx.fill();
+    if (i===i0) groundTopPx = topR[0]*PPF+OY;
+    /* bedding planes */
+    ctx.save(); ctx.clip();
+    ctx.strokeStyle = 'rgba(0,0,0,.16)';
+    ctx.lineWidth = Math.max(0.7, PPF*0.07);
+    var thick = (botR[0]-topR[0]);
+    var lines = clamp(Math.round(thick/9), 1, 4);
+    for (var L=1;L<=lines;L++){
+      var off = thick*L/(lines+1);
+      ctx.beginPath();
+      ctx.moveTo(sxs[0]*PPF+OX, (topR[0]+off)*PPF+OY);
+      for (k=1;k<=NS;k++) ctx.lineTo(sxs[k]*PPF+OX, (topR[k]+off)*PPF+OY);
+      ctx.stroke();
+    }
+    ctx.restore();
+    /* contact line */
+    ctx.beginPath();
+    ctx.moveTo(sxs[0]*PPF+OX, topR[0]*PPF+OY);
+    for (k=1;k<=NS;k++) ctx.lineTo(sxs[k]*PPF+OX, topR[k]*PPF+OY);
+    ctx.strokeStyle = 'rgba(255,235,200,.10)';
+    ctx.lineWidth = Math.max(0.9, PPF*0.09);
+    ctx.stroke();
+  }
+  return groundTopPx;
+}
+
+/* ---------- features ---------- */
+function drawFeatures(worldT, worldB, t){
+  for (var i=featLo;i<feats.length;i++){
+    var f = feats[i];
+    if (f.y - 40 > worldB) break;
+    if (f.y - f.ry > worldB + 4 || f.y + f.ry < worldT - 4) continue;
+    var x = f.x*PPF+OX, y = f.y*PPF+OY, rx = f.rx*PPF, ry = f.ry*PPF;
+    switch (f.t){
+      case 'rock': drawRock(f,x,y,rx,ry); break;
+      case 'cave': drawCave(f,x,y,rx,ry); break;
+      case 'cap': case 'bigcap': drawCap(f,x,y,rx,ry); break;
+      case 'gas': if (!f.done) drawGas(f,x,y,rx,ry,t); break;
+      case 'water': if (!f.done) drawWater(f,x,y,rx,ry,t); break;
+      case 'oil': case 'bigoil': if (!f.done) drawOil(f,x,y,rx,ry,t); break;
+      case 'seep': drawSeep(f,x,y,t); break;
+    }
+  }
+}
+function drawRock(f,x,y,rx,ry){
+  var p = f.pts, n = p.length;
+  ctx.beginPath();
+  for (var i=0;i<n;i++){
+    var a = i/n*TAU + f.seed;
+    var px = x + Math.cos(a)*rx*p[i], py = y + Math.sin(a)*ry*p[i];
+    if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  var g = ctx.createLinearGradient(x-rx,y-ry,x+rx,y+ry);
+  g.addColorStop(0,'#7b746c'); g.addColorStop(0.5,'#5d5852'); g.addColorStop(1,'#3f3b37');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle='rgba(20,16,13,.85)'; ctx.lineWidth=Math.max(1,PPF*0.1); ctx.stroke();
+  ctx.save(); ctx.clip();
+  ctx.fillStyle='rgba(235,228,214,.32)';
+  var sd = f.seed*97;
+  for (i=0;i<9;i++){
+    var q = (Math.sin(sd+i*2.7)*0.5+0.5), w2 = (Math.cos(sd+i*1.9)*0.5+0.5);
+    ctx.fillRect(x-rx+q*rx*2, y-ry+w2*ry*2, Math.max(1,PPF*0.11), Math.max(1,PPF*0.11));
+  }
+  ctx.fillStyle='rgba(255,255,255,.10)';
+  ctx.beginPath(); ctx.ellipse(x-rx*0.28,y-ry*0.34,rx*0.42,ry*0.3,-0.5,0,TAU); ctx.fill();
+  ctx.restore();
+}
+function drawCave(f,x,y,rx,ry){
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,TAU);
+  var g = ctx.createRadialGradient(x,y-ry*0.3,rx*0.1,x,y,rx);
+  g.addColorStop(0,'#0a0705'); g.addColorStop(0.7,'#0d0906'); g.addColorStop(1,'#171008');
+  ctx.fillStyle=g; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.85)'; ctx.lineWidth=Math.max(1,PPF*0.14); ctx.stroke();
+  /* rubble floor */
+  ctx.save(); ctx.clip();
+  ctx.fillStyle='rgba(90,80,66,.55)';
+  for (var i=0;i<7;i++){
+    var q=(Math.sin(f.seed*31+i*1.7)*0.5+0.5);
+    ctx.beginPath();
+    ctx.ellipse(x-rx+q*rx*2, y+ry*0.82, rx*0.16, ry*0.09, 0,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawCap(f,x,y,rx,ry){
+  ctx.beginPath();
+  ctx.ellipse(x,y,rx,ry,0,Math.PI,TAU);
+  ctx.closePath();
+  var g = ctx.createLinearGradient(0,y-ry,0,y);
+  g.addColorStop(0,'#3b342b'); g.addColorStop(0.6,'#2b251e'); g.addColorStop(1,'#221d18');
+  ctx.fillStyle=g; ctx.fill();
+  ctx.strokeStyle='rgba(226,214,188,.30)'; ctx.lineWidth=Math.max(1,PPF*0.12);
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,Math.PI,TAU); ctx.stroke();
+  /* hatching to read as impermeable */
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,Math.PI,TAU); ctx.closePath(); ctx.clip();
+  ctx.strokeStyle='rgba(226,214,188,.10)'; ctx.lineWidth=Math.max(0.7,PPF*0.06);
+  ctx.beginPath();
+  for (var i=-6;i<=6;i++){ var xx = x + i*rx*0.17; ctx.moveTo(xx, y); ctx.lineTo(xx+ry*0.5, y-ry); }
+  ctx.stroke();
+  ctx.restore();
+}
+function drawOil(f,x,y,rx,ry,t){
+  var big = f.t==='bigoil';
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,TAU);
+  var g = ctx.createRadialGradient(x-rx*0.2,y-ry*0.4,rx*0.05,x,y,rx);
+  g.addColorStop(0,'#241a10'); g.addColorStop(0.45,'#120d09'); g.addColorStop(1,'#070504');
+  ctx.fillStyle=g; ctx.fill();
+  ctx.clip();
+  /* iridescent bands */
+  var ph = t*0.9 + f.seed;
+  for (var i=0;i<4;i++){
+    var yy = y - ry + (i+ (Math.sin(ph+i)*0.28+0.5))*ry*2/4;
+    ctx.strokeStyle = ['rgba(232,179,76,.30)','rgba(120,180,150,.16)','rgba(190,120,60,.20)','rgba(150,120,190,.13)'][i];
+    ctx.lineWidth = Math.max(1.2, ry*0.16);
+    ctx.beginPath(); ctx.ellipse(x, yy, rx*0.86, ry*0.30, Math.sin(ph*0.6+i)*0.12, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle = big ? 'rgba(232,179,76,'+(0.42+0.2*Math.sin(t*4))+')' : 'rgba(232,179,76,.28)';
+  ctx.lineWidth = Math.max(1, PPF*(big?0.18:0.1));
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,TAU); ctx.stroke();
+  if (big){
+    ctx.strokeStyle='rgba(232,179,76,'+(0.13+0.08*Math.sin(t*3))+')';
+    ctx.lineWidth=Math.max(1,PPF*0.1);
+    ctx.beginPath(); ctx.ellipse(x,y,rx*1.14,ry*1.2,0,0,TAU); ctx.stroke();
+  }
+}
+function drawGas(f,x,y,rx,ry,t){
+  var g = ctx.createRadialGradient(x,y,rx*0.06,x,y,rx);
+  var pu = 0.30 + 0.10*Math.sin(t*2.2+f.seed);
+  g.addColorStop(0,'rgba(206,244,196,'+(pu+0.30)+')');
+  g.addColorStop(0.5,'rgba(150,205,140,'+pu+')');
+  g.addColorStop(1,'rgba(120,180,120,0)');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.ellipse(x,y,rx*1.15,ry*1.15,0,0,TAU); ctx.fill();
+  ctx.strokeStyle='rgba(190,238,180,.35)'; ctx.lineWidth=Math.max(0.9,PPF*0.07);
+  ctx.beginPath();
+  for (var i=0;i<9;i++){
+    var a=i/9*TAU+f.seed, w=0.72+0.2*Math.sin(t*1.6+i*1.3+f.seed);
+    var px=x+Math.cos(a)*rx*w, py=y+Math.sin(a)*ry*w;
+    if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath(); ctx.stroke();
+}
+function drawWater(f,x,y,rx,ry,t){
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,TAU);
+  var g = ctx.createLinearGradient(0,y-ry,0,y+ry);
+  g.addColorStop(0,'rgba(126,178,204,.72)');
+  g.addColorStop(0.5,'rgba(72,124,156,.66)');
+  g.addColorStop(1,'rgba(38,72,98,.72)');
+  ctx.fillStyle=g; ctx.fill(); ctx.clip();
+  ctx.strokeStyle='rgba(210,238,255,.24)'; ctx.lineWidth=Math.max(0.9,PPF*0.07);
+  for (var i=0;i<3;i++){
+    ctx.beginPath();
+    ctx.ellipse(x, y-ry*0.5+i*ry*0.5, rx*0.8, ry*0.16, Math.sin(t*1.1+i+f.seed)*0.08, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle='rgba(180,220,244,.3)'; ctx.lineWidth=Math.max(0.9,PPF*0.08);
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,TAU); ctx.stroke();
+}
+function drawSeep(f,x,y,t){
+  var a = 0.22 + 0.18*Math.sin(t*2.4+f.seed*5);
+  ctx.fillStyle='rgba(232,179,76,'+a+')';
+  var r = Math.max(1.5, PPF*0.35);
+  ctx.beginPath(); ctx.arc(x, y - (t*7+f.seed*20)%26, r, 0, TAU); ctx.fill();
+}
+
+/* ---------- borehole + casing ---------- */
+function drawHole(worldT, worldB){
+  if (trail.length < 2) return;
+  var i0 = 0;
+  for (var i=trail.length-1;i>=0;i--){ if (trail[i].y < worldT - 6){ i0 = i; break; } }
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath();
+  ctx.moveTo(trail[i0].x*PPF+OX, trail[i0].y*PPF+OY);
+  for (i=i0+1;i<trail.length;i++) ctx.lineTo(trail[i].x*PPF+OX, trail[i].y*PPF+OY);
+  ctx.strokeStyle = '#0b0705';
+  ctx.lineWidth = Math.max(2, PPF*1.55);
+  ctx.stroke();
+  if (floodT>0){
+    ctx.strokeStyle = 'rgba(90,140,170,.5)';
+    ctx.lineWidth = Math.max(1.4, PPF*1.15);
+    ctx.stroke();
+  }
+  /* casing string */
+  ctx.strokeStyle = '#6d6152';
+  ctx.lineWidth = Math.max(1.2, PPF*0.42);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(226,206,168,.42)';
+  ctx.lineWidth = Math.max(0.6, PPF*0.14);
+  ctx.stroke();
+}
+
+/* ---------- funnel guide ---------- */
+function drawFunnel(worldT, worldB){
+  ctx.save();
+  ctx.strokeStyle = 'rgba(243,227,200,.075)';
+  ctx.lineWidth = Math.max(1, PPF*0.07);
+  ctx.setLineDash([PPF*0.7, PPF*1.1]);
+  for (var s=-1;s<=1;s+=2){
+    ctx.beginPath();
+    for (var y=Math.max(0,worldT); y<worldB+6; y+=4){
+      var px = s*funnelAt(y)*PPF+OX, py = y*PPF+OY;
+      if (y<=Math.max(0,worldT)) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  /* plumb line from the wellhead */
+  ctx.save();
+  ctx.strokeStyle='rgba(243,227,200,.055)';
+  ctx.lineWidth=Math.max(1,PPF*0.05);
+  ctx.setLineDash([PPF*0.35, PPF*0.9]);
+  ctx.beginPath(); ctx.moveTo(OX, 0); ctx.lineTo(OX, H); ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------- depth ruler ---------- */
+function drawRuler(worldT, worldB){
+  if (W < 330) return;
+  ctx.save();
+  ctx.font = '9px ui-monospace, Menlo, monospace';
+  ctx.textBaseline='middle';
+  var step = 25;
+  var y0 = Math.ceil(Math.max(0,worldT)/step)*step;
+  for (var y=y0;y<worldB;y+=step){
+    var py = y*PPF+OY;
+    var major = (y%100===0);
+    ctx.strokeStyle = major ? 'rgba(243,227,200,.22)' : 'rgba(243,227,200,.10)';
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(major?13:7,py); ctx.stroke();
+    if (major){
+      ctx.fillStyle='rgba(243,227,200,.32)';
+      ctx.fillText(y+"'", 17, py);
+    }
+  }
+  ctx.restore();
+}
+
+/* ---------- particles ---------- */
+function drawParts(ox, oy, sc){
+  for (var i=0;i<PMAX;i++){
+    var p = parts[i];
+    if (!p.a) continue;
+    var k = p.l/p.ml;
+    var x = p.x*sc+ox, y = p.y*sc+oy;
+    if (x<-60||x>W+60||y<-80||y>H+80) continue;
+    var s = p.s*sc;
+    switch (p.t){
+      case 0: /* rock chip */
+        ctx.globalAlpha = clamp(k*1.5,0,1);
+        ctx.fillStyle = p.c;
+        ctx.save(); ctx.translate(x,y); ctx.rotate(p.r);
+        ctx.fillRect(-s, -s*0.6, s*2, s*1.2);
+        ctx.restore();
+        break;
+      case 1: /* mud */
+        ctx.globalAlpha = clamp(k,0,1)*0.85;
+        ctx.fillStyle = p.c;
+        ctx.beginPath(); ctx.arc(x,y,s*(0.6+k*0.6),0,TAU); ctx.fill();
+        break;
+      case 2: /* gas wisp */
+        ctx.globalAlpha = clamp(k,0,1)*0.42;
+        ctx.fillStyle = p.c;
+        ctx.beginPath(); ctx.arc(x,y,s*(1.6-k*0.7),0,TAU); ctx.fill();
+        break;
+      case 3: /* oil */
+        ctx.globalAlpha = clamp(k*1.6,0,1);
+        ctx.fillStyle = p.f<0.12 ? '#5a4520' : '#0b0806';
+        ctx.save(); ctx.translate(x,y); ctx.rotate(p.r);
+        ctx.beginPath(); ctx.ellipse(0,0,s*1.5,s*0.85,0,0,TAU); ctx.fill();
+        ctx.restore();
+        break;
+      case 4: /* spark */
+        ctx.globalAlpha = clamp(k*1.8,0,1);
+        ctx.strokeStyle = p.c; ctx.lineWidth = Math.max(1, s*0.9);
+        ctx.beginPath(); ctx.moveTo(x,y);
+        ctx.lineTo(x - p.vx*sc*0.022, y - p.vy*sc*0.022); ctx.stroke();
+        break;
+      case 5: /* smoke */
+        ctx.globalAlpha = clamp(k,0,1)*0.5;
+        ctx.fillStyle = p.c;
+        ctx.beginPath(); ctx.arc(x,y,s*(1.2 + (1-k)*1.5),0,TAU); ctx.fill();
+        break;
+      case 6: /* flame */
+        ctx.globalAlpha = clamp(k*1.3,0,1);
+        ctx.fillStyle = p.c;
+        ctx.beginPath(); ctx.arc(x,y,s*(0.5+k*0.9),0,TAU); ctx.fill();
+        break;
+      case 7: /* seep bubble */
+        ctx.globalAlpha = clamp(k,0,1)*0.5;
+        ctx.strokeStyle = p.c; ctx.lineWidth = Math.max(0.8, s*0.4);
+        ctx.beginPath(); ctx.arc(x,y,s*1.4,0,TAU); ctx.stroke();
+        break;
+      case 8: /* oil rain streak */
+        ctx.globalAlpha = clamp(k*1.4,0,1);
+        ctx.strokeStyle = '#0a0806'; ctx.lineWidth = Math.max(1, s*0.8);
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x - p.vx*sc*0.03, y - p.vy*sc*0.03); ctx.stroke();
+        break;
+      case 9: /* gold ring pop */
+        ctx.globalAlpha = clamp(k,0,1)*0.55;
+        ctx.strokeStyle = p.c; ctx.lineWidth = Math.max(1, s*0.14);
+        ctx.beginPath(); ctx.arc(x,y,(1-k)*s*3.4 + s*0.5,0,TAU); ctx.stroke();
+        break;
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- the bit ---------- */
+function drawBit(){
+  var x = bit.x*PPF+OX, y = bit.y*PPF+OY;
+  var u = PPF;
+  ctx.save();
+  ctx.translate(x,y);
+  if (bit.wob>0.01) ctx.rotate(Math.sin(timeAlive*38)*0.09*bit.wob);
+  /* collar */
+  var g = ctx.createLinearGradient(-0.7*u,0,0.7*u,0);
+  g.addColorStop(0,'#4a423a'); g.addColorStop(0.34,'#a89b86'); g.addColorStop(0.45,'#9a8f7e');
+  g.addColorStop(0.65,'#786d5e'); g.addColorStop(1,'#3b342d');
+  ctx.fillStyle = g;
+  ctx.fillRect(-0.62*u, -2.2*u, 1.24*u, 2.1*u);
+  ctx.fillStyle='rgba(255,240,215,.18)';
+  ctx.fillRect(-0.5*u, -2.2*u, 0.16*u, 2.1*u);
+  /* body */
+  ctx.beginPath();
+  ctx.moveTo(-0.72*u,-0.2*u); ctx.lineTo(0.72*u,-0.2*u);
+  ctx.lineTo(0.5*u,0.55*u); ctx.lineTo(-0.5*u,0.55*u); ctx.closePath();
+  var g2 = ctx.createLinearGradient(-0.7*u,0,0.7*u,0);
+  g2.addColorStop(0,'#584f45'); g2.addColorStop(0.4,'#b3a691'); g2.addColorStop(1,'#463f37');
+  ctx.fillStyle=g2; ctx.fill();
+  /* three cones */
+  for (var i=-1;i<=1;i++){
+    ctx.save();
+    ctx.translate(i*0.42*u, 0.62*u);
+    ctx.rotate(bit.rot*(i===0?1.2:1) + i);
+    ctx.beginPath(); ctx.arc(0,0,0.36*u,0,TAU);
+    var g3 = ctx.createRadialGradient(-0.1*u,-0.12*u,0.02*u,0,0,0.36*u);
+    g3.addColorStop(0,'#cbbda4'); g3.addColorStop(1,'#4c453c');
+    ctx.fillStyle=g3; ctx.fill();
+    ctx.strokeStyle='#221d18'; ctx.lineWidth=Math.max(0.8,u*0.05);
+    ctx.beginPath();
+    for (var t2=0;t2<6;t2++){
+      var a=t2/6*TAU;
+      ctx.moveTo(Math.cos(a)*0.18*u, Math.sin(a)*0.18*u);
+      ctx.lineTo(Math.cos(a)*0.36*u, Math.sin(a)*0.36*u);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  /* heat glow */
+  if (heat > 0.35){
+    var hh = (heat-0.35)/0.65;
+    ctx.globalCompositeOperation='lighter';
+    var gg = ctx.createRadialGradient(0,0.3*u,0,0,0.3*u,2.4*u);
+    gg.addColorStop(0,'rgba(255,'+Math.round(150-90*hh)+',40,'+(0.36*hh)+')');
+    gg.addColorStop(1,'rgba(255,60,20,0)');
+    ctx.fillStyle=gg;
+    ctx.beginPath(); ctx.arc(0,0.3*u,2.4*u,0,TAU); ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+  }
+  if (invT>0 && Math.floor(invT*14)%2===0){
+    ctx.strokeStyle='rgba(255,120,80,.7)'; ctx.lineWidth=Math.max(1,u*0.1);
+    ctx.beginPath(); ctx.arc(0,0.2*u,1.25*u,0,TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ---------- screen effects ---------- */
+var vigGrad=null, vigKey='';
+function vignette(){
+  var key = W+'x'+H;
+  if (key!==vigKey){
+    vigKey=key;
+    var g = ctx.createRadialGradient(W/2,H*0.42,Math.min(W,H)*0.20,W/2,H*0.46,Math.max(W,H)*0.78);
+    g.addColorStop(0,'rgba(0,0,0,0)');
+    g.addColorStop(0.62,'rgba(0,0,0,.22)');
+    g.addColorStop(1,'rgba(0,0,0,.62)');
+    vigGrad=g;
+  }
+  return vigGrad;
+}
+function drawFX(){
+  ctx.fillStyle = vignette();
+  ctx.fillRect(0,0,W,H);
+  if (floodT>0){
+    ctx.globalAlpha = clamp(floodT/4.6,0,1)*0.20;
+    ctx.fillStyle='#3f7c9e'; ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=1;
+  }
+  if (heat>0.6){
+    var a = (heat-0.6)/0.4;
+    var g = ctx.createRadialGradient(W/2,H*BITY,Math.min(W,H)*0.1,W/2,H*BITY,Math.max(W,H)*0.7);
+    g.addColorStop(0,'rgba(211,58,34,0)');
+    g.addColorStop(1,'rgba(211,58,34,'+(0.36*a*(0.7+0.3*Math.sin(timeAlive*11)))+')');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  }
+  if (kick.active){
+    var kk = 1 - kick.t/kick.win;
+    var g2 = ctx.createRadialGradient(W/2,H*BITY,Math.min(W,H)*0.06,W/2,H*BITY,Math.max(W,H)*0.75);
+    g2.addColorStop(0,'rgba(150,220,140,0)');
+    g2.addColorStop(1,'rgba(140,220,130,'+(0.16+0.22*kk*(0.6+0.4*Math.sin(timeAlive*16)))+')');
+    ctx.fillStyle=g2; ctx.fillRect(0,0,W,H);
+  }
+  if (flashT>0){
+    ctx.globalAlpha = clamp(flashT*2.2,0,0.75);
+    ctx.fillStyle=flashCol; ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ---------- underground frame ---------- */
+function renderPlay(t){
+  OX = W/2 - camX*PPF + shakeX;
+  OY = H*BITY - camY*PPF + shakeY;
+  var worldT = (0-OY)/PPF - 2, worldB = (H-OY)/PPF + 2;
+  var worldL = (0-OX)/PPF - 2, worldR = (W-OX)/PPF + 2;
+
+  ctx.fillStyle = '#0b0705';
+  ctx.fillRect(0,0,W,H);
+
+  var surfaceVisible = (worldT < 8);
+  var groundPx = OY;
+  if (surfaceVisible && bands.length) groundPx = boundaryY(bands[0], 0)*PPF + OY;
+  if (surfaceVisible){
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, Math.max(1, Math.min(H, groundPx + PPF*3)));
+    ctx.clip();
+    drawSky(0, Math.max(1, groundPx));
+    ctx.restore();
+  }
+  drawStrata(worldT, worldB, worldL, worldR);
+  if (surfaceVisible) drawDerrick(OX, groundPx, Math.max(26, 27*PPF), 0);
+  /* grain over the rock */
+  if (grainPat){
+    ctx.save();
+    ctx.globalAlpha = 0.11;
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.translate((OX%96+96)%96 - 96, (OY%96+96)%96 - 96);
+    ctx.fillStyle = grainPat;
+    ctx.fillRect(0,0,W+96,H+96);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  drawFunnel(worldT, worldB);
+  drawFeatures(worldT, worldB, t);
+  drawHole(worldT, worldB);
+  drawParts(OX, OY, PPF);
+  drawBit();
+  drawRuler(worldT, worldB);
+  drawFX();
+}
+
+/* ---------- surface scenes (gusher / blowout) ---------- */
+function sceneS(){ return Math.min(H/64, W/70); }
+function gusherFX(dt){
+  var s = sceneS();
+  var n = gush.done ? 1 : 4;
+  for (var i=0;i<n;i++){
+    var a = -Math.PI/2 + (Math.random()-0.5)*0.42;
+    var sp = 46 + Math.random()*54;
+    spawn(3, (Math.random()-0.5)*2.2, -2, Math.cos(a)*sp, Math.sin(a)*sp,
+      1.5+Math.random()*1.4, 0.5+Math.random()*1.5, '#0b0806', 46, 0.12);
+  }
+  if (!gush.done && Math.random()<0.6){
+    spawn(8, (Math.random()-0.5)*70, -60-Math.random()*30, (Math.random()-0.5)*8, 26+Math.random()*22,
+      1.5, 0.35+Math.random()*0.5, '#0a0806', 12, 0);
+  }
+  if (Math.random()<0.35){
+    spawn(5, (Math.random()-0.5)*10, -12-Math.random()*22, (Math.random()-0.5)*7, -6-Math.random()*10,
+      1.4+Math.random(), 1.6+Math.random()*2.4, '#181310', -1.2, 0.5);
+  }
+}
+function drawSurfaceScene(t, oiled, fire){
+  var s = sceneS();
+  var gy = H*0.80 + shakeY;
+  var ox = W/2 + shakeX;
+  ctx.fillStyle='#0b0705'; ctx.fillRect(0,0,W,H);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0,0,W,gy); ctx.clip();
+  drawSky(0, gy);
+  ctx.restore();
+  if (fire>0){
+    ctx.globalCompositeOperation='lighter';
+    var fg = ctx.createRadialGradient(ox, gy-20*s, 0, ox, gy-20*s, Math.max(W,H)*0.7);
+    fg.addColorStop(0,'rgba(255,170,60,'+(0.42*fire)+')');
+    fg.addColorStop(1,'rgba(255,80,20,0)');
+    ctx.fillStyle=fg; ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation='source-over';
+  }
+  /* ground */
+  var gg = ctx.createLinearGradient(0,gy,0,H);
+  gg.addColorStop(0, oiled>0.3?'#241a12':'#4a3524');
+  gg.addColorStop(1, '#160f0a');
+  ctx.fillStyle=gg; ctx.fillRect(0,gy,W,H-gy+2);
+  ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke();
+  /* scrub */
+  ctx.fillStyle='rgba(18,12,8,.9)';
+  for (var i=0;i<9;i++){
+    var bx = ((i*137)%100)/100*W;
+    var bw = s*(1.4+((i*53)%40)/40);
+    ctx.beginPath(); ctx.ellipse(bx, gy+s*0.4, bw, s*0.7, 0, Math.PI, TAU); ctx.fill();
+  }
+  drawDerrick(ox, gy, 30*s, oiled);
+  drawParts(ox, gy, s);
+  /* the column */
+  if (oiled>0.3){
+    var wob = Math.sin(t*7)*s*0.9;
+    ctx.beginPath();
+    ctx.moveTo(ox-2.4*s, gy);
+    ctx.quadraticCurveTo(ox-3.6*s+wob, gy-32*s, ox-1.2*s+wob*1.6, -20);
+    ctx.lineTo(ox+1.2*s+wob*1.6, -20);
+    ctx.quadraticCurveTo(ox+3.6*s+wob, gy-32*s, ox+2.4*s, gy);
+    ctx.closePath();
+    var cg = ctx.createLinearGradient(ox-3*s,0,ox+3*s,0);
+    cg.addColorStop(0,'#000'); cg.addColorStop(0.35,'#1c150e');
+    cg.addColorStop(0.5,'#3a2a16'); cg.addColorStop(0.7,'#120c08'); cg.addColorStop(1,'#000');
+    ctx.fillStyle=cg; ctx.fill();
+    /* slick pool */
+    var pg = ctx.createRadialGradient(ox, gy+s*0.6, s*0.5, ox, gy+s*0.6, 26*s);
+    pg.addColorStop(0,'rgba(8,6,5,.95)'); pg.addColorStop(0.6,'rgba(12,9,7,.7)'); pg.addColorStop(1,'rgba(12,9,7,0)');
+    ctx.fillStyle=pg;
+    ctx.beginPath(); ctx.ellipse(ox, gy+s*0.9, 26*s, 3.4*s, 0,0,TAU); ctx.fill();
+  }
+  drawFX();
+}
+
+/* =========================================================================
+   ENGINE AUDIO DRIVER
+   ========================================================================= */
+function updateEngineAudio(){
+  if (!audioOK) return;
+  var t = AC.currentTime;
+  var live = (mode==='play') && !paused;
+  var thr = live && throttleOn() && !kick.active && !freefall;
+  var eg = live ? (thr ? 0.115 : 0.048) : 0;
+  engGain.gain.setTargetAtTime(eg, t, 0.09);
+  if (chugGain) chugGain.gain.setTargetAtTime(eg*0.55, t, 0.09);
+  engOsc.frequency.setTargetAtTime(thr ? 76 : 43, t, 0.13);
+  chugOsc.frequency.setTargetAtTime(thr ? 13.5 : 6.2, t, 0.16);
+  engFilt.frequency.setTargetAtTime(thr ? 640 : 320, t, 0.16);
+
+  var gt = (live && bit.vy > 0.3 && !freefall) ? (thr?0.058:0.022)*clamp(curHard/1.2,0.45,1.8) : 0;
+  grindGain.gain.setTargetAtTime(gt, t, 0.11);
+  grindFilt.frequency.setTargetAtTime(380 + curHard*1450, t, 0.22);
+  grindFilt.Q.setTargetAtTime(0.7 + curHard*1.7, t, 0.22);
+
+  var rt = live ? rumbleAmt*0.24 : (mode==='gusher' ? 0.12 : 0);
+  rumbleGain.gain.setTargetAtTime(rt, t, 0.3);
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+function currentScene(){
+  if (mode==='gusher' || mode==='win') return 'surface';
+  if (mode==='blowout') return 'fire';
+  if (mode==='over'){
+    if (bo.t > 0) return 'fire';
+    if (gush.done && !endless) return 'surface';
+  }
+  return 'under';
+}
+
+var lastT = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  var dt = (now - lastT)/1000;
+  lastT = now;
+  if (!isFinite(dt) || dt < 0) dt = 1/60;
+  if (dt > 0.05) dt = 0.05;
+  timeAlive += dt;
+
+  if (!paused){
+    if (mode==='play') updatePlay(dt);
+    else if (mode==='gusher'){ updateGusher(dt); gusherFX(dt); }
+    else if (mode==='blowout') updateBlowout(dt);
+    else if (mode==='over' && bo.t>0) bo.t += dt;
+
+    updateParts(dt);
+
+    shake *= Math.exp(-6.2*dt);
+    if (shake < 0.05) shake = 0;
+    shakeX = (Math.random()-0.5)*shake;
+    shakeY = (Math.random()-0.5)*shake;
+
+    if (flashT > 0) flashT -= dt;
+    if (toastT > 0){ toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
+  } else {
+    shakeX = 0; shakeY = 0;
+  }
+  updateEngineAudio();
+
+  var sc = currentScene();
+  if (sc==='surface'){
+    drawSurfaceScene(timeAlive, 1, 0);
+  } else if (sc==='fire'){
+    drawSurfaceScene(timeAlive, 0.18, clamp(1.15 - bo.t/3.2, 0, 1));
+  } else {
+    renderPlay(timeAlive);
+  }
+}
+
+/* =========================================================================
+   ARCADE GREETING (never required, never blocking)
+   ========================================================================= */
+(function(){
+  var tries = 0;
+  var iv = setInterval(function(){
+    var a = window.__arcade;
+    if (a){
+      clearInterval(iv);
+      try{
+        if (a.player && !a.player.isGuest && a.player.displayName){
+          backerEl.textContent = 'Backed by ' + a.player.displayName;
+          backerEl.classList.remove('hide');
+        }
+      }catch(e){}
+    } else if (++tries > 40) clearInterval(iv);
+  }, 260);
+})();
+
+/* =========================================================================
+   BOOT
+   ========================================================================= */
+resize();
+setMute(false);
+resetRun();
+mode = 'title';
+showOvl(startOvl);
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
