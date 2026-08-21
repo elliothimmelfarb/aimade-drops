@@ -55,6 +55,7 @@ canvas#gl{position:fixed;inset:0;display:block;width:100%;height:100%;}
 .wchip{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.1em;}
 .wdot{width:8px;height:8px;border-radius:2px;}
 .wdot.t{background:var(--cyan);} .wdot.a{background:var(--amber);}
+.wname{opacity:.72;font-size:9px;letter-spacing:.12em;}
 
 #br{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);right:calc(env(safe-area-inset-right,0px) + 11px);
   display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
@@ -285,8 +286,8 @@ body.touch #topBtns{opacity:.85;}
         <circle cx="60" cy="60" r="3.4" fill="rgba(238,246,251,.85)"/>
       </svg>
       <div id="windRead">
-        <div class="wchip" style="color:var(--cyan)"><span class="wdot t"></span><span id="twsV">8.5</span></div>
-        <div class="wchip" style="color:var(--amber)"><span class="wdot a"></span><span id="awsV">8.5</span></div>
+        <div class="wchip" style="color:var(--cyan)"><span class="wdot t"></span><span class="wname">TRUE</span><span id="twsV">8.5</span></div>
+        <div class="wchip" style="color:var(--amber)"><span class="wdot a"></span><span class="wname">APP</span><span id="awsV">8.5</span></div>
         <div class="lbl" style="letter-spacing:.1em">m/s</div>
       </div>
     </div>
@@ -465,13 +466,19 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0;
    before it was pasted here. Verified steady-state behaviour at 8.5 m/s of
    true wind, perfect trim, heel held at 30 deg:
 
-     best upwind VMG  15.0 m/s at TWA 40 deg  (boat 19.6 m/s = 2.2x wind)
-     best downwind VMG 22.3 m/s at TWA 140 deg (boat 29.1 m/s = 3.3x wind)
-     dead downwind      6.7 m/s   -> tacking downwind is 3.3x better VMG
-     peak reaching     30.2 m/s   -> 32.5 m/s (117 km/h) in a 10 m/s gust
-     rolling start on a reach: 8 -> 15 m/s in 2.8 s, -> 25 m/s in 11.7 s
-     never easing the sheet on a beat: over she goes in 3 to 12 s
-     a perfect lap is about 52 s, so gold at 215 s allows very little waste
+     best upwind VMG  14.1 m/s at TWA 45 deg  (boat 19.9 m/s = 2.35x wind)
+     best downwind VMG 12.4 m/s at TWA 130 deg (boat 19.3 m/s = 2.28x wind)
+     dead downwind      5.3 m/s = 0.62x wind
+                        -> tacking downwind is 2.35x the VMG of running square,
+                           which is the whole game in one number
+     peak reaching     27.2 m/s = 3.20x wind
+                        -> 32.9 m/s (118 km/h) in a full gust, 33.7 riding the
+                           heel limit, which is where 'thrice-the-wind' lives
+     port and starboard mirror to 2e-12, so a tack and a gybe are the same
+     manoeuvre seen from the other side
+     a perfect manoeuvre-free lap is 57.5 s; a competent layline autopilot
+     laps the real course clean in 81.5 s, so gold at 215 s (about 72 s a lap)
+     sits deliberately between the two
    ===================================================================== */
 const DT = 1/120;                     // fixed physics step
 
@@ -532,8 +539,18 @@ const P = {
      Both die away completely by walking pace, so they cannot touch racing. */
   N_KICK: 620,            // N m of boot-on-the-ice yaw authority at a standstill
   V_KICK: 3.0,            // m/s at which it has entirely gone
-  F_SHOVE: 115,           // N of shove while she is barely moving
-  V_SHOVE: 1.7,           // m/s at which the shove has entirely gone
+  F_SHOVE: 240,           // N of shove while she is barely moving. It has to beat
+                          // the backward drag of a flogging sail in a full gust
+                          // (~105 N) with enough left over to actually roll her
+                          // out, or being caught head to wind is a dead end.
+  V_SHOVE: 2.2,           // m/s at which the shove has entirely gone
+  /* Walking her round. See the note in the integrator: at a crawl the steering
+     runner's own yaw-rate term cancels the boot kick almost exactly, so yaw
+     RATE, not yaw moment, is what the skipper actually commands down here. */
+  WALL_SEP: 0.9,          // m/s a resting contact eases her back off the wall with
+  R_WALK: 0.95,           // rad/s she can be pivoted at, standing still
+  V_WALK: 2.4,            // m/s at which that authority has entirely gone
+  TAU_WALK: 0.50,         // s, how quickly the pivot builds (never a snap)
 
   /* limits */
   PHI_FLY: 4*DEG,         // windward runner is off the ice above this
@@ -557,15 +574,18 @@ const CO = {
   MARK_R: 0.95,
 };
 
-/* Calibrated against the measured polar: a near-perfect run is about 205 s
-   (beat ~38 s, run ~28 s, roundings ~4 s per lap), so gold demands very close
-   to the optimum angles with clean roundings and no lost speed. */
-const MEDALS = { gold: 215, silver: 250, bronze: 295 };
+/* Calibrated against the real boat: the velocity-prediction rig puts a
+   perfect, manoeuvre-free lap at 57.5 s, and a competent layline autopilot
+   sailing the actual course clean laps it in 81.5 s. Gold therefore asks for
+   about 72 s a lap - well inside the theoretical envelope but demanding real
+   trim and a route that keeps off the thin ice. */
+const MEDALS = { gold: 215, silver: 255, bronze: 310 };
 
 const WIND = {
   BASE: 8.5,              // m/s
   GUST: 0.32,             // +-32 %
   SHIFT: 8*DEG,           // +-8 deg of slow direction wander
+  STEADY: 0,              // tuning rig only: 1 freezes the gusts and the shift
 };
 
 /* =====================================================================
@@ -602,8 +622,8 @@ function shiftField(x, z, t, seed){
 /* wind at a point: returns the AIR VELOCITY vector plus speed and bearing */
 const _wind = { wx:0, wz:0, W:0, dir:0 };
 function trueWind(x, z, t, seed){
-  const W = WIND.BASE*(1 + WIND.GUST*gustField(x,z,t,seed));
-  const dir = WIND.SHIFT*shiftField(x,z,t,seed);         // bearing the wind comes FROM
+  const W = WIND.STEADY ? WIND.BASE : WIND.BASE*(1 + WIND.GUST*gustField(x,z,t,seed));
+  const dir = WIND.STEADY ? 0 : WIND.SHIFT*shiftField(x,z,t,seed);   // bearing the wind comes FROM
   /* air travels toward dir + pi */
   _wind.wx = -W*Math.sin(dir);
   _wind.wz =  W*Math.cos(dir);
@@ -703,6 +723,7 @@ function newBoat(){
 }
 
 /* ------------------------------------------------------- the physics step */
+const _dbg = {};
 function boatStep(s, inp, t, seed, dt){
   const cs = Math.sin(s.psi), cc = Math.cos(s.psi);
   const fx =  cs, fz = -cc;                    // forward unit, world
@@ -837,6 +858,22 @@ function boatStep(s, inp, t, seed, dt){
   s.u += (Fx/P.M + s.r*s.v)*dt;
   s.v += (Fy/P.M - s.r*s.u)*dt;
   s.r += (Nyaw/P.IZZ)*dt;
+  /* ---- walking her round ----
+     A stopped iceboat is pivoted by the skipper's boots, not by her helm. Down
+     here the steering runner cannot bite: the yaw-rate term inside its own slip
+     angle grows until it cancels the boot's moment almost exactly (measured:
+     FyF*a - FyR*b = +586 N m against a kick of -595), so she swings at the
+     kinematic crawl of ten degrees a second while a flogging sail pushes her
+     backwards - and in a gust that backward drag wins outright and head to wind
+     becomes a dead end you can never leave. So below walking pace the skipper
+     commands yaw RATE directly rather than yaw moment. It is faded out
+     completely by V_WALK and built through a TAU_WALK lag, so it is never a
+     snap and can never touch racing. */
+  const walk = smoothstep(P.V_WALK, 0.15, spd);
+  if(walk > 0 && !s.noPower){
+    const rWant = clamp(inp.steer,-1,1)*P.R_WALK*walk;
+    s.r += (rWant - s.r)*Math.min(1, dt/P.TAU_WALK)*walk;
+  }
   s.psi = wrapPi(s.psi + s.r*dt);
   s.x += (fx*s.u + sx*s.v)*dt;
   s.z += (fz*s.u + sz*s.v)*dt;
@@ -850,6 +887,11 @@ function boatStep(s, inp, t, seed, dt){
   s.flying = flying; s.slipF = slipF; s.slipR = slipR; s.N = N;
   s.vax = vax; s.vaz = vaz; s.wx = w.wx; s.wz = w.wz;
   s.Nf = Nf; s.Nr = Nr; s.boomSlam = slam;
+  /* force break-down for the tuning rig; one shared object, never allocated
+     per step, so it costs nothing in the hot loop */
+  _dbg.fric=fric; _dbg.para=para; _dbg.ind=ind; _dbg.shove=shove;
+  _dbg.Fx=Fx; _dbg.Fy=Fy; _dbg.Nyaw=Nyaw; _dbg.FyF=FyF; _dbg.FyR=FyR;
+  _dbg.cd=co.cd; _dbg.dmax=dmax; _dbg.kick=kick; s.dbg=_dbg;
   return s;
 }
 
@@ -2203,6 +2245,20 @@ function boatWorldVel(b){
 }
 function hardHit(b, nx, nz, pen, rest, scrub){
   b.x += nx*pen; b.z += nz*pen;
+  /* A resting contact has to gently EJECT her, not merely stop her. In a
+     corner of the arena two walls are resolved every step and each one cancels
+     the component of her velocity along its own normal, so between them they
+     leave her with no velocity at all - measured: a boat blown into the angle
+     of the ridges sat there for six minutes with the sail pulling 1100 N of
+     drive and her position not changing in the third decimal. Giving contact a
+     small outward separation speed costs nothing at racing pace, where the
+     elastic bounce below is many times larger, and it makes the corner
+     escapable under sail. */
+  if(b.spd < 4.0){
+    const wv0 = boatWorldVel(b);
+    const vn0 = wv0[0]*nx + wv0[1]*nz;
+    if(vn0 < P.WALL_SEP) worldImpulse(b, nx*(P.WALL_SEP-vn0), nz*(P.WALL_SEP-vn0));
+  }
   const wv = boatWorldVel(b);
   const vx = wv[0], vz = wv[1];
   const vn = vx*nx + vz*nz;
@@ -2271,7 +2327,13 @@ function collide(b, dt){
        drift does is faded out at a crawl, so a boat that has been stopped dead
        inside one can always be shoved out of it again. */
     const bite = smoothstep(0.35, 2.6, sp);
-    const drag = 26 * inDrift * bite * sp * Math.max(1, sp*0.20);
+    /* The speed-squared term is capped. Uncapped it runs away as the cube of
+       boat speed, and clipping the corner of one drift at racing speed took
+       her from 18 m/s to walking pace in two seconds - from which, pointing
+       anywhere near the wind, there is no way back and the run is over. A
+       drift should cost you a chunk of your speed and your nerve, not the
+       race. */
+    const drag = 26 * inDrift * bite * sp * Math.min(Math.max(1, sp*0.20), 2.4);
     b.extFx = -drag;
     b.extFy = -b.v*P.M*1.4*inDrift*bite;
     b.grip = 1 - 0.42*inDrift*bite;
@@ -2489,11 +2551,20 @@ function tick(dt){
      quite at a dead stop, but four seconds at that speed means going nowhere */
   if(b.spd < 1.6){
     S.stuckT += dt;
-    if(S.stuckT > 4.0)
+    /* Which way she is stopped changes the answer completely. Head to wind she
+       has to bear AWAY; blown flat downwind against the leeward wall she has to
+       come UP. Telling her to "fall off the wind" in the second case is the one
+       piece of advice that keeps her there. Either way the target is the same:
+       put the wind on the beam, where the sail makes drive again. */
+    if(S.stuckT > 4.0){
+      const dw = Math.abs(b.twa) > 118*DEG;
       coach(S.stuckT > 12
-        ? 'STILL STOPPED — hold A or D to kick the bow round, W to trim, or press R to restart'
-        : 'STOPPED — hold A or D until the bow falls off the wind, then W to sheet in',
-        S.stuckT > 12 ? 'stuck2' : 'stuck');
+        ? (dw ? 'STILL STOPPED — turn until the wind is on your SIDE, then W to sheet in, or R to restart'
+              : 'STILL STOPPED — hold A or D to kick the bow round, W to trim, or press R to restart')
+        : (dw ? 'STOPPED DOWNWIND — turn until the wind is on your SIDE, then sheet in (W)'
+              : 'STOPPED — hold A or D until the bow falls off the wind, then W to sheet in'),
+        (S.stuckT > 12 ? 'stuck2' : 'stuck') + (dw ? 'd' : 'u'));
+    }
   } else S.stuckT = 0;
 
   /* ---- achievements ---- */
