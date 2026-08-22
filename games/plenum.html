@@ -1,0 +1,4164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="PLENUM - Formula-class hovercraft racing on an amphibious circuit. Three laps over grass, dirt, a mud bog and two water crossings. Hit the water fast or the bow wave owns you.">
+<link rel="icon" href="data:,">
+<title>PLENUM</title>
+<style>
+:root{
+  --ink:#0a0e11;
+  --deep:#121a1f;
+  --panel:rgba(10,16,20,.62);
+  --panel2:rgba(10,16,20,.80);
+  --line:rgba(233,224,206,.16);
+  --cream:#f2ece0;
+  --pale:#cdd8d5;
+  --dim:#8fa09e;
+  --faint:#5d6f6e;
+  --grass:#7db24a;
+  --water:#4fc4d8;
+  --mud:#9a7444;
+  --gold:#ffd166;
+  --amber:#ffa13d;
+  --hot:#ff6a3d;
+  --bad:#ff5540;
+  --good:#67e0a3;
+  --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{
+  margin:0;padding:0;width:100%;height:100%;
+  background:#0a0e11;color:var(--cream);
+  font-family:var(--sans);
+  overflow:hidden;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;
+  touch-action:none;
+}
+button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0;touch-action:none;}
+#app{position:fixed;inset:0;overflow:hidden;background:#0a0e11;}
+canvas{display:block;position:absolute;left:0;top:0;touch-action:none;}
+
+#flash{position:absolute;inset:0;z-index:7;pointer-events:none;background:#fff;opacity:0;mix-blend-mode:screen;}
+#vig{position:absolute;inset:0;z-index:5;pointer-events:none;
+  background:radial-gradient(126% 96% at 50% 44%, rgba(10,14,17,0) 44%, rgba(10,14,17,.62) 100%);}
+
+/* ================================================================= HUD */
+#hud{position:absolute;inset:0;z-index:6;pointer-events:none;opacity:0;transition:opacity .4s;
+  text-shadow:0 1px 3px rgba(6,10,12,.92),0 0 14px rgba(6,10,12,.55);}
+#hud.on{opacity:1;}
+.lbl{font-family:var(--mono);font-size:8px;letter-spacing:.26em;color:var(--dim);}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:9px;
+  -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);}
+
+/* lap / position, top left */
+#tl{position:absolute;left:max(12px,env(safe-area-inset-left));top:max(11px,env(safe-area-inset-top));
+  display:flex;gap:8px;align-items:stretch;}
+.tile{padding:6px 10px 7px;display:flex;flex-direction:column;gap:2px;min-width:60px;}
+.tile .v{font-family:var(--mono);font-weight:700;line-height:1;font-size:clamp(16px,2.9vw,23px);}
+.tile .v small{font-size:.52em;opacity:.55;font-weight:600;margin-left:1px;}
+#lapV{color:var(--cream);}
+#posV{color:var(--gold);}
+#clkBox{min-width:96px;}
+#clkV{color:var(--cream);font-size:clamp(15px,2.6vw,21px);}
+#lapTimes{display:flex;flex-direction:column;gap:1px;margin-top:3px;
+  font-family:var(--mono);font-size:9px;letter-spacing:.05em;color:var(--dim);}
+#lapTimes b{color:var(--pale);font-weight:600;}
+
+/* standings, top right */
+#stand{position:absolute;right:max(12px,env(safe-area-inset-right));top:max(11px,env(safe-area-inset-top));
+  padding:7px 9px;display:flex;flex-direction:column;gap:3px;min-width:132px;}
+.srow{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:.04em;}
+.srow .p{width:11px;color:var(--faint);text-align:right;}
+.srow .chip{width:9px;height:9px;border-radius:2px;flex:0 0 auto;}
+.srow .nm{flex:1;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.srow .gp{color:var(--faint);font-size:9px;}
+.srow.me .nm{color:var(--cream);font-weight:700;}
+.srow.me .p{color:var(--gold);}
+
+/* skirt gauge, right, under standings */
+#skirtBox{position:absolute;right:max(12px,env(safe-area-inset-right));top:calc(max(11px,env(safe-area-inset-top)) + 108px);
+  padding:8px 9px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;}
+#skirtSvg{width:74px;height:74px;display:block;}
+#skirtV{font-family:var(--mono);font-weight:700;font-size:15px;line-height:1;color:var(--good);}
+#skirtL{font-family:var(--mono);font-size:7px;letter-spacing:.22em;color:var(--dim);}
+#skirtBox.warn #skirtV{color:var(--amber);}
+#skirtBox.crit #skirtV{color:var(--bad);}
+#skirtBox.crit{animation:pulseC 1s infinite;}
+@keyframes pulseC{0%,100%{box-shadow:0 0 0 0 rgba(255,85,64,0);}50%{box-shadow:0 0 0 3px rgba(255,85,64,.24);}}
+
+/* speed, bottom centre */
+#spd{position:absolute;left:50%;transform:translateX(-50%);
+  bottom:max(14px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;}
+#spdV{font-family:var(--mono);font-weight:700;font-size:clamp(34px,7.4vw,62px);line-height:.92;
+  letter-spacing:-.03em;color:#fff;}
+#spdU{font-family:var(--mono);font-size:9px;letter-spacing:.34em;color:var(--dim);margin-top:1px;}
+
+/* hump indicator, above the speed */
+#hump{position:absolute;left:50%;transform:translateX(-50%) translateY(10px);
+  bottom:calc(max(14px,env(safe-area-inset-bottom)) + 84px);
+  width:min(58vw,300px);padding:7px 10px 8px;opacity:0;transition:opacity .28s,transform .28s;}
+#hump.on{opacity:1;transform:translateX(-50%) translateY(0);}
+#humpBar{position:relative;height:9px;border-radius:5px;overflow:hidden;
+  background:linear-gradient(90deg,#1d6f7e 0%,#2f8f7a 16%,#c9a13a 40%,#e0532c 52%,#c9a13a 64%,#38b08e 82%,#3fd6b0 100%);}
+#humpFill{position:absolute;inset:0;background:rgba(10,16,20,.72);left:0;}
+#humpMark{position:absolute;top:-3px;width:2px;height:15px;background:#fff;box-shadow:0 0 5px #000;left:0;}
+#humpHump{position:absolute;top:-2px;width:1px;height:13px;background:rgba(255,255,255,.62);left:52%;}
+#humpRow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+#humpT{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--dim);}
+#humpS{font-family:var(--mono);font-weight:700;font-size:10px;letter-spacing:.14em;color:var(--good);}
+#hump.wallow #humpS{color:var(--bad);}
+#humpFoot{display:flex;justify-content:space-between;margin-top:3px;
+  font-family:var(--mono);font-size:7px;letter-spacing:.16em;color:var(--faint);}
+
+/* minimap, bottom left */
+#map{position:absolute;left:max(12px,env(safe-area-inset-left));
+  bottom:max(12px,env(safe-area-inset-bottom));padding:7px;}
+#mapSvg{width:clamp(84px,13vw,128px);height:clamp(84px,13vw,128px);display:block;}
+
+/* centre messages */
+#lights{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);
+  display:flex;gap:min(3.2vw,17px);opacity:0;transition:opacity .2s;}
+#lights.on{opacity:1;}
+.lamp{width:min(8.4vw,44px);height:min(8.4vw,44px);border-radius:50%;
+  background:rgba(8,12,14,.72);border:2px solid rgba(233,224,206,.20);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.6);}
+.lamp.red{background:radial-gradient(circle at 38% 32%,#ff8b6a,#d92c14 62%,#7d1607);
+  border-color:rgba(255,110,80,.6);box-shadow:0 0 18px rgba(232,60,30,.55),inset 0 2px 6px rgba(0,0,0,.35);}
+.lamp.green{background:radial-gradient(circle at 38% 32%,#b7ffcf,#20c46b 60%,#0b6c39);
+  border-color:rgba(90,255,160,.6);box-shadow:0 0 24px rgba(40,210,120,.65),inset 0 2px 6px rgba(0,0,0,.3);}
+#bigMsg{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%) scale(.9);
+  font-family:var(--mono);font-weight:700;font-size:clamp(24px,6.4vw,56px);letter-spacing:.10em;
+  color:#fff;opacity:0;transition:opacity .22s,transform .22s;white-space:nowrap;text-align:center;}
+#bigMsg.on{opacity:1;transform:translate(-50%,-50%) scale(1);}
+#coach{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(max(14px,env(safe-area-inset-bottom)) + 132px);
+  width:min(90vw,540px);text-align:center;font-size:clamp(12px,2.3vw,15px);line-height:1.45;
+  color:var(--pale);opacity:0;transition:opacity .3s;padding:0 8px;}
+#coach.on{opacity:1;}
+#coach b{color:var(--gold);}
+#pauseTag{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:8;
+  font-family:var(--mono);font-size:13px;letter-spacing:.5em;color:var(--cream);
+  background:rgba(10,14,17,.7);padding:11px 20px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;}
+#pauseTag.on{opacity:1;}
+
+/* ================================================================= touch */
+#touch{position:absolute;inset:0;z-index:9;display:none;}
+#touch.on{display:block;}
+#tSteer{position:absolute;left:0;bottom:0;width:46%;height:38%;
+  max-height:210px;touch-action:none;}
+#tSteerIn{position:absolute;left:max(10px,env(safe-area-inset-left));right:8px;bottom:calc(max(10px,env(safe-area-inset-bottom)) + 4px);
+  height:78px;border-radius:14px;background:rgba(10,16,20,.66);border:1px solid rgba(233,224,206,.24);
+  display:flex;align-items:center;justify-content:center;}
+#tSteerIn::before{content:'';position:absolute;left:50%;top:12px;bottom:12px;width:1px;background:rgba(233,224,206,.20);}
+#tSteerK{position:absolute;width:52px;height:52px;border-radius:12px;background:rgba(240,232,214,.20);
+  border:1px solid rgba(240,232,214,.35);transition:transform .06s;}
+#tSteerL{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
+  font-family:var(--mono);font-size:7px;letter-spacing:.3em;color:var(--faint);}
+#tBtns{position:absolute;right:max(10px,env(safe-area-inset-right));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 4px);
+  display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+.tb{border-radius:12px;background:rgba(10,16,20,.5);border:1px solid var(--line);
+  font-family:var(--mono);letter-spacing:.14em;color:var(--pale);display:flex;align-items:center;justify-content:center;}
+#tbThr{width:108px;height:78px;font-size:15px;font-weight:700;color:var(--cream);
+  background:rgba(60,140,90,.30);border-color:rgba(120,230,170,.35);}
+#tbRev{width:108px;height:44px;font-size:11px;}
+.tb.act{background:rgba(240,232,214,.28);}
+#tTop{position:absolute;left:max(10px,env(safe-area-inset-left));top:calc(max(11px,env(safe-area-inset-top)) + 84px);
+  display:flex;flex-direction:row;gap:6px;}
+.tbs{width:44px;height:34px;border-radius:9px;background:rgba(10,16,20,.5);border:1px solid var(--line);
+  font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--dim);
+  display:flex;align-items:center;justify-content:center;}
+
+/* touch mode shuffles the HUD out from under the controls */
+.tmode #map{bottom:calc(max(12px,env(safe-area-inset-bottom)) + 94px);}
+.tmode #mapSvg{width:clamp(72px,20vw,104px);height:clamp(72px,20vw,104px);}
+.tmode #spd{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 96px);}
+.tmode #spdV{font-size:clamp(28px,10vw,52px);}
+.tmode #hump{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 182px);width:min(74vw,300px);}
+.tmode #coach{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 232px);}
+.tmode #skirtBox{top:calc(max(11px,env(safe-area-inset-top)) + 100px);padding:6px 7px 5px;}
+.tmode #skirtSvg{width:58px;height:58px;}
+@media(max-height:520px){
+  .tmode #map{display:none;}
+  .tmode #coach{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 150px);}
+}
+
+/* ================================================================= screens */
+.screen{position:absolute;inset:0;z-index:10;display:none;align-items:center;justify-content:center;
+  padding:16px;background:radial-gradient(120% 100% at 50% 0%,rgba(24,42,50,.90),rgba(6,10,12,.96));
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);overflow:auto;}
+.screen.on{display:flex;}
+.card{width:min(660px,100%);max-height:100%;overflow:auto;padding:min(4.6vw,26px);
+  background:rgba(9,14,17,.86);box-shadow:0 24px 70px rgba(0,0,0,.55);border:1px solid var(--line);border-radius:15px;}
+.card::-webkit-scrollbar{width:8px;}
+.card::-webkit-scrollbar-thumb{background:rgba(233,224,206,.18);border-radius:4px;}
+h1{margin:0;font-family:var(--mono);font-weight:700;letter-spacing:.30em;
+  font-size:clamp(30px,8.2vw,58px);line-height:1;
+  background:linear-gradient(96deg,#ffd166 0%,#7de0c8 46%,#69b6ff 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+#sub{margin-top:8px;font-family:var(--mono);font-size:clamp(8px,1.7vw,10px);letter-spacing:.3em;color:var(--dim);}
+.rule{height:1px;background:linear-gradient(90deg,rgba(233,224,206,.30),rgba(233,224,206,0));margin:15px 0 13px;}
+p{margin:0 0 10px;font-size:clamp(12.5px,2.35vw,14.5px);line-height:1.56;color:var(--pale);}
+p b{color:var(--cream);}
+.g{color:var(--gold);}
+.blk{margin-top:13px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.022);}
+.blkT{font-family:var(--mono);font-size:8px;letter-spacing:.26em;color:var(--dim);margin-bottom:8px;}
+.tips{display:flex;flex-direction:column;gap:8px;}
+.tip{display:flex;gap:9px;align-items:flex-start;font-size:clamp(12px,2.2vw,13.5px);line-height:1.45;color:var(--pale);}
+.tip i{flex:0 0 auto;width:20px;height:20px;border-radius:5px;font-style:normal;
+  display:flex;align-items:center;justify-content:center;font-size:11px;
+  background:rgba(255,209,102,.14);color:var(--gold);font-family:var(--mono);font-weight:700;}
+.ctrls{display:grid;grid-template-columns:1fr 1fr;gap:5px 16px;}
+@media(max-width:520px){.ctrls{grid-template-columns:1fr;}}
+.ctrl{display:flex;justify-content:space-between;gap:10px;align-items:center;
+  font-size:11.5px;color:var(--dim);border-bottom:1px dotted rgba(233,224,206,.10);padding-bottom:3px;}
+.ctrl span:last-child{color:var(--pale);text-align:right;}
+kbd{font-family:var(--mono);font-size:10px;background:rgba(233,224,206,.10);border:1px solid rgba(233,224,206,.18);
+  border-radius:4px;padding:1px 5px;margin-right:2px;color:var(--cream);}
+#go,#again{margin-top:16px;width:100%;padding:13px;border-radius:11px;
+  background:linear-gradient(96deg,rgba(255,209,102,.22),rgba(105,182,255,.18));
+  border:1px solid rgba(255,209,102,.42);
+  font-family:var(--mono);font-weight:700;letter-spacing:.2em;font-size:12.5px;color:var(--cream);
+  transition:transform .1s,background .2s;}
+#go:hover,#again:hover{background:linear-gradient(96deg,rgba(255,209,102,.34),rgba(105,182,255,.26));}
+#go:active,#again:active{transform:scale(.985);}
+#pilot{margin-top:9px;text-align:center;font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--faint);}
+
+/* result card */
+#rTitle{font-family:var(--mono);font-size:clamp(9px,1.9vw,11px);letter-spacing:.32em;color:var(--dim);}
+#rBig{font-family:var(--mono);font-weight:700;font-size:clamp(38px,10vw,74px);line-height:1;
+  letter-spacing:-.02em;margin-top:5px;color:var(--gold);}
+#rBig small{font-size:.30em;letter-spacing:.18em;opacity:.6;margin-left:6px;}
+#rSub{margin-top:6px;font-family:var(--mono);font-size:clamp(11px,2.2vw,14px);letter-spacing:.1em;color:var(--pale);}
+#rWhy{margin-top:9px;font-size:13px;line-height:1.5;color:var(--dim);}
+#results{margin-top:14px;display:flex;flex-direction:column;gap:2px;}
+.rrow{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:7px;
+  font-family:var(--mono);font-size:11.5px;background:rgba(255,255,255,.028);}
+.rrow.me{background:rgba(255,209,102,.14);color:var(--cream);}
+.rrow .p{width:16px;color:var(--faint);}
+.rrow.me .p{color:var(--gold);}
+.rrow .chip{width:10px;height:10px;border-radius:2px;}
+.rrow .nm{flex:1;}
+.rrow .tm{color:var(--pale);}
+#stats{margin-top:13px;display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;}
+.st{padding:7px 9px;border:1px solid var(--line);border-radius:8px;}
+.st .k{font-family:var(--mono);font-size:7px;letter-spacing:.2em;color:var(--faint);}
+.st .v{font-family:var(--mono);font-weight:700;font-size:15px;margin-top:2px;color:var(--cream);}
+#ach{margin-top:12px;display:flex;flex-direction:column;gap:6px;}
+.abadge{display:flex;gap:9px;align-items:center;padding:7px 10px;border-radius:8px;
+  background:rgba(255,209,102,.12);border:1px solid rgba(255,209,102,.30);}
+.abadge i{font-style:normal;font-size:15px;}
+.abadge div{font-size:12px;}
+.abadge b{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--gold);}
+.abadge span{color:var(--dim);font-size:11px;}
+
+#fail{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+  background:#0a0e11;padding:24px;text-align:center;}
+#fail.on{display:flex;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="vig"></div>
+  <div id="flash"></div>
+
+  <div id="hud">
+    <div id="tl">
+      <div class="tile pane"><div class="lbl">LAP</div><div class="v" id="lapV">1<small>/3</small></div></div>
+      <div class="tile pane"><div class="lbl">POS</div><div class="v" id="posV">5<small>/5</small></div></div>
+      <div class="tile pane" id="clkBox">
+        <div class="lbl">RACE</div><div class="v" id="clkV">0:00.00</div>
+        <div id="lapTimes"><div>LAST <b id="lastLap">—</b></div><div>BEST <b id="bestLap">—</b></div></div>
+      </div>
+    </div>
+
+    <div id="stand" class="pane"></div>
+
+    <div id="skirtBox" class="pane">
+      <svg id="skirtSvg" viewBox="0 0 100 100" aria-hidden="true">
+        <g id="skirtSegs"></g>
+        <path d="M50 34 L58 44 L58 58 L50 68 L42 58 L42 44 Z" fill="rgba(233,224,206,.22)"/>
+        <circle cx="50" cy="50" r="4.4" fill="none" stroke="rgba(233,224,206,.32)" stroke-width="1.3"/>
+      </svg>
+      <div id="skirtV">100%</div>
+      <div id="skirtL">SKIRT</div>
+    </div>
+
+    <div id="hump" class="pane">
+      <div id="humpRow"><div id="humpT">BOW WAVE</div><div id="humpS">OVER THE HUMP</div></div>
+      <div id="humpBar"><div id="humpHump"></div><div id="humpFill"></div><div id="humpMark"></div></div>
+      <div id="humpFoot"><span>WALLOW</span><span>HUMP 12.5 MPH</span><span>PLANING</span></div>
+    </div>
+
+    <div id="spd"><div id="spdV">0</div><div id="spdU">MPH</div></div>
+
+    <div id="map" class="pane">
+      <svg id="mapSvg" viewBox="0 0 100 100" aria-hidden="true">
+        <path id="mapWater" d="" fill="rgba(79,196,216,.30)" stroke="rgba(79,196,216,.55)" stroke-width="1.1" stroke-linejoin="round"/>
+        <path id="mapTrack" d="" fill="none" stroke="rgba(233,224,206,.30)" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"/>
+        <path id="mapMud" d="" fill="none" stroke="rgba(154,116,68,.85)" stroke-width="3.4" stroke-linecap="round"/>
+        <path id="mapLine" d="" fill="none" stroke="rgba(233,224,206,.16)" stroke-width="1" stroke-dasharray="2 3"/>
+        <line id="mapSF" x1="0" y1="0" x2="0" y2="0" stroke="#fff" stroke-width="1.8"/>
+        <g id="mapDots"></g>
+      </svg>
+    </div>
+
+    <div id="lights">
+      <div class="lamp" id="l0"></div><div class="lamp" id="l1"></div><div class="lamp" id="l2"></div>
+    </div>
+    <div id="bigMsg"></div>
+    <div id="coach"></div>
+  </div>
+
+  <div id="touch">
+    <div id="tSteer"><div id="tSteerIn"><div id="tSteerK"></div><div id="tSteerL">RUDDER</div></div></div>
+    <div id="tBtns">
+      <button class="tb" id="tbThr">THRUST</button>
+      <button class="tb" id="tbRev">BUCKET</button>
+    </div>
+    <div id="tTop">
+      <button class="tbs" id="tbCam">CAM</button>
+      <button class="tbs" id="tbPau">II</button>
+      <button class="tbs" id="tbMut">VOL</button>
+    </div>
+  </div>
+
+  <div id="pauseTag">PAUSED</div>
+
+  <div class="screen on" id="start">
+    <div class="card">
+      <h1>PLENUM</h1>
+      <div id="sub">AMPHIBIOUS CIRCUIT &middot; 3 LAPS &middot; 5 CRAFT</div>
+      <div class="rule"></div>
+      <p>A Formula-class racing hovercraft. Three laps of a real amphibious circuit &mdash; grass, a packed-dirt esse section, a <b>mud bog</b>, and <b>two water crossings</b>. You ride on a cushion of air, so you do not grip the ground: you are a puck with a propeller.</p>
+      <div class="blk">
+        <div class="blkT">TWO THINGS THAT WILL DECIDE YOUR RACE</div>
+        <div class="tips">
+          <div class="tip"><i>1</i><div><b>No brakes &mdash; steer with thrust.</b> The rudder vanes sit in the propeller wash. Off the throttle the nose barely answers. Keep the power on and control your speed with your line.</div></div>
+          <div class="tip"><i>2</i><div><b>Hit the water fast.</b> Below hump speed you are climbing your own bow wave and the drag is enormous. Arrive flying and you skim across; arrive slow and you will wallow while the field skates past.</div></div>
+        </div>
+      </div>
+      <div class="blk">
+        <div class="blkT">CONTROLS &mdash; KEYBOARD ALONE IS ENOUGH</div>
+        <div class="ctrls">
+          <div class="ctrl"><span><kbd>W</kbd> or <kbd>&uarr;</kbd></span><span>thrust</span></div>
+          <div class="ctrl"><span><kbd>S</kbd> or <kbd>&darr;</kbd></span><span>reverse bucket</span></div>
+          <div class="ctrl"><span><kbd>A</kbd><kbd>D</kbd> or <kbd>&larr;</kbd><kbd>&rarr;</kbd></span><span>rudder</span></div>
+          <div class="ctrl"><kbd>C</kbd><span>chase / onboard / trackside</span></div>
+          <div class="ctrl"><kbd>R</kbd><span>restart the race</span></div>
+          <div class="ctrl"><kbd>M</kbd><span>mute</span></div>
+          <div class="ctrl"><span><kbd>P</kbd> or <kbd>ESC</kbd></span><span>pause</span></div>
+          <div class="ctrl"><span>TOUCH</span><span>left pad steers, right buttons drive</span></div>
+        </div>
+      </div>
+      <p style="margin-top:12px;font-size:12.5px;color:var(--dim)">Cumulative impacts tear the skirt. Torn segments sag the cushion, drop your ride height and pile on drag. At zero the craft ploughs in and your race is over.</p>
+      <button id="go">PRESS ANY KEY &middot; TAP TO START</button>
+      <div id="pilot"></div>
+    </div>
+  </div>
+
+  <div class="screen" id="over">
+    <div class="card">
+      <div id="rTitle">RACE OVER</div>
+      <div id="rBig">—</div>
+      <div id="rSub"></div>
+      <div id="rWhy"></div>
+      <div id="results"></div>
+      <div id="stats"></div>
+      <div id="ach"></div>
+      <button id="again">R &middot; RACE AGAIN</button>
+    </div>
+  </div>
+
+  <div id="fail"><p id="failMsg">This game needs WebGL, and your browser could not start it.</p></div>
+</div>
+
+<!-- aimade.games Arcade SDK -->
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+  window.__arcade = null;
+  (function(){ try { Arcade.ready().then(function(a){ window.__arcade = a; }); } catch(e){} })();
+  function arcadeSubmit(score, meta){ try { if (typeof score==='number' && isFinite(score)) Arcade.ready().then(function(a){ a.scores.submit(score, meta||{}); }).catch(function(){}); } catch(e){} }
+  function arcadeUnlock(slug){ try { Arcade.ready().then(function(a){ a.achievements.unlock(slug); }).catch(function(){}); } catch(e){} }
+</script>
+<script>
+(function(){
+  var shown=false;
+  window.__pFail=function(msg){
+    if(shown) return; shown=true;
+    try{
+      var f=document.getElementById('fail');
+      if(msg) document.getElementById('failMsg').textContent=msg;
+      f.classList.add('on');
+    }catch(e){}
+  };
+  window.addEventListener('error',function(e){
+    if(e && e.message && /WebGL|context|three|module|import/i.test(e.message)) window.__pFail();
+  });
+})();
+</script>
+<script type="module">
+import * as THREE from './lib/three.module.min.js';
+
+/*==PHYSICS_CORE_BEGIN==*/
+/* ==================================================================
+   PLENUM — PHYSICS CORE   (pure JS: no THREE, no DOM, no globals)
+   Shared verbatim between games/plenum.html and the Node tuning
+   harness in the scratchpad.
+
+   A Formula-class racing hovercraft on an amphibious circuit.
+
+   Frames
+   ------
+   World: +Y up, water level Y = 0.  Right-handed, as three.js is.
+   Body:  +Z forward (the bow), +Y up, +X therefore PORT — in a
+          right-handed frame the pilot's right hand points along -X.
+   Yaw    psi = atan2(fwd.x, fwd.z).  A POSITIVE torque about body +Y
+          rotates +Z toward +X, i.e. it swings the nose to PORT.  The
+          simulation is entirely consistent in this frame; the single
+          place the handedness matters is the player-facing layer, so
+          readInput() negates the rudder and the skirt diagram and the
+          minimap are laid out from the body vectors rather than by
+          hand.  Nothing in here is mirrored.
+   Pitch  a POSITIVE torque about the body +X axis rotates +Z toward
+          -Y, i.e. NOSE DOWN.
+   Roll   S.roll is positive with the PORT side down.
+
+   What is actually simulated
+   --------------------------
+   * One rigid body, quaternion attitude, diagonal inertia, full Euler
+     cross terms.  Six degrees of freedom.
+   * Eight skirt sample points around the perimeter of the cushion,
+     each a spring-damper against whatever surface is under it
+     (heightfield, or the wave-perturbed water plane).  Ride height,
+     pitch and roll are NEVER animated: they fall out of the eight
+     cushion loads.  Each point belongs to one of the eight skirt
+     segments, so damage to a segment lowers the lift right there and
+     the craft visibly lists.
+   * Drag is surface-weighted per contact point.  Over water the drag
+     follows a real wave-making curve: it climbs from nothing, peaks
+     hard at hump speed, then collapses so the craft runs free on top
+     of its own bow wave.  Below the hump a bow-wave lift force at the
+     forestation pitches the nose up — the plough attitude.
+   * Yaw authority is thrust-borne: the rudder vanes sit in the
+     propeller wash, so the moment is k1*thrust*rudder plus a smaller
+     k2*airspeed^2*rudder from the free stream.  Off throttle at low
+     speed the nose barely answers.  There are no brakes.
+   * Lateral resistance is a weak cushion-scrub term applied at skirt
+     height, below the CG — which is why the craft rolls OUT of a
+     slide, the way a hovercraft really does.
+   ================================================================== */
+
+const DT = 1 / 120;
+const G0 = 9.81;
+const RHO = 1.225;
+
+function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+function smoothstep(a, b, x){
+  if (b === a) return x < a ? 0 : 1;
+  let t = (x - a) / (b - a);
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  return t * t * (3 - 2 * t);
+}
+function lerp(a, b, t){ return a + (b - a) * t; }
+
+/* surface ids */
+const SF_GRASS = 0, SF_DIRT = 1, SF_MUD = 2, SF_WATER = 3, SF_SAND = 4;
+
+/* ==================================================================
+   CRAFT CONSTANTS
+   ================================================================== */
+const C = {
+  /* ---- mass properties.  Formula-class hovercraft, driver aboard. */
+  MASS: 340,
+  IXX: 360,          /* pitch */
+  IYY: 470,          /* yaw   */
+  IZZ: 175,          /* roll  */
+
+  /* ---- lift fan / cushion */
+  H0: 0.325,         /* skirt clearance at which cushion lift is zero */
+  KC: 4300,          /* N/m per skirt point                           */
+  CC: 400,           /* N.s/m per skirt point                         */
+  KHARD: 145000,     /* hull/skirt hard contact                       */
+  CHARD: 9000,
+  MU_HARD: 0.95,     /* friction once the cushion is gone             */
+  FAN_TAU: 1.15,     /* lift fan spool                                */
+  SEG_FLOOR: 0.16,   /* lift left in a totally shredded segment       */
+
+  /* ---- thrust prop */
+  TMAX: 1700,        /* N static                                      */
+  PROP_UP: 0.52, PROP_DN: 0.34,
+  REV_K: 1.42,       /* bucket at full deflection: T -> -0.42*Tmax    */
+  REV_RUD: 0.86,     /* fraction of rudder authority the bucket eats  */
+  THR_Y: 0.30, THR_Z: -1.62,
+
+  /* ---- aerodynamics */
+  CDA: 1.25,         /* Cd*A of hull + driver                         */
+  AERO_Y: 0.16,
+  KRUD1: 0.56,       /* N.m of yaw per N of thrust, full rudder       */
+  KRUD2: 0.88,       /* N.m of yaw per (m/s)^2, full rudder           */
+  CNB: 2.55,         /* weathercock: N.m per rad of sideslip per v^2  */
+  CNR: 1020,          /* yaw rate damping                              */
+  CMQ: 900,          /* pitch rate damping                            */
+  CLP: 420,          /* roll rate damping                             */
+  RUD_TAU: 0.085, RUD_RATE: 4.2,
+  DRV_THR: 0.15, DRV_REV: 0.13, DRV_RUD: 0.10,
+
+  /* ---- surface drag.  D = K1*v + K2*v^2 per unit of nominal
+     skirt contact, summed over the eight points.                     */
+  KG1: 10.0, KG2: 0.35,     /* grass  */
+  KD1: 7.0,  KD2: 0.22,     /* packed dirt — the fastest land         */
+  KS1: 12.0, KS2: 0.40,     /* sand / shingle beach                   */
+  KM1: 96.0, KM2: 2.60,     /* mud bog                                */
+  KW1: 9.0,  KW2: 0.40,     /* water, away from the hump              */
+
+  /* ---- the hump.  Dw = HUMP_A * u^2 * exp(1-u^2),  u = v / HUMP_V.
+     Peaks exactly at HUMP_V and decays fast above it.                */
+  HUMP_V: 5.6,
+  HUMP_A: 1560,
+  BOW_LIFT: 980,     /* N of bow-wave lift at the hump, at z=+1.45    */
+  BOW_Z: 1.45,
+
+  /* ---- lateral cushion scrub: the only "grip" there is */
+  KL1: 48, KL2: 1.60,
+  LAT_Y: -0.30, LAT_Z: -0.10,
+  LAT_GRASS: 1.00, LAT_DIRT: 0.86, LAT_MUD: 2.20, LAT_WATER: 1.90, LAT_SAND: 1.05,
+
+  CF_REF: 2.40,      /* nominal total contact fraction (8 * 0.30)     */
+  DMG_DRAG: 1.30,    /* extra land drag at zero integrity             */
+
+  /* ---- water buoyancy, for when the cushion is dead */
+  KBUOY: 26000, CBUOY: 5200,
+
+  /* ---- collision + damage */
+  RCOL: 0.95,                       /* the three hull circles         */
+  COL_Z: [1.15, 0.0, -1.15],
+  RESTITUTION: 0.34, MU_SCRAPE: 0.42,
+  J_FREE: 150,                      /* impulse below this is free     */
+  K_DMG: 7.4e-5,
+  BUOY_DMG_CAP: 0.022, BUOY_M: 9,
+
+  VLIM: 60, WLIM: 9
+};
+
+/* eight skirt points, one per skirt segment, walking the hem from the
+   starboard bow round to the port bow.  y is the hem below the CG. */
+const SKIRT = [
+  { x: -0.72, y: -0.30, z:  1.55 },   /* 0  bow starboard */
+  { x:  0.72, y: -0.30, z:  1.55 },   /* 1  bow port      */
+  { x:  0.99, y: -0.30, z:  0.55 },   /* 2  fwd port      */
+  { x:  0.99, y: -0.30, z: -0.62 },   /* 3  aft port      */
+  { x:  0.72, y: -0.30, z: -1.58 },   /* 4  stern port    */
+  { x: -0.72, y: -0.30, z: -1.58 },   /* 5  stern stbd    */
+  { x: -0.99, y: -0.30, z: -0.62 },   /* 6  aft starboard */
+  { x: -0.99, y: -0.30, z:  0.55 }    /* 7  fwd starboard */
+];
+/* hull shell points — hard contact only, no cushion.  They are what
+   an inverted or airborne craft lands on, and they guarantee that no
+   attitude can drop the body through the terrain. */
+const HULL = [
+  { x:  0.00, y:  0.86, z: -1.30 },   /* top of the thrust duct */
+  { x: -0.95, y:  0.34, z: -0.20 },
+  { x:  0.95, y:  0.34, z: -0.20 },
+  { x:  0.00, y:  0.46, z:  1.55 },
+  { x:  0.00, y: -0.34, z:  0.00 }
+];
+
+/* outward unit direction of each segment in the body XZ plane —
+   used to decide which segment an impact tore. */
+const SEG_DIR = SKIRT.map(p => {
+  const n = Math.hypot(p.x, p.z) || 1;
+  return { x: p.x / n, z: p.z / n };
+});
+
+/* ==================================================================
+   COURSE AUTHORING
+
+   The circuit is a chain of straights and constant-radius arcs, so the
+   curvature — and therefore the cornering speed — is exactly what it
+   says on the tin.  Angles are degrees, positive = a RIGHT-hand turn.
+   The chain's headings sum to exactly 360; two straight lengths are
+   left free and solved by Newton so the loop closes on itself.
+
+   Per segment: [kind, radius, degrees | length, surface,
+                 halfWidth, [line offsets at t=0,.5,1], elevation]
+   s = 0 is the start/finish line.  The grid sits on the tail of the
+   last segment, behind the line, as a standing start should.
+   ================================================================== */
+const SEG = [
+  /* kind  R     deg/len  surf      w   racing line (t=0,.5,1)      elev */
+  ['L', 0,   130, SF_GRASS, 17, [ 0.00, -0.30, -0.62], 1.0],  /*  0 start straight   */
+  ['A', 100,  70, SF_GRASS, 18, [-0.62,  0.55, -0.10], 1.5],  /*  1 TURN ONE         */
+  ['L', 0,    35, SF_WATER, 22, [-0.10, -0.25, -0.35], 0.9],  /*  2 lake entry       */
+  ['A', 230,  34, SF_WATER, 25, [-0.35, -0.10,  0.20], 0.9],  /*  3 THE LAKE         */
+  ['A', 280, -15, SF_WATER, 25, [ 0.20,  0.05, -0.15], 0.9],  /*  4 lake kink        */
+  ['A', 110,  62, SF_WATER, 20, [-0.15,  0.60,  0.30], 0.9],  /*  5 lake exit        */
+  ['L', 0,    30, SF_DIRT,  18, [ 0.30,  0.10, -0.20], 1.6],  /*  6 onto the dirt    */
+  ['A', 100,  55, SF_DIRT,  17, [-0.20,  0.55,  0.10], 2.7],  /*  7 dirt right       */
+  ['A',  68, -64, SF_DIRT,  16, [ 0.10, -0.62, -0.10], 3.9],  /*  8 ESSE, left       */
+  ['A',  85,  64, SF_DIRT,  16, [-0.10,  0.62,  0.15], 4.2],  /*  9 ESSE, right      */
+  ['A', 105,  52, SF_DIRT,  17, [ 0.15,  0.45, -0.10], 2.6],  /* 10 onto the bottom  */
+  ['L', 0,    35, SF_DIRT,  19, [-0.10, -0.35, -0.55], 1.5],  /* 11 bog approach     */
+  ['A', 480,  12, SF_MUD,   22, [-0.55, -0.68, -0.62], 0.8],  /* 12 THE BOG          */
+  ['L', 0,    55, SF_GRASS, 20, [-0.62, -0.40, -0.15], 0.85], /* 13 bog exit         */
+  ['L', 0,    50, SF_WATER, 20, [-0.15,  0.00,  0.10], 0.9],  /* 14 THE RIVER CUT    */
+  ['A',  95,  60, SF_GRASS, 19, [ 0.10,  0.52,  0.20], 1.0],  /* 15 last corner      */
+  ['A', 150,  30, SF_GRASS, 18, [ 0.20,  0.40,  0.10], 1.0],  /* 16 exit             */
+  ['L', 0,    55, SF_GRASS, 17, [ 0.10,  0.02,  0.00], 1.0]   /* 17 grid straight    */
+];
+const SEG_FREE = [0, 13];        /* the two lengths Newton is allowed to move  */
+const START_X = -215, START_Z = -150, START_PSI = 0;
+const PATH_STEP = 2.0;
+
+const SHORE = 20;        /* metres over which the bed climbs to the bank */
+const BED_Y = -2.40;     /* lake / river bed                             */
+const LAND_MIN = 0.42;
+
+/* walk the chain and report where it ends up */
+function walkChain(len){
+  let x = START_X, z = START_Z, psi = START_PSI, s = 0;
+  const marks = [];
+  for (let i = 0; i < SEG.length; i++){
+    const S = SEG[i];
+    marks.push({ s0: s, x, z, psi });
+    if (S[0] === 'L'){
+      const L = len[i];
+      x += Math.sin(psi) * L; z += Math.cos(psi) * L; s += L;
+    } else {
+      const R = S[1], ang = S[2] * Math.PI / 180;
+      const L = Math.abs(ang) * R;
+      /* centre is to the right for a positive turn */
+      const sg = ang >= 0 ? 1 : -1;
+      const cx = x + Math.cos(psi) * R * sg;
+      const cz = z - Math.sin(psi) * R * sg;
+      const a0 = Math.atan2(z - cz, x - cx);
+      const aEnd = a0 - ang;
+      x = cx + Math.cos(aEnd) * R;
+      z = cz + Math.sin(aEnd) * R;
+      psi += ang;
+      s += L;
+    }
+  }
+  marks.push({ s0: s, x, z, psi });
+  return { x, z, psi, s, marks };
+}
+
+function solveClosure(){
+  const len = SEG.map(S => S[0] === 'L' ? S[2] : Math.abs(S[2]) * Math.PI / 180 * S[1]);
+  const f = () => {
+    const r = walkChain(len);
+    return [r.x - START_X, r.z - START_Z];
+  };
+  for (let it = 0; it < 24; it++){
+    const r0 = f();
+    if (Math.hypot(r0[0], r0[1]) < 1e-6) break;
+    /* numeric Jacobian on the two free lengths */
+    const J = [[0, 0], [0, 0]];
+    for (let k = 0; k < 2; k++){
+      const i = SEG_FREE[k];
+      const save = len[i];
+      len[i] = save + 0.5;
+      const r1 = f();
+      len[i] = save;
+      J[0][k] = (r1[0] - r0[0]) / 0.5;
+      J[1][k] = (r1[1] - r0[1]) / 0.5;
+    }
+    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+    if (Math.abs(det) < 1e-9) break;
+    const d0 = (-r0[0] * J[1][1] + r0[1] * J[0][1]) / det;
+    const d1 = (-r0[1] * J[0][0] + r0[0] * J[1][0]) / det;
+    len[SEG_FREE[0]] = Math.max(20, len[SEG_FREE[0]] + d0);
+    len[SEG_FREE[1]] = Math.max(20, len[SEG_FREE[1]] + d1);
+  }
+  return len;
+}
+
+/* ==================================================================
+   PATH TABLE
+   ================================================================== */
+function key3(k, t){
+  return t < 0.5 ? lerp(k[0], k[1], t * 2) : lerp(k[1], k[2], (t - 0.5) * 2);
+}
+function buildPath(){
+  const len = solveClosure();
+  let total = 0;
+  for (let i = 0; i < SEG.length; i++) total += len[i];
+  const M = Math.max(64, Math.round(total / PATH_STEP));
+  const step = total / M;
+
+  const P = {
+    n: M, step, L: total,
+    x: new Float64Array(M), z: new Float64Array(M), s: new Float64Array(M),
+    tx: new Float64Array(M), tz: new Float64Array(M),
+    nx: new Float64Array(M), nz: new Float64Array(M),
+    w: new Float64Array(M), line: new Float64Array(M), y: new Float64Array(M),
+    surf: new Uint8Array(M), seg: new Uint8Array(M), bar: new Uint8Array(M),
+    curv: new Float64Array(M), vmax: new Float64Array(M),
+    dwater: new Float64Array(M), segS: [], segLen: len
+  };
+
+  /* segment start offsets */
+  let acc = 0;
+  for (let i = 0; i < SEG.length; i++){ P.segS.push(acc); acc += len[i]; }
+  P.segS.push(acc);
+
+  /* exact pose at any arc length: walk the chain analytically, so the
+     loop closes to the Newton tolerance rather than to Euler's */
+  const poseAt = (sw) => {
+    let x = START_X, z = START_Z, psi = START_PSI, rem = sw;
+    for (let k = 0; k < SEG.length; k++){
+      const S = SEG[k];
+      const L = len[k];
+      if (rem > L && k < SEG.length - 1){
+        if (S[0] === 'L'){ x += Math.sin(psi) * L; z += Math.cos(psi) * L; }
+        else {
+          const ang = (S[2] >= 0 ? 1 : -1) * L / S[1];
+          const sg = S[2] >= 0 ? 1 : -1;
+          const cx = x + Math.cos(psi) * S[1] * sg;
+          const cz = z - Math.sin(psi) * S[1] * sg;
+          const a0 = Math.atan2(z - cz, x - cx);
+          const a1 = a0 - ang;
+          x = cx + Math.cos(a1) * S[1]; z = cz + Math.sin(a1) * S[1];
+          psi += ang;
+        }
+        rem -= L;
+        continue;
+      }
+      /* partial */
+      if (S[0] === 'L'){ x += Math.sin(psi) * rem; z += Math.cos(psi) * rem; }
+      else {
+        const sg = S[2] >= 0 ? 1 : -1;
+        const ang = sg * rem / S[1];
+        const cx = x + Math.cos(psi) * S[1] * sg;
+        const cz = z - Math.sin(psi) * S[1] * sg;
+        const a0 = Math.atan2(z - cz, x - cx);
+        const a1 = a0 - ang;
+        x = cx + Math.cos(a1) * S[1]; z = cz + Math.sin(a1) * S[1];
+        psi += ang;
+      }
+      return { x, z, psi, seg: k, t: L > 0 ? clamp(rem / L, 0, 1) : 0 };
+    }
+    return { x, z, psi, seg: SEG.length - 1, t: 1 };
+  };
+  for (let i = 0; i < M; i++){
+    const sw = i * step;
+    const q = poseAt(sw);
+    const S = SEG[q.seg];
+    P.x[i] = q.x; P.z[i] = q.z; P.s[i] = sw;
+    P.tx[i] = Math.sin(q.psi); P.tz[i] = Math.cos(q.psi);
+    P.nx[i] = Math.cos(q.psi); P.nz[i] = -Math.sin(q.psi);
+    P.w[i] = S[4];
+    P.line[i] = key3(S[5], q.t);
+    P.y[i] = S[6];
+    P.surf[i] = S[3];
+    P.seg[i] = q.seg;
+    P.bar[i] = S[3] === SF_WATER ? 0 : 1;
+    P.curv[i] = S[0] === 'A' ? (S[2] >= 0 ? 1 : -1) / S[1] : 0;
+  }
+  /* recentre the circuit on the origin so the heightfield fits snugly */
+  {
+    let mnx = 1e18, mxx = -1e18, mnz = 1e18, mxz = -1e18;
+    for (let i = 0; i < M; i++){
+      if (P.x[i] < mnx) mnx = P.x[i];
+      if (P.x[i] > mxx) mxx = P.x[i];
+      if (P.z[i] < mnz) mnz = P.z[i];
+      if (P.z[i] > mxz) mxz = P.z[i];
+    }
+    const ox = (mnx + mxx) * 0.5, oz = (mnz + mxz) * 0.5;
+    for (let i = 0; i < M; i++){ P.x[i] -= ox; P.z[i] -= oz; }
+  }
+
+  /* smooth width / line / elevation / curvature across the joins */
+  const sm = (arr, r) => {
+    const out = new Float64Array(M);
+    for (let i = 0; i < M; i++){
+      let a = 0, n = 0;
+      for (let k = -r; k <= r; k++){ a += arr[(i + k + M) % M]; n++; }
+      out[i] = a / n;
+    }
+    return out;
+  };
+  P.w.set(sm(P.w, 7));
+  P.line.set(sm(P.line, 5));
+  P.y.set(sm(P.y, 14));
+  P.curv.set(sm(P.curv, 6));
+
+  /* recompute tangents from the smoothed geometry so nothing drifts */
+  for (let i = 0; i < M; i++){
+    const a = (i - 1 + M) % M, b = (i + 1) % M;
+    let tx = P.x[b] - P.x[a], tz = P.z[b] - P.z[a];
+    const L = Math.hypot(tx, tz) || 1;
+    tx /= L; tz /= L;
+    P.tx[i] = tx; P.tz[i] = tz;
+    P.nx[i] = tz; P.nz[i] = -tx;
+  }
+
+  /* barriers fade out either side of a water sector */
+  {
+    const b2 = new Uint8Array(M);
+    const pad = Math.round(8 / step);
+    for (let i = 0; i < M; i++){
+      let ok = 1;
+      for (let k = -pad; k <= pad; k++) if (!P.bar[(i + k + M) % M]) ok = 0;
+      b2[i] = ok;
+    }
+    P.bar.set(b2);
+  }
+
+  /* cornering ceiling, then a backward pass: with no brakes the only
+     way to arrive slow is to have been slow for a while */
+  const A_LAT = 5.0;
+  for (let i = 0; i < M; i++){
+    P.vmax[i] = clamp(Math.sqrt(A_LAT / Math.max(Math.abs(P.curv[i]), 1e-4)), 8, 35);
+  }
+  for (let pass = 0; pass < 4; pass++){
+    for (let i = M - 1; i >= 0; i--){
+      const nxt = (i + 1) % M;
+      const v = Math.sqrt(P.vmax[nxt] * P.vmax[nxt] + 2 * 2.6 * step);
+      if (v < P.vmax[i]) P.vmax[i] = v;
+    }
+  }
+  P.gap = Math.hypot(P.x[0] - P.x[M - 1], P.z[0] - P.z[M - 1]);
+  return P;
+}
+
+/* ==================================================================
+   WATER AND MUD, derived from the finished path so they can never
+   drift out of register with the circuit.
+   ================================================================== */
+let GEO = null;
+
+function polySDF(poly, x, z){
+  /* signed distance to a closed polygon; negative inside */
+  let d = 1e18, inside = false;
+  const n = poly.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++){
+    const ax = poly[i * 2], az = poly[i * 2 + 1];
+    const bx = poly[j * 2], bz = poly[j * 2 + 1];
+    const ex = bx - ax, ez = bz - az;
+    const l2 = ex * ex + ez * ez;
+    let t = l2 > 0 ? ((x - ax) * ex + (z - az) * ez) / l2 : 0;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    const qx = x - (ax + ex * t), qz = z - (az + ez * t);
+    const dd = qx * qx + qz * qz;
+    if (dd < d) d = dd;
+    if (((az > z) !== (bz > z)) && (x < (bx - ax) * (z - az) / (bz - az) + ax)) inside = !inside;
+  }
+  return (inside ? -1 : 1) * Math.sqrt(d);
+}
+function chainSDF(pts, r, x, z){
+  let best = 1e18;
+  for (let i = 0; i < pts.length - 1; i++){
+    const ax = pts[i][0], az = pts[i][1], bx = pts[i + 1][0], bz = pts[i + 1][1];
+    const ex = bx - ax, ez = bz - az;
+    const l2 = ex * ex + ez * ez;
+    let t = l2 > 0 ? ((x - ax) * ex + (z - az) * ez) / l2 : 0;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    const d = Math.hypot(x - (ax + ex * t), z - (az + ez * t));
+    if (d < best) best = d;
+  }
+  return best - r;
+}
+
+function buildGeo(P){
+  const M = P.n;
+  const at = s => {
+    let i = Math.round(s / P.step) % M;
+    if (i < 0) i += M;
+    return i;
+  };
+  /* ---------------- the lake -------------------------------------- */
+  const sA = P.segS[2], sB = P.segS[6];         /* segments 2..5 are water */
+  const TAPER = 34;
+  const inner = [], outer = [];
+  const NS = 56;
+  for (let k = 0; k <= NS; k++){
+    const s = sA - TAPER + (sB - sA + TAPER * 2) * k / NS;
+    const i = at(s);
+    const w = P.w[i];
+    /* how far into the run are we?  0 outside, 1 inside */
+    const g = smoothstep(sA - TAPER, sA + 6, s) * (1 - smoothstep(sB - 6, sB + TAPER, s));
+    const io = lerp(-(w + 52), (w + 15), g);
+    const bulge = Math.pow(Math.sin(Math.PI * clamp((s - sA + TAPER) / (sB - sA + TAPER * 2), 0, 1)), 0.65);
+    const oo = -(w + 52) - bulge * (135 + 42 * Math.sin(s * 0.021 + 1.3) + 26 * Math.sin(s * 0.047 - 0.4));
+    inner.push([P.x[i] + P.nx[i] * io, P.z[i] + P.nz[i] * io]);
+    outer.push([P.x[i] + P.nx[i] * oo, P.z[i] + P.nz[i] * oo]);
+  }
+  const lakePoly = [];
+  for (const p of inner) lakePoly.push(p[0], p[1]);
+  for (let k = outer.length - 1; k >= 0; k--) lakePoly.push(outer[k][0], outer[k][1]);
+
+  /* ---------------- the river ------------------------------------- */
+  /* it leaves the lake, wanders down through the infield, crosses the
+     circuit once at segment 14, and runs away to the south-west.  The
+     route is relaxed away from the track so it can only cross once. */
+  const sR = (P.segS[14] + P.segS[15]) * 0.5;
+  const iR = at(sR);
+  const cx = P.x[iR], cz = P.z[iR];
+  const nx = P.nx[iR], nz = P.nz[iR];        /* right of travel = infield */
+  const tx = P.tx[iR], tz = P.tz[iR];
+  /* infield anchor: a point inside the lake */
+  const iL = at((P.segS[3] + P.segS[4]) * 0.5);
+  const lakeAnchor = [P.x[iL] + P.nx[iL] * -(P.w[iL] + 30), P.z[iL] + P.nz[iL] * -(P.w[iL] + 30)];
+  const outAnchor = [cx - nx * 300 - tx * 150, cz - nz * 300 - tz * 150];
+
+  let route = [];
+  const NR = 22;
+  for (let k = 0; k <= NR; k++){
+    const t = k / NR;
+    route.push([lerp(lakeAnchor[0], cx, t), lerp(lakeAnchor[1], cz, t)]);
+  }
+  /* push the interior nodes away from the circuit, then smooth */
+  for (let it = 0; it < 260; it++){
+    for (let k = 1; k < route.length - 1; k++){
+      const p = route[k];
+      /* clearance target relaxes to zero as we approach the crossing */
+      const f = k / (route.length - 1);
+      const want = 58 * (1 - smoothstep(0.80, 1.0, f));
+      if (want > 1){
+        let bd = 1e18, bx = 0, bz2 = 0;
+        for (let i = 0; i < M; i += 2){
+          const dx = p[0] - P.x[i], dz = p[1] - P.z[i];
+          const d = dx * dx + dz * dz;
+          if (d < bd){ bd = d; bx = dx; bz2 = dz; }
+        }
+        const d = Math.sqrt(bd) || 1;
+        const need = want + P.w[0];
+        if (d < need){
+          const push = (need - d) * 0.30;
+          p[0] += bx / d * push; p[1] += bz2 / d * push;
+        }
+      }
+      /* smoothing */
+      const a = route[k - 1], b = route[k + 1];
+      p[0] += ((a[0] + b[0]) * 0.5 - p[0]) * 0.16;
+      p[1] += ((a[1] + b[1]) * 0.5 - p[1]) * 0.16;
+    }
+  }
+  /* the far leg, straight out of the crossing */
+  const tail = [];
+  const NT = 8;
+  for (let k = 1; k <= NT; k++){
+    const t = k / NT;
+    tail.push([lerp(cx, outAnchor[0], t) + 26 * Math.sin(t * 3.1),
+               lerp(cz, outAnchor[1], t) - 18 * Math.sin(t * 2.2)]);
+  }
+  route = route.concat(tail);
+
+  GEO = { lakePoly, river: route, riverR: 30, P };
+  return GEO;
+}
+
+function getGeo(){ return GEO; }
+function waterSDF(x, z){
+  if (!GEO) return 1e9;
+  const a = polySDF(GEO.lakePoly, x, z);
+  const b = chainSDF(GEO.river, GEO.riverR, x, z);
+  return a < b ? a : b;
+}
+/* the bog: everything inside the bog segment from a scalloped line
+   across the track, inward.  The clean strip is the outside. */
+function mudSDF(x, z, W){
+  if (!GEO) return 1e9;
+  const P = GEO.P;
+  const q = nearestPathRaw(W || { P }, x, z);
+  const s0 = P.segS[12] - 16, s1 = P.segS[13] + 12;
+  if (q.s < s0 || q.s > s1) return 1e9;
+  const edge = (-0.10 - 0.10 * Math.sin(q.s * 0.075 + 1.1)) * q.w;
+  const along = Math.min(q.s - s0, s1 - q.s);
+  /* intersection of three half-spaces: inside the along range, on the
+     infield side of the scalloped edge, and not out in the next field */
+  return Math.max(edge - q.lat, 12 - along, q.lat - (q.w + 64));
+}
+function hillsNear(x, z){
+  return 1.10 * Math.sin(x * 0.0062 + 0.7) * Math.cos(z * 0.0071 - 0.4)
+       + 0.55 * Math.sin(x * 0.0131 - 1.2) * Math.sin(z * 0.0107 + 2.1)
+       + 0.28 * Math.sin((x + z) * 0.0193 + 0.3);
+}
+function hillsFar(x, z){
+  return 3.4 + 3.1 * Math.sin(x * 0.0043 - 1.1) * Math.cos(z * 0.0037 + 0.6)
+       + 1.9 * Math.sin((x - z) * 0.0068 + 2.2)
+       + 0.9 * Math.sin(x * 0.0152 + 0.4) * Math.sin(z * 0.0141 - 1.3);
+}
+
+/* ==================================================================
+   WORLD BUILD
+   ================================================================== */
+const HF_X0 = -390, HF_Z0 = -390, HF_CELL = 2.0, HF_N = 391;
+const NG_CELL = 6.0, NG_N = 131, NG_X0 = -390, NG_Z0 = -390;
+
+function newWorld(){
+  const P = buildPath();
+  buildGeo(P);
+  const W = { P, L: P.L };
+
+  /* coarse nearest-sample grid so nearestPath() is O(1) from cold */
+  const near = new Uint16Array(NG_N * NG_N);
+  for (let iz = 0; iz < NG_N; iz++){
+    const cz = NG_Z0 + iz * NG_CELL;
+    for (let ix = 0; ix < NG_N; ix++){
+      const cx = NG_X0 + ix * NG_CELL;
+      let bd = 1e18, bi = 0;
+      for (let i = 0; i < P.n; i += 3){
+        const dx = cx - P.x[i], dz = cz - P.z[i];
+        const d = dx * dx + dz * dz;
+        if (d < bd){ bd = d; bi = i; }
+      }
+      /* refine */
+      for (let k = -3; k <= 3; k++){
+        const i = (bi + k + P.n) % P.n;
+        const dx = cx - P.x[i], dz = cz - P.z[i];
+        const d = dx * dx + dz * dz;
+        if (d < bd){ bd = d; bi = i; }
+      }
+      near[iz * NG_N + ix] = bi;
+    }
+  }
+  W.near = near;
+
+  /* distance-to-water along the path, used by the AI to line up a run */
+  {
+    const M = P.n;
+    const isW = new Uint8Array(M);
+    for (let i = 0; i < M; i++) isW[i] = waterSDF(P.x[i], P.z[i]) < -2 ? 1 : 0;
+    for (let i = 0; i < M; i++) P.dwater[i] = 1e9;
+    for (let pass = 0; pass < 2; pass++){
+      for (let i = M - 1; i >= 0; i--){
+        const nxt = (i + 1) % M;
+        P.dwater[i] = isW[i] ? 0 : Math.min(P.dwater[i], P.dwater[nxt] + P.step);
+      }
+    }
+    P.isWater = isW;
+  }
+
+  /* heightfield + surface grid */
+  const h = new Float32Array(HF_N * HF_N);
+  const sf = new Uint8Array(HF_N * HF_N);
+  for (let iz = 0; iz < HF_N; iz++){
+    const z = HF_Z0 + iz * HF_CELL;
+    for (let ix = 0; ix < HF_N; ix++){
+      const x = HF_X0 + ix * HF_CELL;
+      const idx = iz * HF_N + ix;
+      const q = nearestPathRaw(W, x, z);
+      const alat = Math.abs(q.lat);
+      const over = alat - q.w;
+
+      let land = 1.0 + hillsNear(x, z);
+      const flat = 1 - smoothstep(q.w + 8, q.w + 40, alat);
+      land = land + (q.y - land) * flat;
+      if (over > 0){
+        const bank = Math.min(2.6, 0.055 * Math.pow(over, 1.45));
+        land += bank * (1 - smoothstep(30, 78, over));
+      }
+      land += smoothstep(70, 250, alat) * hillsFar(x, z);
+      if (land < LAND_MIN) land = LAND_MIN;
+
+      const wsd = waterSDF(x, z);
+      const wm = clamp(-wsd / SHORE, 0, 1);
+      const wms = wm * wm * (3 - 2 * wm);
+      const y = land * (1 - wms) + BED_Y * wms;
+      h[idx] = y;
+
+      let id;
+      if (y < -0.02) id = SF_WATER;
+      else if (wms > 0.015) id = SF_SAND;
+      else if (mudSDF(x, z, W) < 0) id = SF_MUD;
+      else if (q.surf === SF_DIRT && alat < q.w + 10) id = SF_DIRT;
+      else id = SF_GRASS;
+      sf[idx] = id;
+    }
+  }
+  W.h = h; W.sf = sf;
+
+  /* buoys along the water sectors + a few corner gates */
+  const buoys = [];
+  {
+    const M = P.n;
+    let acc = 1e9;
+    for (let i = 0; i < M; i++){
+      const water = P.isWater[i];
+      const nearWater = water || (P.dwater[i] < 26) ||
+        (P.dwater[(i + Math.round(26 / P.step)) % M] < 2);
+      if (!nearWater){ acc = 1e9; continue; }
+      acc += P.step;
+      if (acc < 21) continue;
+      acc = 0;
+      for (let sgn = -1; sgn <= 1; sgn += 2){
+        const bx = P.x[i] + P.nx[i] * P.w[i] * sgn;
+        const bz = P.z[i] + P.nz[i] * P.w[i] * sgn;
+        buoys.push({ x: bx, z: bz, x0: bx, z0: bz, vx: 0, vz: 0, spin: 0, sp: 0,
+                     col: sgn > 0 ? 1 : 0, s: P.s[i] });
+      }
+    }
+    /* gate buoys at the two water entries and exits, in the middle */
+    for (let i = 0; i < M; i++){
+      const nxt = (i + 1) % M;
+      if (P.isWater[i] !== P.isWater[nxt]){
+        for (let sgn = -1; sgn <= 1; sgn += 2){
+          const bx = P.x[i] + P.nx[i] * P.w[i] * sgn * 0.55;
+          const bz = P.z[i] + P.nz[i] * P.w[i] * sgn * 0.55;
+          buoys.push({ x: bx, z: bz, x0: bx, z0: bz, vx: 0, vz: 0, spin: 0, sp: 0,
+                       col: 2, s: P.s[i] });
+        }
+      }
+    }
+  }
+  W.buoys = buoys;
+
+  /* a handful of solid obstacles, as oriented boxes */
+  const obs = [];
+  function addObs(x, z, hw, hl, rot, kind){
+    obs.push({ x, z, hw, hl, rot, c: Math.cos(rot), s: Math.sin(rot), kind });
+  }
+  {
+    /* start gantry pylons, just outside the barriers */
+    const i0 = 0;
+    for (let sgn = -1; sgn <= 1; sgn += 2){
+      addObs(P.x[i0] + P.nx[i0] * (P.w[i0] + 4.6) * sgn,
+             P.z[i0] + P.nz[i0] * (P.w[i0] + 4.6) * sgn,
+             1.0, 1.0, Math.atan2(P.tx[i0], P.tz[i0]), 1);
+    }
+    /* bale stacks on the inside of two esse apexes */
+    const apex = [];
+    for (let i = 0; i < P.n; i++){
+      if (P.surf[i] === SF_DIRT && Math.abs(P.curv[i]) > 0.010) apex.push(i);
+    }
+    let last = -999;
+    for (const i of apex){
+      if (i - last < 22) continue;
+      last = i;
+      const sgn = P.curv[i] > 0 ? 1 : -1;
+      addObs(P.x[i] + P.nx[i] * (P.w[i] + 3.4) * sgn,
+             P.z[i] + P.nz[i] * (P.w[i] + 3.4) * sgn,
+             1.3, 2.6, Math.atan2(P.tx[i], P.tz[i]), 0);
+    }
+  }
+  W.obs = obs;
+
+  /* checkpoints */
+  W.cp = [];
+  const NCP = 8;
+  for (let k = 0; k < NCP; k++) W.cp.push(P.L * k / NCP);
+  W.ncp = NCP;
+
+  /* the finish line plane */
+  W.finS = 0;
+  return W;
+}
+
+/* ---- nearest point on the centreline ----------------------------- */
+function nearestPathRaw(W, x, z){
+  const P = W.P;
+  let bi = 0;
+  if (W.near){
+    let ix = Math.round((x - NG_X0) / NG_CELL), iz = Math.round((z - NG_Z0) / NG_CELL);
+    ix = clamp(ix, 0, NG_N - 1); iz = clamp(iz, 0, NG_N - 1);
+    bi = W.near[iz * NG_N + ix];
+    let bd = 1e18;
+    for (let k = -14; k <= 14; k++){
+      const i = (bi + k + P.n) % P.n;
+      const dx = x - P.x[i], dz = z - P.z[i];
+      const d = dx * dx + dz * dz;
+      if (d < bd){ bd = d; bi = i; }
+    }
+  } else {
+    let bd = 1e18;
+    for (let i = 0; i < P.n; i++){
+      const dx = x - P.x[i], dz = z - P.z[i];
+      const d = dx * dx + dz * dz;
+      if (d < bd){ bd = d; bi = i; }
+    }
+  }
+  const dx = x - P.x[bi], dz = z - P.z[bi];
+  const along = dx * P.tx[bi] + dz * P.tz[bi];
+  const lat = dx * P.nx[bi] + dz * P.nz[bi];
+  let s = P.s[bi] + along;
+  if (s < 0) s += P.L;
+  if (s >= P.L) s -= P.L;
+  return { i: bi, lat, s, w: P.w[bi], y: P.y[bi], surf: P.surf[bi], bar: P.bar[bi] };
+}
+/* warm version: start from a known index (craft move continuously) */
+function nearestPath(W, x, z, hint){
+  const P = W.P;
+  if (hint === undefined || hint < 0) return nearestPathRaw(W, x, z);
+  let bi = hint, bd = 1e18;
+  for (let k = -30; k <= 30; k++){
+    const i = (hint + k + P.n) % P.n;
+    const dx = x - P.x[i], dz = z - P.z[i];
+    const d = dx * dx + dz * dz;
+    if (d < bd){ bd = d; bi = i; }
+  }
+  if (bd > 3600) return nearestPathRaw(W, x, z);
+  const dx = x - P.x[bi], dz = z - P.z[bi];
+  const along = dx * P.tx[bi] + dz * P.tz[bi];
+  const lat = dx * P.nx[bi] + dz * P.nz[bi];
+  let s = P.s[bi] + along;
+  if (s < 0) s += P.L;
+  if (s >= P.L) s -= P.L;
+  return { i: bi, lat, s, w: P.w[bi], y: P.y[bi], surf: P.surf[bi], bar: P.bar[bi] };
+}
+
+/* ---- field sampling ---------------------------------------------- */
+function terrainH(W, x, z){
+  const fx = (x - HF_X0) / HF_CELL, fz = (z - HF_Z0) / HF_CELL;
+  let ix = Math.floor(fx), iz = Math.floor(fz);
+  if (ix < 0) ix = 0; if (ix > HF_N - 2) ix = HF_N - 2;
+  if (iz < 0) iz = 0; if (iz > HF_N - 2) iz = HF_N - 2;
+  const tx = clamp(fx - ix, 0, 1), tz = clamp(fz - iz, 0, 1);
+  const h = W.h, r0 = iz * HF_N + ix, r1 = r0 + HF_N;
+  const a = h[r0] + (h[r0 + 1] - h[r0]) * tx;
+  const b = h[r1] + (h[r1 + 1] - h[r1]) * tx;
+  return a + (b - a) * tz;
+}
+function surfAt(W, x, z){
+  let ix = Math.round((x - HF_X0) / HF_CELL), iz = Math.round((z - HF_Z0) / HF_CELL);
+  ix = clamp(ix, 0, HF_N - 1); iz = clamp(iz, 0, HF_N - 1);
+  return W.sf[iz * HF_N + ix];
+}
+/* the height of whatever holds the craft up at this spot */
+function supportH(W, x, z, t){
+  return surfAt(W, x, z) === SF_WATER ? waveH(x, z, t) : terrainH(W, x, z);
+}
+function waveH(x, z, t){
+  return 0.052 * Math.sin(x * 0.085 + t * 1.15)
+       + 0.038 * Math.sin(z * 0.071 - t * 0.93)
+       + 0.024 * Math.sin((x + z) * 0.043 + t * 0.61)
+       + 0.014 * Math.sin((x - z) * 0.121 - t * 1.70);
+}
+
+/* ==================================================================
+   QUATERNIONS
+   ================================================================== */
+function qRot(q, vx, vy, vz, out){
+  const x = q[0], y = q[1], z = q[2], w = q[3];
+  const tx = 2 * (y * vz - z * vy);
+  const ty = 2 * (z * vx - x * vz);
+  const tz = 2 * (x * vy - y * vx);
+  out[0] = vx + w * tx + (y * tz - z * ty);
+  out[1] = vy + w * ty + (z * tx - x * tz);
+  out[2] = vz + w * tz + (x * ty - y * tx);
+  return out;
+}
+function qInvRot(q, vx, vy, vz, out){
+  const x = -q[0], y = -q[1], z = -q[2], w = q[3];
+  const tx = 2 * (y * vz - z * vy);
+  const ty = 2 * (z * vx - x * vz);
+  const tz = 2 * (x * vy - y * vx);
+  out[0] = vx + w * tx + (y * tz - z * ty);
+  out[1] = vy + w * ty + (z * tx - x * tz);
+  out[2] = vz + w * tz + (x * ty - y * tx);
+  return out;
+}
+function qNorm(q){
+  const n = Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+  if (!(n > 1e-9)){ q[0] = 0; q[1] = 0; q[2] = 0; q[3] = 1; return; }
+  q[0] /= n; q[1] /= n; q[2] /= n; q[3] /= n;
+}
+function qIntegrate(q, wx, wy, wz, dt){
+  const x = q[0], y = q[1], z = q[2], w = q[3];
+  const hx = wx * 0.5 * dt, hy = wy * 0.5 * dt, hz = wz * 0.5 * dt;
+  q[0] = x + ( w * hx + y * hz - z * hy);
+  q[1] = y + ( w * hy + z * hx - x * hz);
+  q[2] = z + ( w * hz + x * hy - y * hx);
+  q[3] = w + (-x * hx - y * hy - z * hz);
+  qNorm(q);
+}
+function qFromYaw(psi){
+  const h = psi * 0.5;
+  return [0, Math.sin(h), 0, Math.cos(h)];
+}
+
+/* ==================================================================
+   CRAFT STATE
+   ================================================================== */
+function newCraft(x, z, yaw, y){
+  return {
+    px: x, py: (y === undefined ? 1.2 : y), pz: z,
+    vx: 0, vy: 0, vz: 0,
+    q: qFromYaw(yaw),
+    wx: 0, wy: 0, wz: 0,
+    thrIn: 0, revIn: 0, rudIn: 0,
+    prop: 0.05, fan: 0, rud: 0,
+    seg: [1, 1, 1, 1, 1, 1, 1, 1],
+    integrity: 1,
+    t: 0,
+    /* diagnostics the game layer reads */
+    spd: 0, fwdU: 0, latV: 0, slip: 0, yawA: 0, pitch: 0, roll: 0,
+    gap: [0, 0, 0, 0, 0, 0, 0, 0], load: [0, 0, 0, 0, 0, 0, 0, 0],
+    ride: 0, cf: 0, wWater: 0, wMud: 0, wLand: 0, wDirt: 0, wGrass: 0,
+    thrust: 0, humpF: 0, overWater: 0, wallow: 0, dragTot: 0,
+    hardN: 0, hit: 0, hitMag: 0, hitNx: 0, hitNz: 0, buoyHit: 0,
+    dead: 0, deadT: 0, righting: 0, badT: 0,
+    pathI: -1, s: 0, lat: 0, lap: 0, prog: 0, cpNext: 0,
+    surf: SF_GRASS, hold: null, ai: null
+  };
+}
+
+const _a = [0, 0, 0], _b = [0, 0, 0], _c = [0, 0, 0], _d = [0, 0, 0], _e = [0, 0, 0];
+
+function craftIntegrity(S){
+  let a = 0;
+  for (let i = 0; i < 8; i++) a += S.seg[i];
+  return a / 8;
+}
+
+function damageSeg(S, bodyDirX, bodyDirZ, amount){
+  /* find the skirt segment whose outward direction best matches */
+  let bi = 0, bd = -2;
+  for (let i = 0; i < 8; i++){
+    const d = SEG_DIR[i].x * bodyDirX + SEG_DIR[i].z * bodyDirZ;
+    if (d > bd){ bd = d; bi = i; }
+  }
+  const l = (bi + 7) % 8, r = (bi + 1) % 8;
+  S.seg[bi] = clamp(S.seg[bi] - amount * 0.70, 0, 1);
+  S.seg[l] = clamp(S.seg[l] - amount * 0.15, 0, 1);
+  S.seg[r] = clamp(S.seg[r] - amount * 0.15, 0, 1);
+  S.integrity = craftIntegrity(S);
+  return bi;
+}
+
+/* impulse at a world offset r from the CG */
+function applyImpulse(S, rx, ry, rz, nx, ny, nz, e, mu, kExtra){
+  const kx = kExtra || 0;
+  const q = S.q;
+  /* world angular velocity */
+  qRot(q, S.wx, S.wy, S.wz, _d);
+  const owx = _d[0], owy = _d[1], owz = _d[2];
+  const cvx = S.vx + (owy * rz - owz * ry);
+  const cvy = S.vy + (owz * rx - owx * rz);
+  const cvz = S.vz + (owx * ry - owy * rx);
+  const vn = cvx * nx + cvy * ny + cvz * nz;
+  if (vn >= 0) return 0;
+
+  /* effective mass along n:  1/m + n . (I^-1 (r x n)) x r   */
+  const rnx = ry * nz - rz * ny;
+  const rny = rz * nx - rx * nz;
+  const rnz = rx * ny - ry * nx;
+  qInvRot(q, rnx, rny, rnz, _e);
+  const bx = _e[0] / C.IXX, by = _e[1] / C.IYY, bz = _e[2] / C.IZZ;
+  qRot(q, bx, by, bz, _b);
+  const ax = _b[1] * rz - _b[2] * ry;
+  const ay = _b[2] * rx - _b[0] * rz;
+  const az = _b[0] * ry - _b[1] * rx;
+  const kn = 1 / C.MASS + kx + (ax * nx + ay * ny + az * nz);
+  const jn = -(1 + e) * vn / Math.max(kn, 1e-6);
+
+  /* tangential scrape */
+  let tvx = cvx - vn * nx, tvy = cvy - vn * ny, tvz = cvz - vn * nz;
+  const tl = Math.hypot(tvx, tvy, tvz);
+  let jt = 0, tx = 0, ty = 0, tz2 = 0;
+  if (tl > 0.05){
+    tx = tvx / tl; ty = tvy / tl; tz2 = tvz / tl;
+    const rtx = ry * tz2 - rz * ty;
+    const rty = rz * tx - rx * tz2;
+    const rtz = rx * ty - ry * tx;
+    qInvRot(q, rtx, rty, rtz, _e);
+    const b2x = _e[0] / C.IXX, b2y = _e[1] / C.IYY, b2z = _e[2] / C.IZZ;
+    qRot(q, b2x, b2y, b2z, _b);
+    const a2x = _b[1] * rz - _b[2] * ry;
+    const a2y = _b[2] * rx - _b[0] * rz;
+    const a2z = _b[0] * ry - _b[1] * rx;
+    const kt = 1 / C.MASS + kx + (a2x * tx + a2y * ty + a2z * tz2);
+    jt = -tl / Math.max(kt, 1e-6);
+    const lim = mu * jn;
+    if (jt < -lim) jt = -lim;
+  }
+
+  const ix = jn * nx + jt * tx, iy = jn * ny + jt * ty, iz = jn * nz + jt * tz2;
+  S.vx += ix / C.MASS; S.vy += iy / C.MASS; S.vz += iz / C.MASS;
+  const trx = ry * iz - rz * iy;
+  const trY = rz * ix - rx * iz;
+  const trz = rx * iy - ry * ix;
+  qInvRot(q, trx, trY, trz, _e);
+  S.wx += _e[0] / C.IXX; S.wy += _e[1] / C.IYY; S.wz += _e[2] / C.IZZ;
+  return jn;
+}
+
+/* ==================================================================
+   THE STEP
+   In = { thr:0..1, rev:0..1, rud:-1..1, hold:0|1 }
+   ================================================================== */
+function physStep(S, W, In, dt){
+  const q = S.q;
+  qRot(q, 1, 0, 0, _a); const rx = _a[0], ry = _a[1], rz = _a[2];
+  qRot(q, 0, 1, 0, _b); const ux = _b[0], uy = _b[1], uz = _b[2];
+  qRot(q, 0, 0, 1, _c); const fx = _c[0], fy = _c[1], fz = _c[2];
+
+  S.pitch = Math.asin(clamp(fy, -1, 1));
+  /* roll, positive = starboard side down (banked right) */
+  S.roll = -Math.atan2(ry, uy === 0 ? 1e-6 : uy);
+  S.yawA = Math.atan2(fx, fz);
+
+  const m = C.MASS;
+
+  /* ---- driver + machine lags ---------------------------------- */
+  const tIn = clamp(In.thr || 0, 0, 1);
+  const vIn = clamp(In.rev || 0, 0, 1);
+  const rIn = clamp(In.rud || 0, -1, 1);
+  S.thrIn += (tIn - S.thrIn) * (1 - Math.exp(-dt / C.DRV_THR));
+  S.revIn += (vIn - S.revIn) * (1 - Math.exp(-dt / C.DRV_REV));
+  S.rudIn += (rIn - S.rudIn) * (1 - Math.exp(-dt / C.DRV_RUD));
+
+  const propCmd = Math.max(S.thrIn, S.revIn);
+  const ptau = propCmd > S.prop ? C.PROP_UP : C.PROP_DN;
+  S.prop += (propCmd - S.prop) * (1 - Math.exp(-dt / ptau));
+  if (S.prop < 0.05) S.prop = 0.05;
+  S.fan += (1 - S.fan) * (1 - Math.exp(-dt / C.FAN_TAU));
+
+  /* rudder vane: first-order lag plus a rate limit */
+  {
+    const step = C.RUD_RATE * dt;
+    let d = S.rudIn - S.rud;
+    const lag = 1 - Math.exp(-dt / C.RUD_TAU);
+    d *= lag;
+    S.rud += clamp(d, -step, step);
+    S.rud = clamp(S.rud, -1, 1);
+  }
+
+  /* ---- kinematics --------------------------------------------- */
+  const vx = S.vx, vy = S.vy, vz = S.vz;
+  const spd2 = vx * vx + vy * vy + vz * vz;
+  const spd = Math.sqrt(spd2);
+  S.spd = spd;
+  const hspd = Math.hypot(vx, vz);
+  const ih = hspd > 0.02 ? 1 / hspd : 0;
+  const hx = vx * ih, hz = vz * ih;
+  const u = vx * fx + vy * fy + vz * fz;
+  S.fwdU = u;
+  const latV = vx * rx + vy * ry + vz * rz;
+  S.latV = latV;
+  S.slip = hspd > 1.2 ? Math.atan2(latV, u) : 0;
+
+  qRot(q, S.wx, S.wy, S.wz, _d);
+  const owx = _d[0], owy = _d[1], owz = _d[2];
+
+  let Fx = 0, Fy = 0, Fz = 0;
+  let Tx = 0, Ty = 0, Tz = 0;
+  const fbv = [0, 0, 0];
+  function addForce(rbx, rby, rbz, wfx, wfy, wfz){
+    Fx += wfx; Fy += wfy; Fz += wfz;
+    qInvRot(q, wfx, wfy, wfz, fbv);
+    Tx += rby * fbv[2] - rbz * fbv[1];
+    Ty += rbz * fbv[0] - rbx * fbv[2];
+    Tz += rbx * fbv[1] - rby * fbv[0];
+  }
+
+  /* ---- cushion ------------------------------------------------- */
+  const deadF = S.dead ? Math.max(0, 1 - S.deadT / 0.8) : 1;
+  const fanP = S.fan * deadF;
+  let cfTot = 0, wG = 0, wD = 0, wM = 0, wW = 0, wS = 0;
+  let rideSum = 0, rideN = 0, hardN = 0, waterPts = 0, minGap = 9;
+
+  for (let i = 0; i < 8; i++){
+    const P = SKIRT[i];
+    qRot(q, P.x, P.y, P.z, _a);
+    const wrx = _a[0], wry = _a[1], wrz = _a[2];
+    const pwx = S.px + wrx, pwy = S.py + wry, pwz = S.pz + wrz;
+
+    const sid = surfAt(W, pwx, pwz);
+    let sy;
+    if (sid === SF_WATER){ sy = waveH(pwx, pwz, S.t); waterPts++; }
+    else sy = terrainH(W, pwx, pwz);
+
+    const gap = pwy - sy;
+    S.gap[i] = gap;
+    if (gap < minGap) minGap = gap;
+
+    const pvx = vx + (owy * wrz - owz * wry);
+    const pvy = vy + (owz * wrx - owx * wrz);
+    const pvz = vz + (owx * wry - owy * wrx);
+
+    let Ly = 0;
+    const eff = fanP * (C.SEG_FLOOR + (1 - C.SEG_FLOOR) * S.seg[i]);
+    if (gap < C.H0){
+      const comp = C.H0 - gap;
+      Ly = C.KC * comp * eff - C.CC * pvy * eff * Math.min(1, comp / 0.05);
+      if (Ly < 0) Ly = 0;
+    }
+    /* hard contact when the hem is actually through the surface */
+    if (gap < 0){
+      let N = C.KHARD * Math.min(-gap, 0.55) - C.CHARD * pvy;
+      if (N < 0) N = 0;
+      if (sid === SF_WATER){
+        /* water: buoyancy, not a wall */
+        N = C.KBUOY * Math.min(-gap, 0.7) - C.CBUOY * pvy;
+        if (N < 0) N = 0;
+        const kd = 620 * Math.min(-gap, 0.7);
+        addForce(P.x, P.y, P.z, -kd * pvx, 0, -kd * pvz);
+      } else {
+        const vh = Math.hypot(pvx, pvz);
+        if (vh > 0.05){
+          const mu = C.MU_HARD * N / vh;
+          addForce(P.x, P.y, P.z, -mu * pvx, 0, -mu * pvz);
+        }
+      }
+      hardN += N;
+      Ly += N;
+    }
+    S.load[i] = Ly;
+    addForce(P.x, P.y, P.z, 0, Ly, 0);
+
+    const cf = clamp((C.H0 - gap) / C.H0, 0, 1);
+    cfTot += cf;
+    if (sid === SF_WATER) wW += cf;
+    else if (sid === SF_MUD) wM += cf;
+    else if (sid === SF_DIRT) wD += cf;
+    else if (sid === SF_SAND) wS += cf;
+    else wG += cf;
+    if (gap < C.H0 * 1.6){ rideSum += gap; rideN++; }
+  }
+  /* hull shell — hard contact only, so no attitude can fall through */
+  for (let i = 0; i < HULL.length; i++){
+    const P = HULL[i];
+    qRot(q, P.x, P.y, P.z, _a);
+    const wrx = _a[0], wry = _a[1], wrz = _a[2];
+    const pwx = S.px + wrx, pwy = S.py + wry, pwz = S.pz + wrz;
+    const sid = surfAt(W, pwx, pwz);
+    const sy = sid === SF_WATER ? waveH(pwx, pwz, S.t) : terrainH(W, pwx, pwz);
+    const pen = sy - pwy;
+    if (pen <= 0) continue;
+    const pvx = vx + (owy * wrz - owz * wry);
+    const pvy = vy + (owz * wrx - owx * wrz);
+    const pvz = vz + (owx * wry - owy * wrx);
+    let N, mu;
+    if (sid === SF_WATER){
+      N = C.KBUOY * Math.min(pen, 0.8) - C.CBUOY * pvy;
+      mu = 0;
+      const kd = 700 * Math.min(pen, 0.8);
+      addForce(P.x, P.y, P.z, -kd * pvx, 0, -kd * pvz);
+    } else {
+      N = C.KHARD * Math.min(pen, 0.6) - C.CHARD * pvy;
+      mu = C.MU_HARD;
+    }
+    if (N < 0) N = 0;
+    hardN += N;
+    const vh = Math.hypot(pvx, pvz);
+    if (mu > 0 && vh > 0.05){
+      const f = mu * N / vh;
+      addForce(P.x, P.y, P.z, -f * pvx, N, -f * pvz);
+    } else {
+      addForce(P.x, P.y, P.z, 0, N, 0);
+    }
+  }
+
+  S.cf = cfTot;
+  S.ride = rideN ? rideSum / rideN : C.H0;
+  S.hardN = hardN;
+  S.wWater = wW; S.wMud = wM; S.wDirt = wD; S.wGrass = wG + wS;
+  S.overWater = waterPts >= 5 ? 1 : 0;
+  S.surf = wW > cfTot * 0.5 ? SF_WATER
+         : wM > cfTot * 0.4 ? SF_MUD
+         : wD > cfTot * 0.5 ? SF_DIRT : SF_GRASS;
+
+  /* ---- surface drag -------------------------------------------- */
+  const dmgMul = 1 + C.DMG_DRAG * (1 - S.integrity);
+  const v = hspd;
+  const humpU = C.HUMP_V > 0 ? Math.max(v, 0) / C.HUMP_V : 0;
+  const humpF = humpU * humpU * Math.exp(1 - humpU * humpU);
+  S.humpF = humpF;
+  let D = 0;
+  const inv = 1 / C.CF_REF;
+  D += wG * (C.KG1 * v + C.KG2 * v * v) * inv * dmgMul;
+  D += wD * (C.KD1 * v + C.KD2 * v * v) * inv * dmgMul;
+  D += wS * (C.KS1 * v + C.KS2 * v * v) * inv * dmgMul;
+  D += wM * (C.KM1 * v + C.KM2 * v * v) * inv * dmgMul;
+  D += wW * (C.HUMP_A * humpF + C.KW1 * v + C.KW2 * v * v) * inv;
+  S.dragTot = D;
+  if (D > 0 && ih){
+    addForce(0, C.LAT_Y, 0, -D * hx, 0, -D * hz);
+  }
+  /* wallow flag: over water and stuck on the wrong side of the hump */
+  S.wallow = (wW > cfTot * 0.45 && v < C.HUMP_V * 1.35) ? 1 : 0;
+
+  /* bow-wave lift: the plough attitude, and it vanishes over the hump */
+  if (wW > 0.02){
+    const BL = C.BOW_LIFT * humpF * (wW * inv);
+    addForce(0, C.LAT_Y, C.BOW_Z, 0, BL, 0);
+  }
+
+  /* ---- lateral cushion scrub ----------------------------------- */
+  {
+    let lf = C.LAT_GRASS;
+    if (cfTot > 0.01){
+      lf = (wG * C.LAT_GRASS + wD * C.LAT_DIRT + wM * C.LAT_MUD +
+            wW * C.LAT_WATER + wS * C.LAT_SAND) / cfTot;
+    }
+    const cfn = cfTot * inv;
+    const F = -(C.KL1 * latV + C.KL2 * latV * Math.abs(latV)) * cfn * lf;
+    addForce(0, C.LAT_Y, C.LAT_Z, F * rx, F * ry, F * rz);
+  }
+
+  /* ---- aerodynamic drag ---------------------------------------- */
+  {
+    const qd = 0.5 * RHO * spd2;
+    const Da = qd * C.CDA;
+    if (spd > 0.02){
+      addForce(0, C.AERO_Y, 0, -Da * vx / spd, -Da * vy / spd, -Da * vz / spd);
+    }
+  }
+
+  /* ---- thrust --------------------------------------------------- */
+  let T = 0;
+  {
+    const bucket = S.revIn;
+    T = C.TMAX * S.prop * (1 - C.REV_K * bucket) * deadF;
+    S.thrust = T;
+    addForce(0, C.THR_Y, C.THR_Z, T * fx, T * fy, T * fz);
+  }
+
+  /* ---- rudder in the prop wash ---------------------------------- */
+  {
+    const washAuth = Math.max(0, C.TMAX * S.prop * (1 - C.REV_RUD * S.revIn)) * deadF;
+    const airq = u > 0 ? u * u : u * u * 0.35;
+    const tau = (C.KRUD1 * washAuth + C.KRUD2 * airq) * S.rud;
+    Ty += tau;
+  }
+
+  /* ---- weathercock + rate damping -------------------------------- */
+  {
+    const beta = spd > 2.0 ? Math.atan2(latV, Math.max(u, 0.6)) : 0;
+    const bb = clamp(beta, -1.1, 1.1);
+    Ty -= C.CNB * bb * Math.min(spd2, 1400);
+    Ty -= C.CNR * S.wy * (1 + 0.020 * spd);
+    Tx -= C.CMQ * S.wx * (1 + 0.010 * spd);
+    Tz -= C.CLP * S.wz * (1 + 0.010 * spd);
+  }
+
+  /* ---- station-keeping on the grid ------------------------------- */
+  if (In.hold && S.hold){
+    const kx = 900, kv = 1400;
+    const ex = S.hold.x - S.px, ez = S.hold.z - S.pz;
+    addForce(0, 0, 0, kx * ex - kv * vx, 0, kx * ez - kv * vz);
+    let dy = S.hold.yaw - S.yawA;
+    while (dy > Math.PI) dy -= 2 * Math.PI;
+    while (dy < -Math.PI) dy += 2 * Math.PI;
+    Ty += 2600 * dy - 2200 * S.wy;
+  }
+
+  /* ---- marshals' righting pole: the one non-physical escape hatch,
+     armed only after the craft has been on its ear for a while ------ */
+  {
+    const bad = (Math.abs(S.roll) > 1.15 || Math.abs(S.pitch) > 1.0) ? 1 : 0;
+    S.badT = bad ? S.badT + dt : Math.max(0, S.badT - dt * 2);
+    if (S.badT > 0.5){
+      const k = Math.min(1, (S.badT - 0.5) / 0.7);
+      S.righting = k;
+      /* S.roll is +starboard-down = a NEGATIVE rotation about body +Z,
+         S.pitch is +nose-up     = a NEGATIVE rotation about body +X    */
+      Tz += k * (1000 * S.roll - 300 * S.wz);
+      Tx += k * (1000 * S.pitch - 300 * S.wx);
+    } else S.righting = 0;
+  }
+
+  /* ---- gravity --------------------------------------------------- */
+  Fy -= m * G0;
+
+  /* ---- integrate velocities -------------------------------------- */
+  S.vx += Fx / m * dt; S.vy += Fy / m * dt; S.vz += Fz / m * dt;
+  const gx = (Tx - (C.IZZ - C.IYY) * S.wy * S.wz) / C.IXX;
+  const gy = (Ty - (C.IXX - C.IZZ) * S.wz * S.wx) / C.IYY;
+  const gz = (Tz - (C.IYY - C.IXX) * S.wx * S.wy) / C.IZZ;
+  S.wx += gx * dt; S.wy += gy * dt; S.wz += gz * dt;
+
+  /* ---- collisions (impulses, before the position update) --------- */
+  S.hit = 0; S.hitMag = 0; S.buoyHit = 0;
+  collide(S, W);
+
+  /* ---- sanity ---------------------------------------------------- */
+  if (!isFinite(S.vx) || !isFinite(S.vy) || !isFinite(S.vz)){ S.vx = S.vy = S.vz = 0; }
+  if (!isFinite(S.wx) || !isFinite(S.wy) || !isFinite(S.wz)){ S.wx = S.wy = S.wz = 0; }
+  S.vx = clamp(S.vx, -C.VLIM, C.VLIM);
+  S.vy = clamp(S.vy, -C.VLIM, C.VLIM);
+  S.vz = clamp(S.vz, -C.VLIM, C.VLIM);
+  S.wx = clamp(S.wx, -C.WLIM, C.WLIM);
+  S.wy = clamp(S.wy, -C.WLIM, C.WLIM);
+  S.wz = clamp(S.wz, -C.WLIM, C.WLIM);
+
+  S.px += S.vx * dt; S.py += S.vy * dt; S.pz += S.vz * dt;
+  if (!isFinite(S.px)) S.px = 0;
+  if (!isFinite(S.py)) S.py = 2;
+  if (!isFinite(S.pz)) S.pz = 0;
+  if (S.py < BED_Y - 3) S.py = BED_Y - 3;
+  qIntegrate(q, S.wx, S.wy, S.wz, dt);
+  S.t += dt;
+  if (S.dead) S.deadT += dt;
+
+  /* ---- course bookkeeping ---------------------------------------- */
+  const np = nearestPath(W, S.px, S.pz, S.pathI);
+  S.pathI = np.i; S.lat = np.lat; S.s = np.s; S.hw = np.w;
+  return S;
+}
+
+/* ==================================================================
+   COLLISION
+   ================================================================== */
+function collide(S, W){
+  const q = S.q;
+  const P = W.P;
+  let worst = 0, wnx = 0, wnz = 0;
+
+  for (let c = 0; c < 3; c++){
+    const bz = C.COL_Z[c];
+    qRot(q, 0, 0, bz, _a);
+    const rxw = _a[0], ryw = _a[1], rzw = _a[2];
+    const cx = S.px + rxw, cz = S.pz + rzw;
+
+    /* --- track-edge barrier (a wall running along the path edge) --- */
+    const np = nearestPath(W, cx, cz, S.pathI);
+    if (np.bar){
+      const lim = np.w + 3.0;
+      const alat = Math.abs(np.lat);
+      const pen = alat + C.RCOL - lim;
+      if (pen > 0){
+        const sgn = np.lat > 0 ? 1 : -1;
+        const i = np.i;
+        /* wall normal points back toward the centreline */
+        const nx = -P.nx[i] * sgn, nz = -P.nz[i] * sgn;
+        const jn = applyImpulse(S, rxw, ryw, rzw, nx, 0, nz, C.RESTITUTION, C.MU_SCRAPE);
+        /* positional push-out so we never tunnel or sit inside */
+        S.px += nx * pen * 0.55; S.pz += nz * pen * 0.55;
+        if (jn > worst){ worst = jn; wnx = nx; wnz = nz; }
+      }
+    }
+
+    /* --- solid obstacles: circle vs OBB --- */
+    for (let k = 0; k < W.obs.length; k++){
+      const O = W.obs[k];
+      const dx = cx - O.x, dz = cz - O.z;
+      if (dx * dx + dz * dz > 64) continue;
+      const lx = dx * O.c - dz * O.s;      /* into box space (rot about Y) */
+      const lz = dx * O.s + dz * O.c;
+      const qx = clamp(lx, -O.hw, O.hw), qz = clamp(lz, -O.hl, O.hl);
+      let ddx = lx - qx, ddz = lz - qz;
+      let d = Math.hypot(ddx, ddz);
+      if (d > C.RCOL) continue;
+      if (d < 1e-4){
+        /* deep inside: push out along the shallowest axis */
+        const ox = O.hw - Math.abs(lx), oz = O.hl - Math.abs(lz);
+        if (ox < oz){ ddx = lx >= 0 ? 1 : -1; ddz = 0; d = 1e-4; }
+        else { ddx = 0; ddz = lz >= 0 ? 1 : -1; d = 1e-4; }
+      }
+      const lnx = ddx / d, lnz = ddz / d;
+      const nx = lnx * O.c + lnz * O.s;
+      const nz = -lnx * O.s + lnz * O.c;
+      const pen = C.RCOL - d;
+      const jn = applyImpulse(S, rxw, ryw, rzw, nx, 0, nz, C.RESTITUTION, C.MU_SCRAPE);
+      S.px += nx * pen * 0.7; S.pz += nz * pen * 0.7;
+      if (jn > worst){ worst = jn; wnx = nx; wnz = nz; }
+    }
+  }
+
+  /* --- buoys: soft, they get knocked spinning --- */
+  for (let k = 0; k < W.buoys.length; k++){
+    const B = W.buoys[k];
+    const dx = S.px - B.x, dz = S.pz - B.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 > 9.6) continue;
+    const d = Math.sqrt(d2) || 1e-4;
+    const rad = 1.55;
+    if (d > rad) continue;
+    const nx = dx / d, nz = dz / d;
+    const rel = S.vx * -nx + S.vz * -nz;
+    if (rel > 0){
+      /* a buoy is a nine-kilo inflatable, not a bollard: the momentum
+         exchange is set by its mass, so it barely slows the craft */
+      const jn = applyImpulse(S, 0, -0.05, 0, nx, 0, nz, 0.10, 0.22, 1 / C.BUOY_M);
+      B.vx += -nx * Math.min(11, rel * 0.62);
+      B.vz += -nz * Math.min(11, rel * 0.62);
+      B.sp += (Math.random() - 0.5) * 9 + rel * 0.4;
+      const dmg = Math.min(C.BUOY_DMG_CAP, Math.max(0, (jn - 25)) * 9.0e-5);
+      if (dmg > 0 && !S.dead){
+        qInvRot(S.q, -nx, 0, -nz, _e);
+        damageSeg(S, _e[0], _e[2], dmg);
+      }
+      S.buoyHit = Math.max(S.buoyHit, Math.min(1, rel / 14));
+    }
+  }
+
+  if (worst > C.J_FREE && !S.dead){
+    const dmg = (worst - C.J_FREE) * C.K_DMG;
+    qInvRot(S.q, -wnx, 0, -wnz, _e);
+    damageSeg(S, _e[0], _e[2], dmg);
+    S.hit = 1; S.hitMag = Math.min(1, (worst - C.J_FREE) / 4200);
+    S.hitNx = wnx; S.hitNz = wnz;
+  } else if (worst > 40){
+    S.hit = 1; S.hitMag = Math.min(0.25, worst / 4200);
+    S.hitNx = wnx; S.hitNz = wnz;
+  }
+  if (S.integrity <= 0.0005 && !S.dead){ S.dead = 1; S.deadT = 0; }
+}
+
+/* ==================================================================
+   CRAFT AGAINST CRAFT
+   Two hulls as three circles each; equal-and-opposite impulses so
+   momentum is conserved and neither craft gets a free shove.
+   ================================================================== */
+function collideCraft(A, B){
+  const dx = B.px - A.px, dz = B.pz - A.pz;
+  if (dx * dx + dz * dz > 36) return 0;
+  let worst = 0;
+  for (let a = 0; a < 3; a++){
+    qRot(A.q, 0, 0, C.COL_Z[a], _a);
+    const arx = _a[0], ary = _a[1], arz = _a[2];
+    const ax = A.px + arx, az = A.pz + arz;
+    for (let b = 0; b < 3; b++){
+      qRot(B.q, 0, 0, C.COL_Z[b], _b);
+      const brx = _b[0], bry = _b[1], brz = _b[2];
+      const bx = B.px + brx, bz = B.pz + brz;
+      let nx = bx - ax, nz = bz - az;
+      let d = Math.hypot(nx, nz);
+      const sum = C.RCOL * 2;
+      if (d >= sum) continue;
+      if (d < 1e-4){ nx = 1; nz = 0; d = 1e-4; } else { nx /= d; nz /= d; }
+      const pen = sum - d;
+      /* relative normal speed at the contact */
+      qRot(A.q, A.wx, A.wy, A.wz, _d);
+      const avx = A.vx + (_d[1] * arz - _d[2] * ary);
+      const avz = A.vz + (_d[0] * ary - _d[1] * arx);
+      qRot(B.q, B.wx, B.wy, B.wz, _d);
+      const bvx = B.vx + (_d[1] * brz - _d[2] * bry);
+      const bvz = B.vz + (_d[0] * bry - _d[1] * brx);
+      const vn = (bvx - avx) * nx + (bvz - avz) * nz;
+      if (vn < 0){
+        /* each craft sees the other as an equal mass */
+        const jA = applyImpulse(A, arx, ary, arz, nx, 0, nz, 0.30, 0.30, 1 / C.MASS);
+        const jB = applyImpulse(B, brx, bry, brz, -nx, 0, -nz, 0.30, 0.30, 1 / C.MASS);
+        const j = Math.max(jA, jB);
+        if (j > worst) worst = j;
+        if (j > C.J_FREE * 2.2){
+          const dmg = (j - C.J_FREE * 2.2) * C.K_DMG * 0.30;
+          qInvRot(A.q, nx, 0, nz, _e);
+          if (!A.dead) damageSeg(A, _e[0], _e[2], dmg);
+          qInvRot(B.q, -nx, 0, -nz, _e);
+          if (!B.dead) damageSeg(B, _e[0], _e[2], dmg);
+          A.hit = 1; A.hitMag = Math.max(A.hitMag, Math.min(1, (j - C.J_FREE) / 3000));
+          B.hit = 1; B.hitMag = Math.max(B.hitMag, Math.min(1, (j - C.J_FREE) / 3000));
+        }
+      }
+      /* split the overlap so hulls never sit inside one another */
+      A.px -= nx * pen * 0.32; A.pz -= nz * pen * 0.32;
+      B.px += nx * pen * 0.32; B.pz += nz * pen * 0.32;
+    }
+  }
+  return worst;
+}
+
+/* ==================================================================
+   BUOY DRIFT — they are soft, tethered floats
+   ================================================================== */
+function stepBuoys(W, dt){
+  const B = W.buoys;
+  for (let i = 0; i < B.length; i++){
+    const b = B[i];
+    if (b.vx === 0 && b.vz === 0 && b.sp === 0 && b.x === b.x0 && b.z === b.z0) continue;
+    b.vx += ((b.x0 - b.x) * 9.0 - b.vx * 3.4) * dt;
+    b.vz += ((b.z0 - b.z) * 9.0 - b.vz * 3.4) * dt;
+    b.x += b.vx * dt; b.z += b.vz * dt;
+    b.spin += b.sp * dt;
+    b.sp -= b.sp * Math.min(1, dt * 1.7);
+    if (Math.abs(b.sp) < 0.01) b.sp = 0;
+    if (Math.abs(b.x - b.x0) < 0.002 && Math.abs(b.z - b.z0) < 0.002 &&
+        Math.abs(b.vx) < 0.002 && Math.abs(b.vz) < 0.002){
+      b.x = b.x0; b.z = b.z0; b.vx = 0; b.vz = 0;
+    }
+  }
+}
+
+/* ==================================================================
+   AI DRIVER — same physics, a controller on top
+   ================================================================== */
+function newAI(o){
+  return {
+    skill: o.skill, aggro: o.aggro === undefined ? 0.5 : o.aggro,
+    waterNerve: o.waterNerve === undefined ? 1 : o.waterNerve,
+    lineBias: o.lineBias || 0, mudCut: o.mudCut === undefined ? -0.62 : o.mudCut,
+    wSkill: o.wSkill || 1, dSkill: o.dSkill || 1, slop: o.slop || 0,
+    pace: o.pace === undefined ? 1 : o.pace,
+    rub: 1, wob: 0, wob0: (o.seed || 0) * 2.4, lastRud: 0, slipWant: 0
+  };
+}
+
+/* driver-model gains, grid-searched headless against lap time,
+   barrier contacts and time spent off the road */
+const AIG = { LOOK0: 15, LOOKV: 1.50, CONV: 0.012, CONVMAX: 0.60,
+              SLIPK: 1.20, SLIPMAX: 0.95, KYE: 4.50, KWY: 0.90 };
+function wrapPi(a){
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+/* A hovercraft does not steer where it points; it points where it must
+   in order to make the cushion scrub and the thrust vector drag the
+   VELOCITY around.  So the driver model is two loops:
+
+     outer   where do I want the velocity vector to go?
+     middle  what slip angle produces that?
+     inner   what heading, and therefore what rudder, produces that slip?
+
+   All three run on the same physics as the player.  Nothing here reads
+   or writes anything the player's craft does not also have. */
+function aiControl(S, W, dt, rubber){
+  const P = W.P;
+  const A = S.ai;
+  A.wob += dt;
+  const i0 = S.pathI < 0 ? nearestPathRaw(W, S.px, S.pz).i : S.pathI;
+  const v = Math.hypot(S.vx, S.vz);
+
+  /* ---- outer: the line ------------------------------------------- */
+  const ahead = AIG.LOOK0 + AIG.LOOKV * v;
+  const jL = (i0 + Math.max(2, Math.round(ahead / P.step))) % P.n;
+  const drift = A.lineBias + 0.075 * Math.sin(A.wob * 0.47 + A.wob0);
+  let off = P.line[jL] + drift;
+  if (P.surf[jL] === SF_MUD) off = P.line[jL] + A.mudCut;
+  off = clamp(off, -0.88, 0.88);
+  const latDes = off * P.w[jL];
+  const pathHead = Math.atan2(P.tx[jL], P.tz[jL]);
+  const ex = latDes - S.lat;                        /* + = move right   */
+  const conv = clamp(ex * AIG.CONV, -AIG.CONVMAX, AIG.CONVMAX);
+  const velWant = pathHead + conv;
+
+  /* ---- middle: the slip angle that turns the velocity ------------- */
+  const velNow = v > 2.5 ? Math.atan2(S.vx, S.vz) : S.yawA;
+  const ve = wrapPi(velWant - velNow);              /* + = swing right  */
+  /* nose right of velocity (slip < 0) drags the craft right */
+  const slipWant = clamp(-ve * AIG.SLIPK, -AIG.SLIPMAX, AIG.SLIPMAX);
+
+  /* ---- inner: heading, then rudder -------------------------------- */
+  const yawWant = velNow - slipWant;
+  const ye = wrapPi(yawWant - S.yawA);
+  const ffw = P.curv[jL] * Math.max(v, 6);          /* corner feed-forward */
+  let rud = clamp(ye * AIG.KYE + (ffw - S.wy) * AIG.KWY, -1, 1);
+
+  /* keep it off the barriers */
+  {
+    const vlat = S.vx * P.nx[i0] + S.vz * P.nz[i0];
+    const pred = S.lat + vlat * 0.80;
+    const lim = P.w[i0] - 3.2;
+    if (Math.abs(pred) > lim){
+      const g = clamp((Math.abs(pred) - lim) / 6, 0, 1);
+      rud = clamp(rud - Math.sign(pred) * g * 0.9, -1, 1);
+    }
+  }
+  rud = clamp(rud + A.slop * Math.sin(A.wob * 1.9 + A.wob0) * 0.16, -1, 1);
+  const rlim = 4.2 * dt;
+  rud = A.lastRud + clamp(rud - A.lastRud, -rlim, rlim);
+  A.lastRud = rud;
+
+  /* ---- how fast does this driver want to be going? ---------------- */
+  let sk = 0.74 + 0.28 * A.skill;
+  if (P.surf[jL] === SF_WATER) sk *= A.wSkill;
+  else if (P.surf[jL] === SF_DIRT) sk *= A.dSkill;
+  let tgt = P.vmax[jL] * sk;
+  const k = Math.max(1, Math.round(24 / P.step));
+  for (let n = 1; n <= 6; n++){
+    const jj = (i0 + n * k) % P.n;
+    const vv = P.vmax[jj] * sk;
+    if (vv < tgt) tgt = vv;
+  }
+  if (S.surf === SF_MUD) tgt = 40;
+  const dw = P.dwater[i0];
+  if (dw > 0 && dw < 120) tgt = Math.max(tgt, 14 + 15 * A.waterNerve);
+  if (S.overWater || S.wallow) tgt = 14 + 30 * A.waterNerve;
+
+  /* one demand axis: + is thrust, - is the reverse bucket */
+  const err = tgt - v;
+  let dem = err >= 0 ? clamp(0.34 + err * 0.55, 0, 1) : clamp(err * 0.22, -0.85, 0);
+  /* the rudder vanes live in the prop wash and a slip angle has to be
+     paid for with thrust, so the demand can never fall to nothing */
+  const need = clamp(0.30 + 0.52 * Math.abs(rud) + 0.60 * Math.abs(slipWant), 0, 1);
+  let thr = Math.max(dem > 0 ? dem : 0.28, need);
+  let rev = dem < 0 ? -dem : 0;
+  if (Math.abs(rud) > 0.42 || Math.abs(slipWant) > 0.30) rev = Math.min(rev, 0.15);
+  if (S.overWater) rev = 0;
+
+  A.rub = rubber === undefined ? 1 : rubber;
+  thr = clamp(thr * A.rub * A.pace, 0, 1);
+  A.slipWant = slipWant;
+  return { thr, rev, rud, hold: 0 };
+}
+
+/* ==================================================================
+   RACE PROGRESS
+   ================================================================== */
+function progressInit(R, W){
+  R.lap = 0; R.cpNext = 1; R.prevS = R.s; R.prog = R.s; R.cpDone = 0;
+  R.lapT = 0; R.laps = []; R.best = 0; R.total = 0; R.finished = 0;
+}
+function progressStep(R, W, dt){
+  const L = W.L;
+  const s = R.s;
+  let ds = s - R.prevS;
+  if (ds > L * 0.5) ds -= L;
+  if (ds < -L * 0.5) ds += L;
+  R.prevS = s;
+  R.prog += ds;
+
+  /* checkpoints */
+  const ncp = W.ncp;
+  const target = W.cp[R.cpNext % ncp];
+  const prev = s - ds;
+  if (ds > 0 && ds < 60){
+    let a = prev, b = s;
+    if (b < a) b += L;
+    let t = target;
+    if (t < a) t += L;
+    if (t >= a && t <= b){
+      R.cpNext = (R.cpNext + 1) % ncp;
+      R.cpDone++;
+      if (R.cpNext === 0){ /* wrapped through the line */ }
+    }
+  }
+  return ds;
+}
+/*==PHYSICS_CORE_END==*/
+
+/* ===================================================================
+   PLENUM — GAME LAYER
+   Rendering, audio, input, race direction.  Everything that decides
+   where a craft goes lives above, in the physics core.
+   =================================================================== */
+
+const MPS_MPH = 2.2369362921;
+const CRAFTS = [
+  { name: 'YOU',      num: 8,  hull: 0xf2f4f2, acc: 0xff4b2e, trim: 0x1a2226, css: '#f2f4f2', player: 1,
+    ai: null },
+  { name: 'MERIDIAN', num: 4,  hull: 0xf5c518, acc: 0x14181c, trim: 0x14181c, css: '#f5c518',
+    ai: { skill: 0.90, pace: 0.950, aggro: 0.55, waterNerve: 1.00, lineBias: 0.00, mudCut: -0.64,
+          wSkill: 1.00, dSkill: 1.00, slop: 0.10, seed: 1 } },
+  { name: 'TALLOW',   num: 12, hull: 0xff7a1a, acc: 0x2b1d12, trim: 0x2b1d12, css: '#ff7a1a',
+    ai: { skill: 0.86, pace: 0.935, aggro: 0.90, waterNerve: 0.75, lineBias: -0.06, mudCut: 0.30,
+          wSkill: 0.98, dSkill: 1.03, slop: 0.22, seed: 3 } },
+  { name: 'HALYARD',  num: 7,  hull: 0x2fbfa8, acc: 0x0d3230, trim: 0x0d3230, css: '#2fbfa8',
+    ai: { skill: 0.80, pace: 0.905, aggro: 0.45, waterNerve: 1.10, lineBias: 0.05, mudCut: -0.58,
+          wSkill: 1.10, dSkill: 0.90, slop: 0.30, seed: 2 } },
+  { name: 'PIPER',    num: 3,  hull: 0xe0479a, acc: 0xf2ece0, trim: 0x3a1428, css: '#e0479a',
+    ai: { skill: 0.70, pace: 0.870, aggro: 0.30, waterNerve: 0.45, lineBias: 0.04, mudCut: -0.70,
+          wSkill: 0.95, dSkill: 1.00, slop: 0.14, seed: 4 } }
+];
+const NC = CRAFTS.length;
+const LAPS = 3;
+
+/* ===================================================================
+   WORLD
+   =================================================================== */
+let W;
+try { W = newWorld(); } catch (e){ window.__pFail && window.__pFail(); throw e; }
+const P = W.P;
+
+/* ===================================================================
+   RENDERER / SCENE
+   =================================================================== */
+let renderer, scene, camera;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+} catch (e){ window.__pFail && window.__pFail(); throw e; }
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
+document.getElementById('app').appendChild(renderer.domElement);
+
+scene = new THREE.Scene();
+const SKY_TOP = new THREE.Color(0x2f6fa8);
+const SKY_HZ = new THREE.Color(0xf3c99a);
+const FOG_C = new THREE.Color(0xbfd2d8);
+scene.fog = new THREE.Fog(FOG_C.getHex(), 210, 760);
+camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.35, 2400);
+
+/* morning sun, low in the east */
+const SUN_DIR = new THREE.Vector3(0.52, 0.36, -0.78).normalize();
+const sun = new THREE.DirectionalLight(0xfff0d2, 1.58);
+sun.position.copy(SUN_DIR).multiplyScalar(300);
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xbfe0f2, 0x5a6a48, 0.74));
+const fill = new THREE.DirectionalLight(0x9fc4dd, 0.32);
+fill.position.set(-160, 120, 210);
+scene.add(fill);
+
+/* ---- sky dome ---------------------------------------------------- */
+{
+  const g = new THREE.SphereGeometry(1600, 32, 20);
+  const m = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: {
+      uTop: { value: SKY_TOP }, uHz: { value: SKY_HZ },
+      uSun: { value: SUN_DIR.clone() }
+    },
+    vertexShader: `varying vec3 vW;
+      void main(){ vW = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `varying vec3 vW; uniform vec3 uTop; uniform vec3 uHz; uniform vec3 uSun;
+      void main(){
+        float h = clamp(vW.y*1.25+0.06, -0.2, 1.0);
+        vec3 c = mix(uHz, uTop, pow(clamp(h,0.0,1.0), 0.62));
+        float d = max(dot(normalize(vW), normalize(uSun)), 0.0);
+        c += vec3(1.0,0.88,0.62) * pow(d, 900.0) * 1.30;
+        c += vec3(1.0,0.82,0.55) * pow(d, 60.0) * 0.30;
+        c += vec3(1.0,0.86,0.66) * pow(d, 5.0) * 0.10;
+        c = mix(c, vec3(0.80,0.85,0.86), smoothstep(0.06, -0.16, vW.y));
+        gl_FragColor = vec4(c, 1.0);
+      }`
+  });
+  const sky = new THREE.Mesh(g, m);
+  sky.frustumCulled = false;
+  scene.add(sky);
+  window.__sky = sky;
+}
+
+/* ===================================================================
+   TERRAIN
+   =================================================================== */
+const COL = {
+  grass: new THREE.Color(0x5f8f3d),
+  grass2: new THREE.Color(0x4a7433),
+  mown: new THREE.Color(0x77a648),
+  mown2: new THREE.Color(0x628f3c),
+  scuff: new THREE.Color(0x8d9a55),
+  rough: new THREE.Color(0x3d5c2c),
+  dirt: new THREE.Color(0xb08a53),
+  dirt2: new THREE.Color(0x94703f),
+  mud: new THREE.Color(0x5b4429),
+  mud2: new THREE.Color(0x483522),
+  sand: new THREE.Color(0xc4a97a),
+  bed: new THREE.Color(0x2c4c50)
+};
+const TR_MIN = -392, TR_MAX = 392, TR_N = 224;
+{
+  const n = TR_N, span = TR_MAX - TR_MIN, cell = span / (n - 1);
+  const pos = new Float32Array(n * n * 3);
+  const col = new Float32Array(n * n * 3);
+  const idx = [];
+  const c = new THREE.Color();
+  for (let j = 0; j < n; j++){
+    for (let i = 0; i < n; i++){
+      const x = TR_MIN + i * cell, z = TR_MIN + j * cell;
+      const y = terrainH(W, x, z);
+      const k = (j * n + i) * 3;
+      pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
+      const sid = surfAt(W, x, z);
+      const q = nearestPathRaw(W, x, z);
+      const al = Math.abs(q.lat);
+      const onTrack = al < q.w;
+      if (sid === SF_WATER) c.copy(COL.bed);
+      else if (sid === SF_SAND) c.copy(COL.sand);
+      else if (sid === SF_MUD){
+        c.copy(COL.mud).lerp(COL.mud2, 0.5 + 0.5 * Math.sin(x * 0.19 + z * 0.14));
+      }
+      else if (sid === SF_DIRT){
+        c.copy(COL.dirt).lerp(COL.dirt2, 0.5 + 0.5 * Math.sin(x * 0.11 - z * 0.09 + 1.7));
+        if (!onTrack) c.lerp(COL.grass, clamp((al - q.w) / 9, 0, 0.75));
+      }
+      else {
+        const t = 0.5 + 0.5 * Math.sin(x * 0.031 + 1.3) * Math.sin(z * 0.027 - 0.6);
+        c.copy(COL.grass).lerp(COL.grass2, t);
+        if (onTrack){
+          /* a mown racing surface: lighter, with cut stripes along the lap */
+          const stripe = Math.sin(q.s * 0.115) > 0 ? 1 : 0;
+          c.lerp(COL.mown, 0.62).lerp(COL.mown2, stripe * 0.42);
+          /* scuffed centre where the field runs */
+          c.lerp(COL.scuff, clamp(1 - al / (q.w * 0.75), 0, 1) * 0.20);
+        } else {
+          c.lerp(COL.rough, clamp((al - q.w) / 16, 0, 1) * 0.35);
+        }
+      }
+      /* slope shading and a little dither so it never looks like plastic */
+      const hx = terrainH(W, x + 2.4, z) - terrainH(W, x - 2.4, z);
+      const hz = terrainH(W, x, z + 2.4) - terrainH(W, x, z - 2.4);
+      const slope = Math.min(1, Math.hypot(hx, hz) / 5.5);
+      const n2 = 0.90 + 0.13 * Math.sin(x * 0.53 + z * 0.41) + 0.08 * Math.sin(x * 1.7 - z * 1.3)
+                 + 0.05 * Math.sin(x * 3.9 + z * 2.7);
+      const shade = (1 - slope * 0.38) * n2;
+      col[k] = c.r * shade; col[k + 1] = c.g * shade; col[k + 2] = c.b * shade;
+    }
+  }
+  for (let j = 0; j < n - 1; j++){
+    for (let i = 0; i < n - 1; i++){
+      const a = j * n + i, b = a + 1, d = a + n, e = d + 1;
+      idx.push(a, d, b, b, d, e);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  const m = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+}
+
+/* far backdrop ridge so the horizon is not an empty edge */
+{
+  const R = 1150, n = 96;
+  const pos = [], col = [];
+  const c1 = new THREE.Color(0x7e93a0), c2 = new THREE.Color(0xa8bcc4);
+  const c = new THREE.Color();
+  for (let i = 0; i < n; i++){
+    const a0 = i / n * Math.PI * 2, a1 = (i + 1) / n * Math.PI * 2;
+    const h0 = 34 + 30 * Math.sin(a0 * 3.1 + 0.7) + 18 * Math.sin(a0 * 7.3 - 1.2) + 10 * Math.sin(a0 * 13.1);
+    const h1 = 34 + 30 * Math.sin(a1 * 3.1 + 0.7) + 18 * Math.sin(a1 * 7.3 - 1.2) + 10 * Math.sin(a1 * 13.1);
+    const x0 = Math.cos(a0) * R, z0 = Math.sin(a0) * R;
+    const x1 = Math.cos(a1) * R, z1 = Math.sin(a1) * R;
+    pos.push(x0, -20, z0, x1, -20, z1, x1, h1, z1);
+    pos.push(x0, -20, z0, x1, h1, z1, x0, h0, z0);
+    for (let k = 0; k < 6; k++){
+      const up = (k === 2 || k === 4 || k === 5) ? 1 : 0;
+      c.copy(c1).lerp(c2, up ? 0.85 : 0.1);
+      col.push(c.r, c.g, c.b);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide }));
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+}
+
+/* ===================================================================
+   WATER
+   One plane at Y=0 across the whole world.  The land is above zero
+   everywhere except inside the authored water bodies, so the terrain
+   mesh occludes it and the shoreline draws itself.
+   =================================================================== */
+let waterMat;
+{
+  /* an 8-bit height map so the shader can find its own shoreline */
+  const HN = HF_N;
+  const data = new Uint8Array(HN * HN);
+  for (let i = 0; i < HN * HN; i++){
+    data[i] = Math.max(0, Math.min(255, Math.round((W.h[i] + 3.2) / 8.0 * 255)));
+  }
+  const tex = new THREE.DataTexture(data, HN, HN, THREE.RedFormat, THREE.UnsignedByteType);
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.unpackAlignment = 1;
+  tex.needsUpdate = true;
+
+  const g = new THREE.PlaneGeometry(980, 980, 132, 132);
+  g.rotateX(-Math.PI / 2);
+  waterMat = new THREE.ShaderMaterial({
+    fog: true,
+    uniforms: Object.assign({}, THREE.UniformsLib.fog, {
+      uTime: { value: 0 },
+      uSun: { value: SUN_DIR.clone() },
+      uHF: { value: tex },
+      uHF0: { value: new THREE.Vector2(HF_X0, HF_Z0) },
+      uHFs: { value: 1 / ((HF_N - 1) * HF_CELL) },
+      uCam: { value: new THREE.Vector3() }
+    }),
+    vertexShader: `
+      #include <fog_pars_vertex>
+      uniform float uTime;
+      varying vec3 vW; varying float vWave;
+      void main(){
+        vec3 p = position;
+        float w = 0.052*sin(p.x*0.085 + uTime*1.15)
+                + 0.038*sin(p.z*0.071 - uTime*0.93)
+                + 0.024*sin((p.x+p.z)*0.043 + uTime*0.61)
+                + 0.014*sin((p.x-p.z)*0.121 - uTime*1.70);
+        p.y += w;
+        vWave = w;
+        vW = p;
+        vec4 mvPosition = modelViewMatrix * vec4(p,1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `
+      #include <fog_pars_fragment>
+      uniform vec3 uSun; uniform sampler2D uHF; uniform vec2 uHF0; uniform float uHFs;
+      uniform vec3 uCam; uniform float uTime;
+      varying vec3 vW; varying float vWave;
+      void main(){
+        vec2 uv = (vW.xz - uHF0) * uHFs;
+        float h = texture2D(uHF, uv).r * 8.0 - 3.2;
+        float depth = clamp(-h / 2.2, 0.0, 1.0);
+
+        vec3 deep = vec3(0.043, 0.196, 0.243);
+        vec3 shal = vec3(0.184, 0.463, 0.451);
+        vec3 c = mix(shal, deep, smoothstep(0.05, 0.72, depth));
+
+        vec3 V = normalize(uCam - vW);
+        /* a cheap normal from the analytic wave slope */
+        float dx = 0.052*0.085*cos(vW.x*0.085 + uTime*1.15)
+                 + 0.024*0.043*cos((vW.x+vW.z)*0.043 + uTime*0.61)
+                 + 0.014*0.121*cos((vW.x-vW.z)*0.121 - uTime*1.70);
+        float dz = -0.038*0.071*cos(vW.z*0.071 - uTime*0.93)
+                 + 0.024*0.043*cos((vW.x+vW.z)*0.043 + uTime*0.61)
+                 - 0.014*0.121*cos((vW.x-vW.z)*0.121 - uTime*1.70);
+        vec3 N = normalize(vec3(-dx*7.0, 1.0, -dz*7.0));
+
+        float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.2);
+        c = mix(c, vec3(0.62, 0.75, 0.84), fres * 0.72);
+
+        vec3 H = normalize(normalize(uSun) + V);
+        float spec = pow(max(dot(N, H), 0.0), 220.0);
+        c += vec3(1.0, 0.94, 0.80) * spec * 1.5;
+        float glit = pow(max(dot(N, H), 0.0), 34.0);
+        c += vec3(1.0, 0.93, 0.78) * glit * 0.18;
+
+        /* shore foam */
+        float foam = smoothstep(-0.55, -0.05, h) * (1.0 - smoothstep(0.10, 0.42, h));
+        foam *= 0.55 + 0.45 * sin(vW.x*0.9 + vW.z*0.7 + uTime*2.4);
+        c = mix(c, vec3(0.90,0.95,0.95), clamp(foam, 0.0, 1.0) * 0.62);
+
+        gl_FragColor = vec4(c, 1.0);
+        #include <fog_fragment>
+      }`
+  });
+  const mesh = new THREE.Mesh(g, waterMat);
+  mesh.position.y = 0;
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+}
+
+/* ===================================================================
+   COURSE FURNITURE
+   =================================================================== */
+function surfTop(x, z){ const h = terrainH(W, x, z); return h > 0 ? h : 0; }
+
+/* ---- barriers: low straw-and-tyre walls along the land sectors ---- */
+{
+  const segs = [];
+  const step = 6.0;
+  const per = Math.max(1, Math.round(step / P.step));
+  for (let side = -1; side <= 1; side += 2){
+    for (let i = 0; i < P.n; i += per){
+      if (!P.bar[i]) continue;
+      const j = (i + per) % P.n;
+      if (!P.bar[j]) continue;
+      const o = (P.w[i] + 3.0) * side;
+      const o2 = (P.w[j] + 3.0) * side;
+      const ax = P.x[i] + P.nx[i] * o, az = P.z[i] + P.nz[i] * o;
+      const bx = P.x[j] + P.nx[j] * o2, bz = P.z[j] + P.nz[j] * o2;
+      const len = Math.hypot(bx - ax, bz - az);
+      if (len < 0.5 || len > 22) continue;
+      segs.push({ x: (ax + bx) / 2, z: (az + bz) / 2, len,
+                  rot: Math.atan2(bx - ax, bz - az), i });
+    }
+  }
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const matA = new THREE.MeshLambertMaterial({ color: 0xd8c893 });
+  const matB = new THREE.MeshLambertMaterial({ color: 0xc03828 });
+  const iA = new THREE.InstancedMesh(geo, matA, segs.length);
+  const iB = new THREE.InstancedMesh(geo, matB, segs.length);
+  const d = new THREE.Object3D();
+  let na = 0, nb = 0;
+  for (const s of segs){
+    const red = ((s.i / per) | 0) % 2 === 0;
+    d.position.set(s.x, surfTop(s.x, s.z) + 0.44, s.z);
+    d.rotation.set(0, s.rot, 0);
+    d.scale.set(1.05, 0.88, s.len + 0.25);
+    d.updateMatrix();
+    if (red) iB.setMatrixAt(nb++, d.matrix); else iA.setMatrixAt(na++, d.matrix);
+  }
+  iA.count = na; iB.count = nb;
+  iA.instanceMatrix.needsUpdate = true; iB.instanceMatrix.needsUpdate = true;
+  iA.frustumCulled = false; iB.frustumCulled = false;
+  scene.add(iA); scene.add(iB);
+}
+
+/* ---- buoys -------------------------------------------------------- */
+const buoyMeshes = [];
+{
+  const cone = new THREE.CylinderGeometry(0.30, 0.62, 1.35, 9);
+  cone.translate(0, 0.60, 0);
+  const ball = new THREE.SphereGeometry(0.34, 9, 7);
+  ball.translate(0, 1.34, 0);
+  const base = new THREE.CylinderGeometry(0.70, 0.80, 0.30, 10);
+  base.translate(0, 0.02, 0);
+  const merged = mergeGeos([cone, ball, base]);
+  const cols = [0xff8a1e, 0xe8402c, 0xf2ece0];
+  const mats = cols.map(c => new THREE.MeshLambertMaterial({ color: c }));
+  const groups = [[], [], []];
+  W.buoys.forEach((b, i) => groups[b.col].push(i));
+  for (let g = 0; g < 3; g++){
+    if (!groups[g].length) continue;
+    const im = new THREE.InstancedMesh(merged, mats[g], groups[g].length);
+    im.frustumCulled = false;
+    scene.add(im);
+    buoyMeshes.push({ im, ids: groups[g] });
+  }
+}
+function updateBuoys(){
+  const d = new THREE.Object3D();
+  for (const grp of buoyMeshes){
+    for (let k = 0; k < grp.ids.length; k++){
+      const b = W.buoys[grp.ids[k]];
+      const y = surfTop(b.x, b.z);
+      const bob = (surfAt(W, b.x, b.z) === SF_WATER) ? waveH(b.x, b.z, GT) : 0;
+      d.position.set(b.x, y + bob - 0.1, b.z);
+      d.rotation.set(Math.sin(GT * 1.7 + b.x) * 0.06, b.spin, Math.cos(GT * 1.3 + b.z) * 0.06);
+      d.scale.set(1, 1, 1);
+      d.updateMatrix();
+      grp.im.setMatrixAt(k, d.matrix);
+    }
+    grp.im.instanceMatrix.needsUpdate = true;
+  }
+}
+
+/* ---- solid obstacles ---------------------------------------------- */
+if (W.obs.length){
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  const mats = [new THREE.MeshLambertMaterial({ color: 0xcbb681 }),
+                new THREE.MeshLambertMaterial({ color: 0x6c7378 })];
+  const d = new THREE.Object3D();
+  for (let kind = 0; kind < 2; kind++){
+    const list = W.obs.filter(o => o.kind === kind);
+    if (!list.length) continue;
+    const im = new THREE.InstancedMesh(g, mats[kind], list.length);
+    list.forEach((O, i) => {
+      const h = kind === 1 ? 4.4 : 1.5;
+      d.position.set(O.x, surfTop(O.x, O.z) + h / 2, O.z);
+      d.rotation.set(0, O.rot, 0);
+      d.scale.set(O.hw * 2, h, O.hl * 2);
+      d.updateMatrix();
+      im.setMatrixAt(i, d.matrix);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    im.frustumCulled = false;
+    scene.add(im);
+  }
+}
+
+/* ---- start gantry, line and pit banners --------------------------- */
+{
+  const i0 = 0;
+  const nx = P.nx[i0], nz = P.nz[i0], px = P.x[i0], pz = P.z[i0];
+  const rot = Math.atan2(P.tx[i0], P.tz[i0]);
+  const wHalf = P.w[i0] + 5.5;
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(wHalf * 2, 0.85, 0.75),
+    new THREE.MeshLambertMaterial({ color: 0x1b242a }));
+  beam.position.set(px, surfTop(px, pz) + 7.2, pz);
+  beam.rotation.y = rot;
+  scene.add(beam);
+  const bnr = new THREE.Mesh(new THREE.PlaneGeometry(wHalf * 1.35, 1.85),
+    new THREE.MeshBasicMaterial({ map: textTexture('PLENUM', '#0d1418', '#ffd166'), side: THREE.DoubleSide }));
+  bnr.position.set(px, surfTop(px, pz) + 5.6, pz);
+  bnr.rotation.y = rot + Math.PI;
+  scene.add(bnr);
+  for (const sgn of [-1, 1]){
+    const lx = px + nx * wHalf * sgn, lz = pz + nz * wHalf * sgn;
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.55, 7.6, 0.55),
+      new THREE.MeshLambertMaterial({ color: 0x28333a }));
+    leg.position.set(lx, surfTop(lx, lz) + 3.8, lz);
+    leg.rotation.y = rot;
+    scene.add(leg);
+  }
+  /* the line itself */
+  const lineGeo = new THREE.PlaneGeometry(wHalf * 1.75, 2.6);
+  lineGeo.rotateX(-Math.PI / 2);
+  const lm = new THREE.Mesh(lineGeo, new THREE.MeshBasicMaterial({ map: checkerTexture(), transparent: true }));
+  lm.position.set(px, surfTop(px, pz) + 0.06, pz);
+  lm.rotation.y = rot;
+  scene.add(lm);
+}
+
+/* ---- trees, reeds and crowd --------------------------------------- */
+{
+  let seed = 20260822;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  /* trees */
+  const trunk = new THREE.CylinderGeometry(0.26, 0.40, 3.2, 6);
+  trunk.translate(0, 1.6, 0);
+  const crown = new THREE.ConeGeometry(2.4, 6.2, 7);
+  crown.translate(0, 5.6, 0);
+  const crown2 = new THREE.ConeGeometry(1.8, 4.2, 7);
+  crown2.translate(0, 8.4, 0);
+  const treeGeo = mergeGeos([trunk, crown, crown2], [0x4a3826, 0x33632c, 0x3d7434]);
+  const treeMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const spots = [];
+  for (let t = 0; t < 2600 && spots.length < 520; t++){
+    const x = -370 + rnd() * 740, z = -370 + rnd() * 740;
+    if (surfAt(W, x, z) !== SF_GRASS) continue;
+    const q = nearestPathRaw(W, x, z);
+    if (Math.abs(q.lat) < q.w + 26) continue;
+    if (waterSDF(x, z) < 12) continue;
+    spots.push([x, z, 0.7 + rnd() * 0.85, rnd() * 6.28]);
+  }
+  const im = new THREE.InstancedMesh(treeGeo, treeMat, spots.length);
+  const d = new THREE.Object3D();
+  spots.forEach((s, i) => {
+    d.position.set(s[0], terrainH(W, s[0], s[1]) - 0.2, s[1]);
+    d.rotation.set(0, s[3], 0);
+    d.scale.set(s[2], s[2] * (0.85 + Math.random() * 0.3), s[2]);
+    d.updateMatrix();
+    im.setMatrixAt(i, d.matrix);
+  });
+  im.instanceMatrix.needsUpdate = true;
+  im.frustumCulled = false;
+  scene.add(im);
+
+  /* reed clumps along the shorelines */
+  const reed = new THREE.ConeGeometry(0.55, 1.9, 5);
+  reed.translate(0, 0.95, 0);
+  const reedMat = new THREE.MeshLambertMaterial({ color: 0x8f9a4a });
+  const rs = [];
+  for (let t = 0; t < 6000 && rs.length < 700; t++){
+    const x = -370 + rnd() * 740, z = -370 + rnd() * 740;
+    const d2 = waterSDF(x, z);
+    if (d2 > 4 || d2 < -6) continue;
+    const q = nearestPathRaw(W, x, z);
+    if (Math.abs(q.lat) < q.w + 8) continue;
+    rs.push([x, z]);
+  }
+  const rim = new THREE.InstancedMesh(reed, reedMat, rs.length);
+  rs.forEach((s, i) => {
+    d.position.set(s[0], Math.max(-0.25, terrainH(W, s[0], s[1])) - 0.1, s[1]);
+    d.rotation.set(0, rnd() * 6.28, 0);
+    const sc = 0.7 + rnd() * 0.9;
+    d.scale.set(sc, sc * (0.8 + rnd() * 0.8), sc);
+    d.updateMatrix();
+    rim.setMatrixAt(i, d.matrix);
+  });
+  rim.instanceMatrix.needsUpdate = true;
+  rim.frustumCulled = false;
+  scene.add(rim);
+
+  /* crowd: little post people behind the barriers on the land sectors */
+  const body = new THREE.CylinderGeometry(0.22, 0.26, 1.05, 5);
+  body.translate(0, 0.52, 0);
+  const head = new THREE.SphereGeometry(0.19, 5, 4);
+  head.translate(0, 1.20, 0);
+  const pGeo = mergeGeos([body, head]);
+  const cCols = [0xd9534f, 0x4a86c8, 0xe8c14a, 0xf2ece0, 0x59a86a, 0xc06fb0];
+  const groups = cCols.map(() => []);
+  const knots = [];
+  for (let t = 0; t < 900 && knots.length < 16; t++){
+    const i = (rnd() * P.n) | 0;
+    if (!P.bar[i]) continue;
+    if (knots.some(k => Math.abs(k - i) < 26 || Math.abs(k - i) > P.n - 26)) continue;
+    knots.push(i);
+  }
+  for (const i0 of knots){
+    const side = rnd() < 0.5 ? -1 : 1;
+    const n = 12 + ((rnd() * 14) | 0);
+    for (let k = 0; k < n; k++){
+      const i = (i0 + ((rnd() * 22) | 0) - 11 + P.n) % P.n;
+      const o = (P.w[i] + 5.2 + rnd() * 6.5) * side;
+      const x = P.x[i] + P.nx[i] * o, z = P.z[i] + P.nz[i] * o;
+      if (surfAt(W, x, z) === SF_WATER) continue;
+      groups[(rnd() * cCols.length) | 0].push([x, z, Math.atan2(P.x[i] - x, P.z[i] - z)]);
+    }
+  }
+  cCols.forEach((c, gi) => {
+    const arr = groups[gi];
+    if (!arr.length) return;
+    const cm = new THREE.InstancedMesh(pGeo, new THREE.MeshLambertMaterial({ color: c }), arr.length);
+    arr.forEach((s, i) => {
+      d.position.set(s[0], surfTop(s[0], s[1]), s[1]);
+      d.rotation.set(0, s[2], 0);
+      const sc = 0.88 + rnd() * 0.26;
+      d.scale.set(sc, sc, sc);
+      d.updateMatrix();
+      cm.setMatrixAt(i, d.matrix);
+    });
+    cm.instanceMatrix.needsUpdate = true;
+    cm.frustumCulled = false;
+    scene.add(cm);
+  });
+
+  /* marker flags at the sector changes, in one instanced draw */
+  {
+    const pole = new THREE.CylinderGeometry(0.07, 0.07, 3.4, 5);
+    pole.translate(0, 1.7, 0);
+    const flagG = new THREE.BoxGeometry(1.3, 0.75, 0.03);
+    flagG.translate(0.65, 3.0, 0);
+    const geo = mergeGeos([pole, flagG], [0xe6e0d2, 0xffd166]);
+    const spots = [];
+    for (let k = 0; k < P.segS.length - 1; k++){
+      const i = Math.round(P.segS[k] / P.step) % P.n;
+      for (let side = -1; side <= 1; side += 2){
+        const o = (P.w[i] + 4.2) * side;
+        const x = P.x[i] + P.nx[i] * o, z = P.z[i] + P.nz[i] * o;
+        if (surfAt(W, x, z) === SF_WATER) continue;
+        spots.push([x, z, Math.atan2(P.tx[i], P.tz[i])]);
+      }
+    }
+    const fm = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), spots.length);
+    spots.forEach((sp, i) => {
+      d.position.set(sp[0], surfTop(sp[0], sp[1]), sp[1]);
+      d.rotation.set(0, sp[2], 0);
+      d.scale.set(1, 1, 1);
+      d.updateMatrix();
+      fm.setMatrixAt(i, d.matrix);
+    });
+    fm.instanceMatrix.needsUpdate = true;
+    fm.frustumCulled = false;
+    scene.add(fm);
+  }
+}
+
+/* ===================================================================
+   HELPERS: geometry merge, canvas textures
+   =================================================================== */
+function mergeGeos(list, colors){
+  let vt = 0, it = 0;
+  for (const g of list){
+    vt += g.attributes.position.count;
+    it += g.index ? g.index.count : g.attributes.position.count;
+  }
+  const pos = new Float32Array(vt * 3), nor = new Float32Array(vt * 3);
+  const col = colors ? new Float32Array(vt * 3) : null;
+  const idx = new Uint32Array(it);
+  let vo = 0, io = 0;
+  const c = new THREE.Color();
+  list.forEach((g, gi) => {
+    if (!g.attributes.normal) g.computeVertexNormals();
+    const p = g.attributes.position.array, nn = g.attributes.normal.array;
+    const cnt = g.attributes.position.count;
+    pos.set(p, vo * 3); nor.set(nn, vo * 3);
+    if (col){ c.set(colors[gi]); for (let i = 0; i < cnt; i++){ col[(vo + i) * 3] = c.r; col[(vo + i) * 3 + 1] = c.g; col[(vo + i) * 3 + 2] = c.b; } }
+    if (g.index){
+      const gi2 = g.index.array;
+      for (let i = 0; i < gi2.length; i++) idx[io + i] = gi2[i] + vo;
+      io += gi2.length;
+    } else {
+      for (let i = 0; i < cnt; i++) idx[io + i] = i + vo;
+      io += cnt;
+    }
+    vo += cnt;
+  });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  return out;
+}
+function textTexture(txt, bg, fg){
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = bg; x.fillRect(0, 0, 512, 128);
+  x.fillStyle = fg;
+  x.font = 'bold 74px ui-monospace, Menlo, monospace';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.letterSpacing = '14px';
+  x.fillText(txt, 256, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function checkerTexture(){
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 32;
+  const x = c.getContext('2d');
+  for (let i = 0; i < 32; i++){
+    for (let j = 0; j < 4; j++){
+      x.fillStyle = ((i + j) % 2) ? '#f2ece0' : '#161c20';
+      x.fillRect(i * 8, j * 8, 8, 8);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function numberTexture(n, bg, fg){
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = bg; x.fillRect(0, 0, 128, 128);
+  x.fillStyle = fg;
+  x.font = 'bold 92px ui-monospace, Menlo, monospace';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(String(n), 64, 70);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function blobTexture(){
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 2, 32, 32, 31);
+  g.addColorStop(0, 'rgba(0,0,0,.55)');
+  g.addColorStop(0.55, 'rgba(0,0,0,.30)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+function sparkTexture(){
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,.62)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
+}
+
+/* ===================================================================
+   THE CRAFT
+   =================================================================== */
+const SHADOW_TEX = blobTexture();
+/* Everything that does not move relative to the hull is baked into one
+   geometry with vertex colours, so a craft is a handful of draw calls
+   rather than thirty. */
+function buildCraft(def){
+  const G = new THREE.Group();
+  const parts = [], cols = [];
+  const push = (g, c) => { parts.push(g); cols.push(c); };
+  const HULL = def.hull, ACC = def.acc, TRIM = def.trim, DARK = 0x23292c;
+
+  /* hull: a tapered deck as an extruded plan-form */
+  {
+    const sh = new THREE.Shape();
+    const L = 1.72, Wd = 1.02;
+    sh.moveTo(0, L);
+    sh.bezierCurveTo(Wd * 0.66, L * 0.90, Wd, L * 0.44, Wd, L * 0.02);
+    sh.bezierCurveTo(Wd, -L * 0.52, Wd * 0.86, -L * 0.90, Wd * 0.60, -L);
+    sh.lineTo(-Wd * 0.60, -L);
+    sh.bezierCurveTo(-Wd * 0.86, -L * 0.90, -Wd, -L * 0.52, -Wd, L * 0.02);
+    sh.bezierCurveTo(-Wd, L * 0.44, -Wd * 0.66, L * 0.90, 0, L);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.42, bevelEnabled: true, bevelSize: 0.10,
+      bevelThickness: 0.09, bevelSegments: 2, curveSegments: 7 });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, -0.10, 0);
+    push(g, HULL);
+  }
+  /* livery flashes */
+  { const g = new THREE.BoxGeometry(2.10, 0.13, 1.10); g.translate(0, 0.16, 0.34); push(g, ACC); }
+  { const g = new THREE.BoxGeometry(0.46, 0.14, 2.50); g.translate(0, 0.17, -0.20); push(g, ACC); }
+  /* cockpit tub, seat, driver */
+  { const g = new THREE.BoxGeometry(0.86, 0.34, 1.20); g.translate(0, 0.26, 0.30); push(g, DARK); }
+  { const g = new THREE.BoxGeometry(0.62, 0.50, 0.16); g.translate(0, 0.48, -0.20); push(g, DARK); }
+  { const g = new THREE.CylinderGeometry(0.24, 0.28, 0.62, 7); g.rotateX(0.30); g.translate(0, 0.60, 0.16); push(g, ACC); }
+  { const g = new THREE.SphereGeometry(0.23, 10, 8); g.translate(0, 0.94, 0.24); push(g, 0xf2ece0); }
+  { const g = new THREE.SphereGeometry(0.238, 10, 8, 0, Math.PI, 0.9, 0.8); g.rotateY(Math.PI);
+    g.translate(0, 0.94, 0.24); push(g, 0x1a2a34); }
+  /* thrust duct */
+  { const g = new THREE.TorusGeometry(0.86, 0.085, 7, 20); g.translate(0, 0.72, -1.62); push(g, ACC); }
+  { const g = new THREE.CylinderGeometry(0.86, 0.86, 0.46, 20, 1, true); g.rotateX(Math.PI / 2);
+    g.translate(0, 0.72, -1.62); push(g, DARK); }
+  { const g = new THREE.BoxGeometry(0.44, 0.13, 0.30); g.translate(0, 1.60, -1.62); push(g, HULL); }
+  for (const sx of [-0.78, 0.78]){
+    const g = new THREE.BoxGeometry(0.11, 0.80, 0.16); g.translate(sx, 0.32, -1.62); push(g, TRIM);
+  }
+  const body = new THREE.Mesh(mergeGeos(parts, cols),
+    new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  G.add(body);
+
+  /* race number, both flanks */
+  {
+    const tex = numberTexture(def.num, '#' + new THREE.Color(def.hull).getHexString(),
+                              '#' + new THREE.Color(def.acc).getHexString());
+    const g = new THREE.PlaneGeometry(0.70, 0.60);
+    g.rotateY(Math.PI / 2);
+    g.translate(0, 0.62, -0.62);
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide }));
+    G.add(m);
+  }
+
+  /* propeller — one merged blade set, spun about Z */
+  const prop = new THREE.Group();
+  {
+    const bits = [], bc = [];
+    const hub = new THREE.CylinderGeometry(0.15, 0.15, 0.20, 8); hub.rotateX(Math.PI / 2);
+    bits.push(hub); bc.push(DARK);
+    for (let i = 0; i < 4; i++){
+      const bl = new THREE.BoxGeometry(0.13, 0.72, 0.035);
+      bl.rotateY(0.42); bl.translate(0, 0.40, 0);
+      bl.rotateZ(i * Math.PI / 2);
+      bits.push(bl); bc.push(0x3c454a);
+    }
+    const pm = new THREE.Mesh(mergeGeos(bits, bc), new THREE.MeshLambertMaterial({ vertexColors: true }));
+    prop.add(pm);
+    prop.position.set(0, 0.72, -1.62);
+    G.add(prop);
+  }
+  /* rudder vanes, hinged in the wash */
+  const vanes = new THREE.Group();
+  {
+    const bits = [], bc = [];
+    for (const vx of [-0.40, 0, 0.40]){
+      const g = new THREE.BoxGeometry(0.05, 1.02, 0.40); g.translate(vx, 0, 0);
+      bits.push(g); bc.push(0x9aa2a6);
+    }
+    vanes.add(new THREE.Mesh(mergeGeos(bits, bc), new THREE.MeshLambertMaterial({ vertexColors: true })));
+    vanes.position.set(0, 0.72, -1.92);
+    G.add(vanes);
+  }
+  /* skirt: eight inflated segments, one per damage segment */
+  const skirt = [];
+  for (let i = 0; i < 8; i++){
+    const a0 = (i / 8) * Math.PI * 2;
+    const g = new THREE.TorusGeometry(1.24, 0.215, 6, 9, Math.PI * 2 / 8 * 0.92);
+    g.rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x4b5257 }));
+    m.rotation.y = -a0 + Math.PI * 0.5 - Math.PI / 8;
+    m.scale.set(0.82, 1, 1.30);
+    m.position.y = -0.22;
+    G.add(m);
+    skirt.push(m);
+  }
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 4.6),
+    new THREE.MeshBasicMaterial({ map: SHADOW_TEX, transparent: true, depthWrite: false, fog: true }));
+  sh.rotation.x = -Math.PI / 2;
+  scene.add(sh);
+  scene.add(G);
+  return { G, prop, vanes, skirt, shadow: sh, def };
+}
+
+/* ===================================================================
+   PARTICLES — two pooled point clouds, no per-frame allocation
+   =================================================================== */
+const SPARK = sparkTexture();
+function makePool(n, size, additive){
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const sz = new Float32Array(n);
+  const al = new Float32Array(n);
+  for (let i = 0; i < n; i++) pos[i * 3 + 1] = -900;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('psize', new THREE.BufferAttribute(sz, 1));
+  g.setAttribute('palpha', new THREE.BufferAttribute(al, 1));
+  const m = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: true,
+    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    uniforms: Object.assign({}, THREE.UniformsLib.fog, { uTex: { value: SPARK }, uPix: { value: 600 } }),
+    vertexShader: `#include <fog_pars_vertex>
+      attribute float psize; attribute float palpha;
+      varying vec3 vC; varying float vA; uniform float uPix;
+      void main(){ vC = color; vA = palpha;
+        vec4 mvPosition = modelViewMatrix * vec4(position,1.0);
+        gl_PointSize = min(psize * uPix / max(-mvPosition.z, 1.0), 190.0);
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `#include <fog_pars_fragment>
+      uniform sampler2D uTex; varying vec3 vC; varying float vA;
+      void main(){ vec4 t = texture2D(uTex, gl_PointCoord);
+        float a = t.a * vA;
+        if (a < 0.012) discard;
+        gl_FragColor = vec4(vC, a);
+        #include <fog_fragment>
+      }`,
+    vertexColors: true
+  });
+  const pts = new THREE.Points(g, m);
+  pts.frustumCulled = false;
+  scene.add(pts);
+  return { n, pos, col, sz, al, g, pts, head: 0,
+           vx: new Float32Array(n), vy: new Float32Array(n), vz: new Float32Array(n),
+           life: new Float32Array(n), max: new Float32Array(n), s0: new Float32Array(n),
+           grav: new Float32Array(n), r: new Float32Array(n), gg: new Float32Array(n), b: new Float32Array(n) };
+}
+const POOL_W = makePool(1400, 0.9, true);
+const POOL_D = makePool(900, 0.8, false);
+
+function emit(pool, x, y, z, vx, vy, vz, life, size, r, g, b, grav){
+  const i = pool.head; pool.head = (i + 1) % pool.n;
+  pool.pos[i * 3] = x; pool.pos[i * 3 + 1] = y; pool.pos[i * 3 + 2] = z;
+  pool.vx[i] = vx; pool.vy[i] = vy; pool.vz[i] = vz;
+  pool.life[i] = life; pool.max[i] = life; pool.s0[i] = size; pool.al[i] = 1;
+  pool.r[i] = r; pool.gg[i] = g; pool.b[i] = b;
+  pool.grav[i] = grav === undefined ? 12 : grav;
+}
+function stepPool(pool, dt){
+  const { pos, col, sz, al, life, max, s0 } = pool;
+  let live = 0;
+  for (let i = 0; i < pool.n; i++){
+    if (life[i] <= 0){ if (al[i] !== 0){ al[i] = 0; sz[i] = 0; pos[i * 3 + 1] = -900; } continue; }
+    life[i] -= dt;
+    if (life[i] <= 0){ al[i] = 0; sz[i] = 0; pos[i * 3 + 1] = -900; continue; }
+    live++;
+    pool.vy[i] -= pool.grav[i] * dt;
+    pool.vx[i] *= 1 - Math.min(1, dt * 1.7);
+    pool.vz[i] *= 1 - Math.min(1, dt * 1.7);
+    pos[i * 3] += pool.vx[i] * dt;
+    pos[i * 3 + 1] += pool.vy[i] * dt;
+    pos[i * 3 + 2] += pool.vz[i] * dt;
+    if (pos[i * 3 + 1] < -1.6){ life[i] = 0; al[i] = 0; sz[i] = 0; pos[i * 3 + 1] = -900; continue; }
+    const t = life[i] / max[i];
+    sz[i] = s0[i] * (0.62 + 0.38 * t) * (1 + (1 - t) * 0.85);
+    al[i] = t < 0.82 ? t / 0.82 : (1 - t) / 0.18;
+    col[i * 3] = pool.r[i]; col[i * 3 + 1] = pool.gg[i]; col[i * 3 + 2] = pool.b[i];
+  }
+  pool.g.attributes.position.needsUpdate = true;
+  pool.g.attributes.color.needsUpdate = true;
+  pool.g.attributes.psize.needsUpdate = true;
+  pool.g.attributes.palpha.needsUpdate = true;
+  return live;
+}
+function clearPools(){
+  for (const p of [POOL_W, POOL_D]){
+    for (let i = 0; i < p.n; i++){ p.life[i] = 0; p.sz[i] = 0; p.al[i] = 0; p.pos[i * 3 + 1] = -900; }
+    p.g.attributes.position.needsUpdate = true;
+    p.g.attributes.psize.needsUpdate = true;
+    p.g.attributes.palpha.needsUpdate = true;
+  }
+}
+
+/* ===================================================================
+   AUDIO — synthesised, nothing fetched
+   =================================================================== */
+const AU = { ctx: null, ready: false, muted: false, master: null, nb: null };
+function noiseBuf(ctx, sec){
+  const n = Math.floor(ctx.sampleRate * sec);
+  const b = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = b.getChannelData(0);
+  let l0 = 0, l1 = 0, l2 = 0;
+  for (let i = 0; i < n; i++){
+    const w = Math.random() * 2 - 1;
+    l0 = 0.99765 * l0 + w * 0.0990460;
+    l1 = 0.96300 * l1 + w * 0.2965164;
+    l2 = 0.57000 * l2 + w * 1.0526913;
+    d[i] = (l0 + l1 + l2 + w * 0.1848) * 0.22;
+  }
+  return b;
+}
+function audioInit(){
+  if (AU.ctx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  try { AU.ctx = new AC(); } catch (e){ return; }
+  const ctx = AU.ctx;
+  const master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+  AU.master = master;
+  const nb = noiseBuf(ctx, 3.3); AU.nb = nb;
+
+  /* --- lift fan: a steady high whine, pitch tracks cushion load --- */
+  const f1 = ctx.createOscillator(); f1.type = 'sawtooth'; f1.frequency.value = 330;
+  const f2 = ctx.createOscillator(); f2.type = 'sawtooth'; f2.frequency.value = 333;
+  const f3 = ctx.createOscillator(); f3.type = 'square';   f3.frequency.value = 990;
+  const ff = ctx.createBiquadFilter(); ff.type = 'bandpass'; ff.frequency.value = 1500; ff.Q.value = 2.6;
+  const fg = ctx.createGain(); fg.gain.value = 0;
+  f1.connect(ff); f2.connect(ff); f3.connect(ff); ff.connect(fg); fg.connect(master);
+  f1.start(); f2.start(); f3.start();
+  /* fan air rush */
+  const fa = ctx.createBufferSource(); fa.buffer = nb; fa.loop = true; fa.playbackRate.value = 1.1;
+  const faf = ctx.createBiquadFilter(); faf.type = 'bandpass'; faf.frequency.value = 900; faf.Q.value = 0.7;
+  const fag = ctx.createGain(); fag.gain.value = 0;
+  fa.connect(faf); faf.connect(fag); fag.connect(master); fa.start();
+
+  /* --- thrust prop: a low drone plus blade pass --- */
+  const p1 = ctx.createOscillator(); p1.type = 'sawtooth'; p1.frequency.value = 95;
+  const p2 = ctx.createOscillator(); p2.type = 'sawtooth'; p2.frequency.value = 97.4;
+  const p3 = ctx.createOscillator(); p3.type = 'triangle'; p3.frequency.value = 190;
+  const pf = ctx.createBiquadFilter(); pf.type = 'lowpass'; pf.frequency.value = 900; pf.Q.value = 1.1;
+  const pg = ctx.createGain(); pg.gain.value = 0;
+  p1.connect(pf); p2.connect(pf); p3.connect(pf); pf.connect(pg); pg.connect(master);
+  p1.start(); p2.start(); p3.start();
+  /* prop wash noise */
+  const pw = ctx.createBufferSource(); pw.buffer = nb; pw.loop = true; pw.playbackRate.value = 0.72;
+  const pwf = ctx.createBiquadFilter(); pwf.type = 'lowpass'; pwf.frequency.value = 500;
+  const pwg = ctx.createGain(); pwg.gain.value = 0;
+  pw.connect(pwf); pwf.connect(pwg); pwg.connect(master); pw.start();
+
+  /* --- spray hiss over water --- */
+  const hs = ctx.createBufferSource(); hs.buffer = nb; hs.loop = true; hs.playbackRate.value = 0.95;
+  const hf = ctx.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = 2400; hf.Q.value = 0.55;
+  const hg = ctx.createGain(); hg.gain.value = 0;
+  hs.connect(hf); hf.connect(hg); hg.connect(master); hs.start();
+
+  /* --- skirt scuff on land --- */
+  const ss = ctx.createBufferSource(); ss.buffer = nb; ss.loop = true; ss.playbackRate.value = 0.55;
+  const sf = ctx.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 620; sf.Q.value = 0.8;
+  const sg = ctx.createGain(); sg.gain.value = 0;
+  ss.connect(sf); sf.connect(sg); sg.connect(master); ss.start();
+
+  /* --- wallow slosh: low noise pumped by an LFO --- */
+  const ws = ctx.createBufferSource(); ws.buffer = nb; ws.loop = true; ws.playbackRate.value = 0.30;
+  const wf = ctx.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 300;
+  const wg = ctx.createGain(); wg.gain.value = 0;
+  const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 1.35;
+  const lg = ctx.createGain(); lg.gain.value = 0.55;
+  lfo.connect(lg); lg.connect(wg.gain); lfo.start();
+  ws.connect(wf); wf.connect(wg); wg.connect(master); ws.start();
+
+  /* --- crowd / air bed --- */
+  const am = ctx.createBufferSource(); am.buffer = nb; am.loop = true; am.playbackRate.value = 0.40;
+  const amf = ctx.createBiquadFilter(); amf.type = 'lowpass'; amf.frequency.value = 420;
+  const amg = ctx.createGain(); amg.gain.value = 0.055;
+  am.connect(amf); amf.connect(amg); amg.connect(master); am.start();
+
+  /* --- rivals, a single blended layer --- */
+  const r1 = ctx.createOscillator(); r1.type = 'sawtooth'; r1.frequency.value = 120;
+  const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 640;
+  const rg = ctx.createGain(); rg.gain.value = 0;
+  r1.connect(rf); rf.connect(rg); rg.connect(master); r1.start();
+
+  Object.assign(AU, { f1, f2, f3, ff, fg, fag, faf, p1, p2, p3, pf, pg, pwg, pwf,
+                      hg, hf, sg, sf, wg, wf, amg, rg, rf, r1 });
+  AU.ready = true;
+  master.gain.setTargetAtTime(AU.muted ? 0 : 0.80, ctx.currentTime, 0.4);
+}
+function audioResume(){ if (AU.ctx && AU.ctx.state === 'suspended') AU.ctx.resume().catch(() => {}); }
+function audioSuspend(){ if (AU.ctx && AU.ctx.state === 'running') AU.ctx.suspend().catch(() => {}); }
+function audioMute(m){
+  AU.muted = m;
+  if (AU.master && AU.ctx) AU.master.gain.setTargetAtTime(m ? 0 : 0.80, AU.ctx.currentTime, 0.08);
+  const b = document.getElementById('tbMut'); if (b) b.textContent = m ? 'OFF' : 'VOL';
+}
+function thump(mag, low){
+  if (!AU.ready || AU.muted) return;
+  const ctx = AU.ctx, t = ctx.currentTime;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(Math.min(0.8, mag), t + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + 0.18 + mag * 0.3);
+  const o = ctx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(low ? 96 : 165, t);
+  o.frequency.exponentialRampToValueAtTime(low ? 36 : 62, t + 0.2 + mag * 0.25);
+  o.connect(g); g.connect(AU.master);
+  o.start(t); o.stop(t + 0.6 + mag * 0.4);
+  const ns = ctx.createBufferSource(); ns.buffer = AU.nb; ns.loop = true;
+  const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = low ? 380 : 1400; nf.Q.value = 0.8;
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(mag * 0.55, t);
+  ng.gain.exponentialRampToValueAtTime(0.0008, t + 0.13 + mag * 0.16);
+  ns.connect(nf); nf.connect(ng); ng.connect(AU.master);
+  ns.start(t); ns.stop(t + 0.45 + mag * 0.3);
+}
+function beep(freq, dur, vol, type){
+  if (!AU.ready || AU.muted) return;
+  const ctx = AU.ctx, t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = type || 'square';
+  o.frequency.value = freq;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.012);
+  g.gain.setValueAtTime(vol, t + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g); g.connect(AU.master);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function sting(win){
+  if (!AU.ready || AU.muted) return;
+  const ctx = AU.ctx, t0 = ctx.currentTime;
+  const notes = win ? [0, 7, 12, 16, 19, 24] : [0, 3, 7, 10];
+  const base = win ? 261.6 : 174.6;
+  notes.forEach((n, i) => {
+    const t = t0 + i * 0.115;
+    const o = ctx.createOscillator(); o.type = i % 2 ? 'triangle' : 'sine';
+    o.frequency.value = base * Math.pow(2, n / 12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.20, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 1.5);
+    const d = ctx.createDelay(0.5); d.delayTime.value = 0.17;
+    const dg = ctx.createGain(); dg.gain.value = 0.28;
+    o.connect(g); g.connect(AU.master); g.connect(d); d.connect(dg); dg.connect(AU.master);
+    o.start(t); o.stop(t + 1.7);
+  });
+}
+function audioFrame(S, dt){
+  if (!AU.ready) return;
+  const ctx = AU.ctx, tc = ctx.currentTime;
+  const running = G.mode === 'run' || G.mode === 'count' || G.mode === 'done';
+  if (!S || !running){
+    AU.fg.gain.setTargetAtTime(0.0, tc, 0.3);
+    AU.fag.gain.setTargetAtTime(0.0, tc, 0.3);
+    AU.pg.gain.setTargetAtTime(0.0, tc, 0.3);
+    AU.pwg.gain.setTargetAtTime(0.0, tc, 0.3);
+    AU.hg.gain.setTargetAtTime(0.0, tc, 0.3);
+    AU.sg.gain.setTargetAtTime(0.0, tc, 0.3);
+    AU.wg.gain.setTargetAtTime(0.0, tc, 0.3);
+    AU.rg.gain.setTargetAtTime(0.0, tc, 0.3);
+    return;
+  }
+  const spd = Math.hypot(S.vx, S.vz);
+  const load = clamp(S.cf / 2.4, 0, 2.2);
+  const fan = S.fan * (S.dead ? Math.max(0, 1 - S.deadT / 0.9) : 1);
+
+  /* lift fan whines up as the cushion is squeezed */
+  const ffreq = 300 + load * 118 + Math.min(spd, 36) * 1.4;
+  AU.f1.frequency.setTargetAtTime(ffreq, tc, 0.09);
+  AU.f2.frequency.setTargetAtTime(ffreq * 1.011, tc, 0.09);
+  AU.f3.frequency.setTargetAtTime(ffreq * 3.02, tc, 0.09);
+  AU.ff.frequency.setTargetAtTime(1200 + load * 700, tc, 0.12);
+  AU.fg.gain.setTargetAtTime(0.030 + 0.052 * fan, tc, 0.10);
+  AU.fag.gain.setTargetAtTime(0.045 * fan, tc, 0.10);
+
+  /* thrust prop follows the commanded throttle */
+  const pr = clamp(S.prop, 0, 1);
+  const pfreq = 74 + pr * 122;
+  AU.p1.frequency.setTargetAtTime(pfreq, tc, 0.07);
+  AU.p2.frequency.setTargetAtTime(pfreq * 1.021, tc, 0.07);
+  AU.p3.frequency.setTargetAtTime(pfreq * 2.04, tc, 0.07);
+  AU.pf.frequency.setTargetAtTime(420 + pr * 1500, tc, 0.09);
+  AU.pg.gain.setTargetAtTime(0.045 + pr * 0.30, tc, 0.08);
+  AU.pwg.gain.setTargetAtTime(0.02 + pr * 0.19, tc, 0.08);
+  AU.pwf.frequency.setTargetAtTime(320 + pr * 900, tc, 0.10);
+
+  /* spray hiss / skirt scuff, split by what is under the skirt */
+  const wfrac = clamp(S.wWater / Math.max(S.cf, 0.01), 0, 1);
+  const lfrac = 1 - wfrac;
+  const sp = Math.min(spd, 36) / 36;
+  AU.hg.gain.setTargetAtTime(wfrac * (0.05 + sp * 0.40), tc, 0.08);
+  AU.hf.frequency.setTargetAtTime(1500 + sp * 2600, tc, 0.10);
+  const mud = clamp(S.wMud / Math.max(S.cf, 0.01), 0, 1);
+  AU.sg.gain.setTargetAtTime(lfrac * (0.02 + sp * 0.26) * (S.cf > 0.4 ? 1 : 0.3), tc, 0.08);
+  AU.sf.frequency.setTargetAtTime(380 + sp * 1100 - mud * 220, tc, 0.10);
+  AU.wg.gain.setTargetAtTime(S.wallow ? 0.30 : 0.0, tc, 0.18);
+  AU.wf.frequency.setTargetAtTime(S.wallow ? 260 : 140, tc, 0.2);
+
+  /* rivals blended by proximity */
+  let near = 0, nf = 120;
+  for (const R of RS){
+    if (R === PLAYER) continue;
+    const d = Math.hypot(R.px - S.px, R.pz - S.pz);
+    const g = Math.max(0, 1 - d / 46);
+    if (g > near){ near = g; nf = 74 + R.prop * 120; }
+  }
+  AU.rg.gain.setTargetAtTime(near * 0.16, tc, 0.14);
+  AU.r1.frequency.setTargetAtTime(nf, tc, 0.12);
+  AU.rf.frequency.setTargetAtTime(380 + near * 500, tc, 0.14);
+  AU.amg.gain.setTargetAtTime(0.05 + 0.05 * (1 - pr), tc, 0.4);
+}
+
+/* ===================================================================
+   INPUT
+   =================================================================== */
+const IN = { up: 0, down: 0, left: 0, right: 0, tThr: 0, tRev: 0, tSteer: 0, touch: 0 };
+let touchMode = false;
+function readInput(){
+  /* The world frame is right-handed, so the body's +X axis is the
+     pilot's PORT side and a positive rudder torque swings the nose to
+     port.  The simulation is self-consistent in that frame; this is the
+     one place it is relabelled for a human, so that D and the right of
+     the touch pad steer to the right of the screen. */
+  const kx = (IN.right ? 1 : 0) - (IN.left ? 1 : 0);
+  const rud = -clamp(kx + IN.tSteer, -1, 1);
+  const thr = clamp((IN.up ? 1 : 0) + IN.tThr, 0, 1);
+  const rev = clamp((IN.down ? 1 : 0) + IN.tRev, 0, 1);
+  return { thr, rev, rud, hold: 0 };
+}
+function keyDown(e){
+  const c = (e.key || '').toLowerCase();
+  if (G.mode === 'menu'){
+    if (c === 'm'){ toggleMute(); return; }
+    if (c === 'tab' || e.key === 'Tab') return;
+    e.preventDefault(); startRace(); return;
+  }
+  if (e.repeat) return;
+  switch (c){
+    case 'w': case 'arrowup': IN.up = 1; e.preventDefault(); break;
+    case 's': case 'arrowdown': IN.down = 1; e.preventDefault(); break;
+    case 'a': case 'arrowleft': IN.left = 1; e.preventDefault(); break;
+    case 'd': case 'arrowright': IN.right = 1; e.preventDefault(); break;
+    case 'c': cycleCam(); break;
+    case 'r': restart(); break;
+    case 'm': toggleMute(); break;
+    case 'p': case 'escape': togglePause(); e.preventDefault(); break;
+  }
+}
+function keyUp(e){
+  const c = (e.key || '').toLowerCase();
+  switch (c){
+    case 'w': case 'arrowup': IN.up = 0; break;
+    case 's': case 'arrowdown': IN.down = 0; break;
+    case 'a': case 'arrowleft': IN.left = 0; break;
+    case 'd': case 'arrowright': IN.right = 0; break;
+  }
+}
+window.addEventListener('keydown', keyDown);
+window.addEventListener('keyup', keyUp);
+
+function enableTouch(){
+  if (touchMode) return;
+  touchMode = true;
+  document.getElementById('touch').classList.add('on');
+  document.getElementById('app').classList.add('tmode');
+}
+{
+  const steer = document.getElementById('tSteer');
+  const knob = document.getElementById('tSteerK');
+  const inner = document.getElementById('tSteerIn');
+  let sid = null;
+  const setS = e => {
+    const r = inner.getBoundingClientRect();
+    const v = clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1);
+    IN.tSteer = v;
+    knob.style.transform = 'translateX(' + (v * (r.width / 2 - 30)) + 'px)';
+  };
+  steer.addEventListener('pointerdown', e => { e.preventDefault(); sid = e.pointerId; steer.setPointerCapture(sid); setS(e); });
+  steer.addEventListener('pointermove', e => { if (sid === e.pointerId) setS(e); });
+  const rel = e => { if (sid === e.pointerId){ try { steer.releasePointerCapture(sid); } catch (_){} sid = null; IN.tSteer = 0; knob.style.transform = 'translateX(0px)'; } };
+  steer.addEventListener('pointerup', rel);
+  steer.addEventListener('pointercancel', rel);
+
+  function hold(id, on, off){
+    const el = document.getElementById(id);
+    el.addEventListener('pointerdown', e => { e.preventDefault(); el.setPointerCapture(e.pointerId); el.classList.add('act'); on(); });
+    const end = e => { try { el.releasePointerCapture(e.pointerId); } catch (_){} el.classList.remove('act'); off(); };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('pointerleave', end);
+  }
+  hold('tbThr', () => { IN.tThr = 1; }, () => { IN.tThr = 0; });
+  hold('tbRev', () => { IN.tRev = 1; }, () => { IN.tRev = 0; });
+  document.getElementById('tbCam').addEventListener('pointerdown', e => { e.preventDefault(); cycleCam(); });
+  document.getElementById('tbPau').addEventListener('pointerdown', e => { e.preventDefault(); togglePause(); });
+  document.getElementById('tbMut').addEventListener('pointerdown', e => { e.preventDefault(); toggleMute(); });
+}
+window.addEventListener('touchstart', enableTouch, { passive: true, once: true });
+if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) enableTouch();
+
+document.getElementById('go').addEventListener('click', () => startRace());
+{
+  const sc = document.getElementById('start');
+  let dn = null;
+  sc.addEventListener('pointerdown', e => { dn = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+  sc.addEventListener('pointerup', e => {
+    if (!dn || G.mode !== 'menu') { dn = null; return; }
+    const moved = Math.hypot(e.clientX - dn.x, e.clientY - dn.y);
+    const held = performance.now() - dn.t;
+    dn = null;
+    if (moved < 12 && held < 800) startRace();
+  });
+  sc.addEventListener('pointercancel', () => { dn = null; });
+}
+document.getElementById('again').addEventListener('click', () => restart());
+
+function toggleMute(){ audioMute(!AU.muted); }
+let camMode = 0, camInit = false;
+function cycleCam(){ camMode = (camMode + 1) % 3; camInit = false; }
+function togglePause(){
+  if (G.mode !== 'run' && G.mode !== 'count') return;
+  G.paused = !G.paused;
+  document.getElementById('pauseTag').classList.toggle('on', G.paused || G.blurPause);
+  if (G.paused) audioSuspend(); else if (!AU.muted) audioResume();
+}
+
+/* ===================================================================
+   RACE STATE
+   =================================================================== */
+const RS = [];        /* all craft, in grid order */
+let PLAYER = null;
+let GT = 0;           /* world clock used by waves and visuals */
+
+const G = {
+  mode: 'menu',
+  t: 0, acc: 0, last: 0, alpha: 0,
+  paused: false, blurPause: false,
+  raceT: 0, countT: 0, lights: 0,
+  shake: 0, flash: 0, rumble: 0,
+  msgT: 0, coachKey: '', coachT: 0,
+  result: null, ach: Object.create(null),
+  topSpd: 0, dmgTaken: 0, wallowT: 0,
+  crossOK: 0, crossArm: 0, crossT: 0,
+  slipT: 0, slipClean: 1, slipArm: 0, sinceHit: 99,
+  visuals: []
+};
+
+function gridSpot(k){
+  /* 2-2-1, the player on the back of the grid */
+  const row = Math.floor(k / 2), col = k % 2;
+  const back = 13 + row * 11.5;
+  const side = (col ? 1 : -1) * 5.4 * (row === 2 ? 0 : 1);
+  const s = ((W.L - back) % W.L + W.L) % W.L;
+  const i = Math.round(s / P.step) % P.n;
+  return { x: P.x[i] + P.nx[i] * side, z: P.z[i] + P.nz[i] * side,
+           yaw: Math.atan2(P.tx[i], P.tz[i]), i, s };
+}
+/* grid order: rivals fill the front, the player starts last */
+const GRID = [1, 2, 3, 4, 0];
+
+function buildCrafts(){
+  for (let k = 0; k < NC; k++){
+    const def = CRAFTS[k];
+    const vis = buildCraft(def);
+    G.visuals.push(vis);
+    const S = newCraft(0, 0, 0);
+    S.def = def; S.vis = vis; S.idx = k;
+    S.ai = def.ai ? newAI(def.ai) : null;
+    RS.push(S);
+    if (def.player) PLAYER = S;
+  }
+}
+buildCrafts();
+
+function resetRace(){
+  GT = 0;
+  for (let k = 0; k < NC; k++){
+    const slot = GRID.indexOf(k);
+    const g = gridSpot(slot);
+    const S = RS[k];
+    const fresh = newCraft(g.x, g.z, g.yaw);
+    for (const key in fresh) if (key !== 'def' && key !== 'vis' && key !== 'idx' && key !== 'ai') S[key] = fresh[key];
+    S.seg = [1, 1, 1, 1, 1, 1, 1, 1];
+    S.py = surfTop(g.x, g.z) + 0.527;
+    S.pathI = g.i; S.fan = 0.25;
+    S.hold = { x: g.x, z: g.z, yaw: g.yaw };
+    if (S.ai) { S.ai.lastRud = 0; S.ai.wob = 0; }
+    /* race bookkeeping */
+    S.prog = g.s - W.L;
+    S.prevS = g.s;
+    S.laps = []; S.lastLapT = 0; S.finT = 0; S.done = 0; S.pos = slot + 1;
+    S.dnf = 0; S.gridPos = slot + 1;
+    S.pvx = S.px; S.pvy = S.py; S.pvz = S.pz;
+    S.pq = S.q.slice();
+    S.spin = 0;
+  }
+  for (const b of W.buoys){ b.x = b.x0; b.z = b.z0; b.vx = 0; b.vz = 0; b.spin = 0; b.sp = 0; }
+  G.raceT = 0; G.countT = 0; G.lights = 0; G.acc = 0;
+  G.shake = 0; G.flash = 0; G.rumble = 0; G.result = null;
+  G.ach = Object.create(null);
+  G.topSpd = 0; G.dmgTaken = 0; G.wallowT = 0;
+  G.crossOK = 0; G.crossArm = 0; G.crossT = 0;
+  G.slipT = 0; G.slipClean = 1; G.slipArm = 0; G.sinceHit = 99;
+  G.msgT = 0; G.coachKey = ''; G.coachT = 0;
+  clearPools();
+  camInit = false;
+  document.getElementById('bigMsg').classList.remove('on');
+  document.getElementById('coach').classList.remove('on');
+  document.getElementById('lights').classList.remove('on');
+  for (const l of ['l0', 'l1', 'l2']) document.getElementById(l).className = 'lamp';
+  updateBuoys();
+  for (const S of RS) placeCraft(S, 1);
+  updateHUD(0.016);
+  updateCamera(0.016, true);
+}
+
+function startRace(){
+  if (G.mode !== 'menu' && G.mode !== 'over') return;
+  audioInit(); audioResume();
+  document.getElementById('start').classList.remove('on');
+  document.getElementById('over').classList.remove('on');
+  document.getElementById('hud').classList.add('on');
+  resetRace();
+  G.mode = 'count';
+  G.countT = 0;
+  G.last = performance.now();
+}
+function restart(){
+  if (G.mode === 'menu'){ startRace(); return; }
+  audioInit(); audioResume();
+  document.getElementById('over').classList.remove('on');
+  document.getElementById('hud').classList.add('on');
+  resetRace();
+  G.mode = 'count';
+  G.countT = 0;
+  G.paused = false;
+  document.getElementById('pauseTag').classList.remove('on');
+  G.last = performance.now();
+}
+
+/* ---- messages ---- */
+const bigMsgEl = document.getElementById('bigMsg');
+const coachEl = document.getElementById('coach');
+function bigMsg(txt, dur){
+  bigMsgEl.textContent = txt;
+  bigMsgEl.classList.add('on');
+  G.msgT = dur || 1.4;
+}
+function coach(html, dur, key){
+  if (key && key === G.coachKey && G.coachT > 0) return;
+  G.coachKey = key || html;
+  G.coachT = dur || 3;
+  coachEl.innerHTML = html;
+  coachEl.classList.add('on');
+}
+
+/* ---- achievements ---- */
+const ACH_INFO = {
+  'checkered': ['\u{1F3C1}', 'CHECKERED', 'Won the race.'],
+  'over-the-hump': ['\u{1F30A}', 'OVER THE HUMP', 'Crossed water without ever dropping below hump speed.'],
+  'clean-sweep': ['\u{2728}', 'CLEAN SWEEP', 'Won with the skirt untouched.'],
+  'back-it-in': ['\u{1F503}', 'BACK IT IN', 'Held a 60-degree slide above 12 m/s, then caught it clean.'],
+  'held-together': ['\u{1F9F5}', 'HELD TOGETHER', 'Won on 40% skirt or less.']
+};
+function unlock(slug){
+  if (G.ach[slug]) return;
+  G.ach[slug] = 1;
+  arcadeUnlock(slug);
+  beep(1180, 0.10, 0.15, 'triangle');
+  setTimeout(() => beep(1560, 0.16, 0.13, 'triangle'), 95);
+}
+
+/* ===================================================================
+   SIMULATION TICK — fixed 1/120 s, decoupled from the frame rate
+   =================================================================== */
+function craftInput(S){
+  if (S === PLAYER){
+    const In = readInput();
+    if (G.mode === 'count') return { thr: 0, rev: 0, rud: In.rud * 0.3, hold: 1 };
+    return In;
+  }
+  if (G.mode === 'count') return { thr: 0, rev: 0, rud: 0, hold: 1 };
+  if (S.dnf || S.dead) return { thr: 0, rev: 0, rud: 0, hold: 0 };
+  if (S.done) return { thr: 0.22, rev: 0, rud: aiControl(S, W, DT, 1).rud, hold: 0 };
+  /* honest rubber band: a small thrust multiplier keyed off the gap to
+     the player, bounded well inside the physics */
+  const gap = PLAYER.prog - S.prog;
+  const rub = clamp(1 + gap * 0.00040, 0.97, 1.06);
+  return aiControl(S, W, DT, rub);
+}
+
+function physTick(dt){
+  GT += dt;
+  const counting = G.mode === 'count';
+  for (const S of RS){
+    S.pvx = S.px; S.pvy = S.py; S.pvz = S.pz;
+    S.pq[0] = S.q[0]; S.pq[1] = S.q[1]; S.pq[2] = S.q[2]; S.pq[3] = S.q[3];
+    const In = craftInput(S);
+    physStep(S, W, In, dt);
+    S.spin += S.prop * dt * 62;
+    if (S.spin > 1e6) S.spin -= 1e6;
+  }
+  for (let a = 0; a < NC; a++)
+    for (let b = a + 1; b < NC; b++) collideCraft(RS[a], RS[b]);
+  stepBuoys(W, dt);
+
+  if (counting) return;
+
+  /* ---- progress, laps, finish ---- */
+  G.raceT += dt;
+  for (const S of RS){
+    let ds = S.s - S.prevS;
+    if (ds > W.L * 0.5) ds -= W.L;
+    if (ds < -W.L * 0.5) ds += W.L;
+    S.prevS = S.s;
+    S.prog += ds;
+    if (S.done || S.dnf) continue;
+    while (S.prog >= (S.laps.length + 1) * W.L){
+      S.laps.push(G.raceT - S.lastLapT);
+      S.lastLapT = G.raceT;
+      if (S.laps.length >= LAPS){ S.done = 1; S.finT = G.raceT; onFinish(S); }
+      else if (S === PLAYER) onPlayerLap();
+    }
+    if (!S.done && S.dead && S.deadT > 2.6 && Math.hypot(S.vx, S.vz) < 1.4){
+      S.dnf = 1;
+      if (S === PLAYER) endRace('dnf');
+    }
+  }
+  computeOrder();
+  if (G.raceT > 420 && G.mode === 'run'){ PLAYER.dnf = 1; endRace('time'); }
+
+  /* ---- player-only bookkeeping ---- */
+  const S = PLAYER;
+  const v = Math.hypot(S.vx, S.vz);
+  if (v > G.topSpd) G.topSpd = v;
+  if (S.integrity < 0.9999) G.dmgTaken = 1;
+  if (S.wallow) G.wallowT += dt;
+  G.sinceHit += dt;
+  if (S.hit && S.hitMag > 0.02) G.sinceHit = 0;
+
+  /* over-the-hump: a whole crossing above hump speed */
+  if (S.overWater){
+    if (!G.crossArm){ G.crossArm = 1; G.crossOK = 1; G.crossT = 0; }
+    G.crossT += dt;
+    if (v < C.HUMP_V) G.crossOK = 0;
+  } else if (G.crossArm){
+    if (G.crossT > 1.6 && G.crossOK) unlock('over-the-hump');
+    G.crossArm = 0; G.crossT = 0;
+  }
+
+  /* back-it-in */
+  const sl = Math.abs(S.slip);
+  if (sl > 1.047 && v > 12){
+    G.slipT += dt;
+    if (S.hit && S.hitMag > 0.02) G.slipClean = 0;
+    if (G.slipT >= 1.0) G.slipArm = 1;
+  } else {
+    if (G.slipArm && sl < 0.44 && v > 8 && G.slipClean && G.sinceHit > 0.6) unlock('back-it-in');
+    if (sl < 0.44){ G.slipT = 0; G.slipArm = 0; G.slipClean = 1; }
+  }
+
+  /* ---- reactions ---- */
+  if (S.hit && S.hitMag > 0.015){
+    const m = S.hitMag;
+    thump(0.25 + m * 0.75, m > 0.3);
+    G.shake = Math.max(G.shake, 0.25 + m * 1.5);
+    if (m > 0.25) G.flash = Math.max(G.flash, m * 0.20);
+    if (m > 0.10) coach('Skirt damage. Torn segments sag the cushion and pile on drag.', 3.2, 'dmg');
+  }
+  if (S.buoyHit > 0.05) thump(0.10 + S.buoyHit * 0.16, false);
+  G.rumble = S.wallow ? Math.min(1, G.rumble + dt * 3) : Math.max(0, G.rumble - dt * 3);
+}
+
+function computeOrder(){
+  const arr = RS.slice();
+  arr.sort((a, b) => {
+    if (a.dnf !== b.dnf) return a.dnf - b.dnf;
+    if (a.done !== b.done) return b.done - a.done;
+    if (a.done && b.done) return a.finT - b.finT;
+    return b.prog - a.prog;
+  });
+  arr.forEach((S, i) => { S.pos = i + 1; });
+  G.order = arr;
+}
+
+function onPlayerLap(){
+  const n = PLAYER.laps.length;
+  const last = PLAYER.laps[n - 1];
+  bigMsg('LAP ' + (n + 1) + ' / ' + LAPS, 1.5);
+  beep(880, 0.10, 0.16, 'triangle');
+  const best = Math.min.apply(null, PLAYER.laps);
+  if (n > 1 && last <= best + 1e-9) coach('Personal best lap &mdash; <b>' + fmt(last) + '</b>', 2.6, 'pb');
+}
+
+function onFinish(S){
+  if (S !== PLAYER) return;
+  const pos = liveOrderOf(S);
+  const total = S.finT;
+  const best = Math.min.apply(null, S.laps);
+  arcadeSubmit(Math.round(total * 100) / 100, { position: pos, bestLap: Math.round(best * 100) / 100 });
+  if (pos === 1){
+    unlock('checkered');
+    if (!G.dmgTaken) unlock('clean-sweep');
+    if (S.integrity <= 0.4001) unlock('held-together');
+  }
+  endRace('finish');
+}
+function liveOrderOf(S){
+  /* how many craft have already finished ahead */
+  let n = 1;
+  for (const R of RS){ if (R !== S && R.done && R.finT < S.finT) n++; }
+  return n;
+}
+
+function endRace(why){
+  if (G.mode === 'over' || G.mode === 'done') return;
+  G.mode = 'done';
+  G.doneT = 0;
+  G.why = why;
+  if (why === 'finish'){
+    const pos = liveOrderOf(PLAYER);
+    bigMsg(pos === 1 ? 'WINNER' : 'FINISH', 2.4);
+    sting(pos === 1);
+  } else if (why === 'time'){
+    bigMsg('TIME', 2.2);
+    sting(false);
+  } else {
+    bigMsg('SKIRT FAILURE', 2.6);
+    sting(false);
+    thump(0.9, true);
+    G.shake = 2.0;
+  }
+}
+
+/* ===================================================================
+   EFFECTS
+   =================================================================== */
+const _v3 = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
+function placeCraft(S, alpha){
+  const V = S.vis;
+  const a = alpha === undefined ? G.alpha : alpha;
+  const x = S.pvx + (S.px - S.pvx) * a;
+  const y = S.pvy + (S.py - S.pvy) * a;
+  const z = S.pvz + (S.pz - S.pvz) * a;
+  V.G.position.set(x, y, z);
+  _q.set(S.pq[0], S.pq[1], S.pq[2], S.pq[3]);
+  _q2.set(S.q[0], S.q[1], S.q[2], S.q[3]);
+  _q.slerp(_q2, a);
+  V.G.quaternion.copy(_q);
+  V.prop.rotation.z = S.spin;
+  V.vanes.rotation.y = S.rud * 0.42;
+  V.G.visible = true;
+  /* skirt segments deflate and darken as they tear */
+  for (let i = 0; i < 8; i++){
+    const g = S.seg[i];
+    const m = V.skirt[i];
+    const sc = 0.45 + 0.55 * g;
+    m.scale.set(0.82, sc, 1.30);
+    m.position.y = -0.22 + (1 - g) * 0.10;
+    m.material.color.setRGB(0.19 + (1 - g) * 0.26, 0.21 - (1 - g) * 0.07, 0.23 - (1 - g) * 0.09);
+  }
+  /* blob shadow on whatever is underneath */
+  const sy = surfTop(x, z);
+  V.shadow.position.set(x, sy + 0.05, z);
+  const ride = clamp(S.ride, 0, 0.7);
+  const sc = 1 + ride * 0.9;
+  V.shadow.scale.set(sc, sc, sc);
+  V.shadow.material.opacity = clamp(0.85 - ride * 0.5, 0.15, 0.9);
+}
+
+const _sp = new THREE.Vector3();
+function craftFx(S, dt, isPlayer){
+  if (dt <= 0) return;
+  const v = Math.hypot(S.vx, S.vz);
+  const budget = isPlayer ? 1 : 0.34;
+  const q = S.q;
+  const fx = 2 * (q[0] * q[2] + q[3] * q[1]);
+  const fz = 1 - 2 * (q[0] * q[0] + q[1] * q[1]);
+  const wf = S.cf > 0.01 ? S.wWater / S.cf : 0;
+  const mf = S.cf > 0.01 ? S.wMud / S.cf : 0;
+  const df = S.cf > 0.01 ? S.wDirt / S.cf : 0;
+  const gf = Math.max(0, 1 - wf - mf - df);
+
+  /* the fantail behind a hovercraft over water */
+  if (wf > 0.15 && !S.dnf){
+    const wall = S.wallow ? 1.9 : 1;
+    const rate = (6 + v * 8.5) * wf * budget * wall;
+    let n = rate * dt;
+    while (n > 0){
+      if (n < 1 && Math.random() > n) break;
+      n -= 1;
+      const side = (Math.random() - 0.5) * 2;
+      const bx = -fx * 1.5 + fz * side * 1.5;
+      const bz = -fz * 1.5 - fx * side * 1.5;
+      const spd = 2.5 + v * 0.30;
+      emit(POOL_W,
+        S.px + bx, Math.max(0.05, S.py - 0.35) + Math.random() * 0.2, S.pz + bz,
+        -fx * spd * 0.42 + side * spd * 0.62 + (Math.random() - 0.5) * 2.0,
+        1.3 + Math.random() * (S.wallow ? 3.0 : 1.9) + v * 0.055,
+        -fz * spd * 0.42 + (Math.random() - 0.5) * 2.0,
+        0.30 + Math.random() * 0.46, 0.20 + Math.random() * 0.26,
+        0.66, 0.80, 0.88, 10.5);
+    }
+  }
+  /* dirt, clods and clippings on land */
+  if (gf + mf + df > 0.2 && v > 3 && !S.dnf){
+    const rate = (v * (mf * 3.4 + df * 2.2 + gf * 1.2)) * budget * 1.1;
+    let n = rate * dt;
+    while (n > 0){
+      if (n < 1 && Math.random() > n) break;
+      n -= 1;
+      const side = (Math.random() - 0.5) * 2;
+      const bx = -fx * 1.4 + fz * side * 1.4;
+      const bz = -fz * 1.4 - fx * side * 1.4;
+      let r, g, b, sz;
+      const roll = Math.random();
+      if (roll < mf){ r = 0.26; g = 0.19; b = 0.11; sz = 0.55; }
+      else if (roll < mf + df){ r = 0.55; g = 0.44; b = 0.28; sz = 0.52; }
+      else { r = 0.33; g = 0.50; b = 0.20; sz = 0.26; }
+      emit(POOL_D,
+        S.px + bx, Math.max(0.05, S.py - 0.32), S.pz + bz,
+        -fx * v * 0.22 + side * 2.4 + (Math.random() - 0.5) * 2,
+        1.2 + Math.random() * 2.6, -fz * v * 0.22 + (Math.random() - 0.5) * 2,
+        0.50 + Math.random() * 0.7, sz + Math.random() * 0.26,
+        r, g, b, 13);
+    }
+  }
+  /* a puff on impact */
+  if (S.hit && S.hitMag > 0.04){
+    for (let i = 0; i < (isPlayer ? 16 : 6); i++){
+      emit(POOL_D, S.px, S.py - 0.1, S.pz,
+        (Math.random() - 0.5) * 9, 1.5 + Math.random() * 4.5, (Math.random() - 0.5) * 9,
+        0.5 + Math.random() * 0.5, 0.55, 0.72, 0.66, 0.52, 12);
+    }
+  }
+  /* ploughed in */
+  if (S.dead && S.deadT < 2.4 && Math.random() < 0.6){
+    const water = S.wWater > S.cf * 0.4;
+    emit(water ? POOL_W : POOL_D, S.px + (Math.random() - 0.5) * 3, Math.max(0.05, S.py - 0.2), S.pz + (Math.random() - 0.5) * 3,
+      (Math.random() - 0.5) * 8, 2 + Math.random() * 6, (Math.random() - 0.5) * 8,
+      0.7 + Math.random(), 0.75,
+      water ? 0.8 : 0.5, water ? 0.9 : 0.42, water ? 0.98 : 0.34, 11);
+  }
+}
+
+/* ===================================================================
+   CAMERA
+   =================================================================== */
+const camPos = new THREE.Vector3();
+const camAim = new THREE.Vector3();
+let camFov = 62;
+function updateCamera(dt, snap){
+  const S = PLAYER;
+  const V = S.vis;
+  const p = V.G.position;
+  const q = V.G.quaternion;
+  const fwd = _v3.set(0, 0, 1).applyQuaternion(q);
+  const v = Math.hypot(S.vx, S.vz);
+  const vh = v > 3 ? Math.atan2(S.vx, S.vz) : Math.atan2(fwd.x, fwd.z);
+  const yaw = Math.atan2(fwd.x, fwd.z);
+  /* look down the blend of heading and travel: that is what reads as drift */
+  let d = wrapPi(vh - yaw);
+  const look = yaw + d * 0.55;
+  const lx = Math.sin(look), lz = Math.cos(look);
+
+  let wantP, wantA, wantF;
+  if (camMode === 1){
+    /* onboard: over the driver's shoulder, looking down the nose */
+    const o = new THREE.Vector3(0, 1.04, 0.74).applyQuaternion(q);
+    wantP = new THREE.Vector3(p.x + o.x, p.y + o.y, p.z + o.z);
+    wantA = new THREE.Vector3(p.x + fwd.x * 26, p.y + fwd.y * 26 + 2.3, p.z + fwd.z * 26);
+    wantF = 70 + Math.min(v, 34) * 0.40;
+  } else if (camMode === 2){
+    /* high and wide */
+    const dist = 18 + v * 0.34;
+    wantP = new THREE.Vector3(p.x - lx * dist, p.y + 9.0, p.z - lz * dist);
+    wantA = new THREE.Vector3(p.x + lx * 8, p.y + 1.0, p.z + lz * 8);
+    wantF = 54 + Math.min(v, 34) * 0.24;
+  } else {
+    const dist = 9.6 + v * 0.130;
+    const hgt = 3.35 + v * 0.020;
+    wantP = new THREE.Vector3(p.x - lx * dist, p.y + hgt, p.z - lz * dist);
+    wantA = new THREE.Vector3(p.x + lx * 11, p.y + 1.25, p.z + lz * 11);
+    wantF = 60 + Math.min(v, 36) * 0.52;
+  }
+  /* never let the camera sink into the ground or the lake bed */
+  const gy = surfTop(wantP.x, wantP.z) + 1.3;
+  if (wantP.y < gy) wantP.y = gy;
+
+  if (snap || !camInit){ camPos.copy(wantP); camAim.copy(wantA); camFov = wantF; camInit = true; }
+  else {
+    const k = camMode === 1 ? 1 : (1 - Math.exp(-dt * (camMode === 2 ? 3.4 : 5.6)));
+    camPos.lerp(wantP, camMode === 1 ? 1 : k);
+    camAim.lerp(wantA, camMode === 1 ? 1 : (1 - Math.exp(-dt * 9)));
+    camFov += (wantF - camFov) * (1 - Math.exp(-dt * 3.2));
+  }
+  camera.position.copy(camPos);
+  if (camMode === 1){
+    /* onboard: take the attitude straight off the craft, so the horizon
+       rolls and pitches exactly as the hull does */
+    _q2.set(0, 1, 0, 0);                    /* the camera looks down -Z */
+    camera.quaternion.copy(V.G.quaternion).multiply(_q2);
+    camera.rotateX(0.030);
+    const sh0 = G.shake + G.rumble * 0.16;
+    if (sh0 > 0.002){
+      camera.position.x += (Math.random() - 0.5) * sh0 * 0.35;
+      camera.position.y += (Math.random() - 0.5) * sh0 * 0.30;
+      camera.position.z += (Math.random() - 0.5) * sh0 * 0.35;
+      camera.rotateZ((Math.random() - 0.5) * sh0 * 0.03);
+    }
+    if (Math.abs(camera.fov - camFov) > 0.01){
+      camera.fov = camFov; camera.updateProjectionMatrix();
+      const sc = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
+      POOL_W.pts.material.uniforms.uPix.value = sc;
+      POOL_D.pts.material.uniforms.uPix.value = sc;
+    }
+    return;
+  }
+  camera.lookAt(camAim);
+  /* lean with the slide */
+  camera.rotateZ(clamp(d * 0.12, -0.16, 0.16));
+
+  const sh = G.shake + G.rumble * 0.16;
+  if (sh > 0.002){
+    camera.position.x += (Math.random() - 0.5) * sh * 0.45;
+    camera.position.y += (Math.random() - 0.5) * sh * 0.36;
+    camera.position.z += (Math.random() - 0.5) * sh * 0.45;
+    camera.rotateZ((Math.random() - 0.5) * sh * 0.026);
+  }
+  if (Math.abs(camera.fov - camFov) > 0.01){
+    camera.fov = camFov; camera.updateProjectionMatrix();
+    const sc = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
+    POOL_W.pts.material.uniforms.uPix.value = sc;
+    POOL_D.pts.material.uniforms.uPix.value = sc;
+  }
+}
+
+let menuA = 0.9;
+function menuCamera(dt){
+  menuA += dt * 0.052;
+  const p = PLAYER.vis.G.position;
+  const r = 27;
+  camera.position.set(p.x + Math.sin(menuA) * r, p.y + 9.5 + Math.sin(menuA * 0.7) * 2.2, p.z + Math.cos(menuA) * r);
+  camera.lookAt(p.x, p.y + 1.4, p.z);
+  if (Math.abs(camera.fov - 52) > 0.05){ camera.fov = 52; camera.updateProjectionMatrix(); }
+}
+
+/* ===================================================================
+   HUD
+   =================================================================== */
+const el = id => document.getElementById(id);
+const lapV = el('lapV'), posV = el('posV'), clkV = el('clkV');
+const lastLapEl = el('lastLap'), bestLapEl = el('bestLap');
+const spdV = el('spdV'), standEl = el('stand');
+const skirtBox = el('skirtBox'), skirtV = el('skirtV'), skirtSegs = el('skirtSegs');
+const humpEl = el('hump'), humpFill = el('humpFill'), humpMark = el('humpMark'), humpS = el('humpS');
+const mapDots = el('mapDots');
+
+function fmt(t){
+  if (!isFinite(t)) return '—';
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2);
+}
+function fmtS(t){ return isFinite(t) ? t.toFixed(2) : '—'; }
+
+/* Skirt diagram: a plan view of the craft, bow up.  The wedge for each
+   segment is placed from that segment's own body-frame direction, so it
+   can never end up mirrored — looking down on the craft from above,
+   page-right is -X, which is starboard. */
+const segPaths = [];
+{
+  for (let i = 0; i < 8; i++){
+    const d = SEG_DIR[i];
+    const a0 = Math.atan2(-d.z, -d.x) - Math.PI / 8;
+    const A0 = a0 + 0.06, A1 = a0 + Math.PI / 4 - 0.06;
+    const r0 = 26, r1 = 44;
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const x = (r, a) => (50 + r * Math.cos(a)).toFixed(2);
+    const y = (r, a) => (50 + r * Math.sin(a)).toFixed(2);
+    p.setAttribute('d',
+      `M ${x(r0, A0)} ${y(r0, A0)} L ${x(r1, A0)} ${y(r1, A0)} A ${r1} ${r1} 0 0 1 ${x(r1, A1)} ${y(r1, A1)} L ${x(r0, A1)} ${y(r0, A1)} A ${r0} ${r0} 0 0 0 ${x(r0, A0)} ${y(r0, A0)} Z`);
+    p.setAttribute('stroke', 'rgba(10,16,20,.65)');
+    p.setAttribute('stroke-width', '0.8');
+    skirtSegs.appendChild(p);
+    segPaths.push(p);
+  }
+}
+
+/* minimap paths */
+let MAP = null;
+function buildMap(){
+  let mnx = 1e9, mxx = -1e9, mnz = 1e9, mxz = -1e9;
+  for (let i = 0; i < P.n; i++){
+    if (P.x[i] < mnx) mnx = P.x[i];
+    if (P.x[i] > mxx) mxx = P.x[i];
+    if (P.z[i] < mnz) mnz = P.z[i];
+    if (P.z[i] > mxz) mxz = P.z[i];
+  }
+  const pad = 26;
+  mnx -= pad; mxx += pad; mnz -= pad; mxz += pad;
+  const sp = Math.max(mxx - mnx, mxz - mnz);
+  const ox = (mnx + mxx) / 2, oz = (mnz + mxz) / 2;
+  /* plan view, matching the skirt diagram: page-right is -X */
+  const px = x => (50 - (x - ox) / sp * 92);
+  const pz = z => (50 - (z - oz) / sp * 92);
+  MAP = { px, pz };
+  const step = Math.max(1, Math.round(9 / P.step));
+  let d = '', dm = '', dw = '';
+  let mudOn = false, watOn = false;
+  for (let i = 0; i <= P.n; i += step){
+    const k = i % P.n;
+    d += (i === 0 ? 'M' : 'L') + px(P.x[k]).toFixed(1) + ' ' + pz(P.z[k]).toFixed(1) + ' ';
+    const isMud = surfAt(W, P.x[k], P.z[k]) === SF_MUD;
+    const isWat = P.isWater[k];
+    if (isMud){ dm += (mudOn ? 'L' : 'M') + px(P.x[k]).toFixed(1) + ' ' + pz(P.z[k]).toFixed(1) + ' '; mudOn = true; } else mudOn = false;
+    if (isWat){ dw += (watOn ? 'L' : 'M') + px(P.x[k]).toFixed(1) + ' ' + pz(P.z[k]).toFixed(1) + ' '; watOn = true; } else watOn = false;
+  }
+  d += 'Z';
+  el('mapTrack').setAttribute('d', d);
+  el('mapMud').setAttribute('d', dm);
+  /* water bodies from the lake polygon */
+  const geo = getGeo();
+  let wp = '';
+  for (let i = 0; i < geo.lakePoly.length; i += 2){
+    wp += (i === 0 ? 'M' : 'L') + px(geo.lakePoly[i]).toFixed(1) + ' ' + pz(geo.lakePoly[i + 1]).toFixed(1) + ' ';
+  }
+  wp += 'Z';
+  el('mapWater').setAttribute('d', wp);
+  /* start line */
+  const i0 = 0;
+  const a = [P.x[i0] + P.nx[i0] * P.w[i0], P.z[i0] + P.nz[i0] * P.w[i0]];
+  const b = [P.x[i0] - P.nx[i0] * P.w[i0], P.z[i0] - P.nz[i0] * P.w[i0]];
+  const sf = el('mapSF');
+  sf.setAttribute('x1', px(a[0]).toFixed(1)); sf.setAttribute('y1', pz(a[1]).toFixed(1));
+  sf.setAttribute('x2', px(b[0]).toFixed(1)); sf.setAttribute('y2', pz(b[1]).toFixed(1));
+  /* dots */
+  for (let k = 0; k < NC; k++){
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('r', CRAFTS[k].player ? 3.0 : 2.2);
+    c.setAttribute('fill', CRAFTS[k].css);
+    if (CRAFTS[k].player){ c.setAttribute('stroke', '#0a0e11'); c.setAttribute('stroke-width', '1.1'); }
+    mapDots.appendChild(c);
+  }
+}
+buildMap();
+
+let shownSpd = 0, hudTick = 0;
+function updateHUD(dt){
+  hudTick++;
+  const slow = (hudTick % 3) === 0;
+  const S = PLAYER;
+  const v = Math.hypot(S.vx, S.vz);
+  shownSpd += (v * MPS_MPH - shownSpd) * Math.min(1, dt * 12);
+  spdV.textContent = Math.round(Math.max(0, shownSpd));
+
+  const lap = Math.min(LAPS, S.laps.length + 1);
+  lapV.innerHTML = lap + '<small>/' + LAPS + '</small>';
+  posV.innerHTML = S.pos + '<small>/' + NC + '</small>';
+  clkV.textContent = fmt(G.raceT);
+  lastLapEl.textContent = S.laps.length ? fmtS(S.laps[S.laps.length - 1]) : '—';
+  bestLapEl.textContent = S.laps.length ? fmtS(Math.min.apply(null, S.laps)) : '—';
+
+  /* standings and the skirt gauge only need a few updates a second */
+  if (slow){
+    const ord = G.order || RS;
+    let html = '';
+    for (let i = 0; i < ord.length; i++){
+      const R = ord[i];
+      let gp = '';
+      if (R !== S){
+        const d = (R.prog - S.prog);
+        gp = (d >= 0 ? '+' : '') + Math.round(d) + 'm';
+      }
+      if (R.dnf) gp = 'DNF';
+      else if (R.done) gp = fmtS(R.finT);
+      html += '<div class="srow' + (R === S ? ' me' : '') + '">' +
+        '<span class="p">' + (i + 1) + '</span>' +
+        '<span class="chip" style="background:' + R.def.css + '"></span>' +
+        '<span class="nm">' + R.def.name + '</span>' +
+        '<span class="gp">' + gp + '</span></div>';
+    }
+    standEl.innerHTML = html;
+
+    const ig = S.integrity;
+    skirtV.textContent = Math.round(ig * 100) + '%';
+    skirtBox.className = 'pane' + (ig < 0.25 ? ' crit' : ig < 0.55 ? ' warn' : '');
+    for (let i = 0; i < 8; i++){
+      const g = S.seg[i];
+      const r = Math.round(255 * (1 - g) + 103 * g);
+      const gg = Math.round(85 * (1 - g) + 224 * g);
+      const b = Math.round(64 * (1 - g) + 163 * g);
+      segPaths[i].setAttribute('fill', `rgba(${r},${gg},${b},${0.30 + 0.55 * g})`);
+    }
+  }
+
+  /* hump */
+  const overW = S.overWater || (S.cf > 0.01 && S.wWater / S.cf > 0.35);
+  humpEl.classList.toggle('on', !!overW);
+  if (overW){
+    const f = clamp(v / (C.HUMP_V * 2.6), 0, 1);
+    humpFill.style.left = (f * 100).toFixed(1) + '%';
+    humpMark.style.left = (f * 100).toFixed(1) + '%';
+    const over = v > C.HUMP_V * 1.28;
+    humpEl.classList.toggle('wallow', !over);
+    humpS.textContent = over ? 'OVER THE HUMP' : (v > C.HUMP_V * 0.7 ? 'ON THE HUMP' : 'WALLOWING');
+  }
+
+  /* minimap dots */
+  if (MAP){
+    for (let k = 0; k < NC; k++){
+      const R = RS[k], c = mapDots.childNodes[k];
+      c.setAttribute('cx', MAP.px(R.px).toFixed(1));
+      c.setAttribute('cy', MAP.pz(R.pz).toFixed(1));
+      c.setAttribute('opacity', R.dnf ? 0.3 : 1);
+    }
+  }
+}
+
+/* ===================================================================
+   RESULT CARD
+   =================================================================== */
+function showResult(){
+  G.mode = 'over';
+  const S = PLAYER;
+  const dnf = G.why === 'dnf' || G.why === 'time';
+  computeOrder();
+  const pos = dnf ? NC : liveOrderOf(S);
+  const ord = RS.slice().sort((a, b) => {
+    if (a.dnf !== b.dnf) return a.dnf - b.dnf;
+    if (a.done !== b.done) return b.done - a.done;
+    if (a.done && b.done) return a.finT - b.finT;
+    return b.prog - a.prog;
+  });
+  el('rTitle').textContent = G.why === 'time' ? 'RACE CALLED'
+    : dnf ? 'DID NOT FINISH' : (pos === 1 ? 'CHEQUERED FLAG' : 'RACE COMPLETE');
+  const ordinal = ['', '1st', '2nd', '3rd', '4th', '5th'][pos] || (pos + 'th');
+  el('rBig').innerHTML = dnf ? 'DNF' : ordinal;
+  el('rBig').style.color = dnf ? 'var(--bad)' : (pos === 1 ? 'var(--gold)' : 'var(--cream)');
+  el('rSub').textContent = dnf ? '' : fmt(S.finT) + '  TOTAL';
+  el('rWhy').innerHTML = G.why === 'time'
+    ? 'The race was called on time.'
+    : dnf
+    ? 'The skirt tore through. With no cushion left the hull ploughed in and the marshals waved you off. Cumulative impacts are what kill a hovercraft &mdash; damage sags the plenum, drops your ride height and piles on drag long before it ends the race.'
+    : (pos === 1 ? 'Clean run. The leaderboard takes your total race time &mdash; lower is better.'
+                 : 'Every corner you took off the throttle, the rudders stopped biting. Keep the power on and steer with the line.');
+
+  let rows = '';
+  ord.forEach((R, i) => {
+    const t = R.dnf ? 'DNF' : (R.done ? fmt(R.finT)
+      : (R === S ? '—' : (Math.round(R.prog - S.prog) + 'm')));
+    rows += '<div class="rrow' + (R === S ? ' me' : '') + '">' +
+      '<span class="p">' + (i + 1) + '</span>' +
+      '<span class="chip" style="background:' + R.def.css + '"></span>' +
+      '<span class="nm">' + R.def.name + '</span>' +
+      '<span class="tm">' + t + '</span></div>';
+  });
+  el('results').innerHTML = rows;
+
+  const best = S.laps.length ? Math.min.apply(null, S.laps) : NaN;
+  const stats = [
+    ['BEST LAP', S.laps.length ? fmtS(best) : '—'],
+    ['TOP SPEED', Math.round(G.topSpd * MPS_MPH) + ' MPH'],
+    ['SKIRT LEFT', Math.round(S.integrity * 100) + '%'],
+    ['WALLOWED', G.wallowT.toFixed(1) + ' S'],
+    ['LAPS', S.laps.length + ' / ' + LAPS]
+  ];
+  el('stats').innerHTML = stats.map(s =>
+    '<div class="st"><div class="k">' + s[0] + '</div><div class="v">' + s[1] + '</div></div>').join('');
+
+  const got = Object.keys(G.ach);
+  el('ach').innerHTML = got.map(k => {
+    const a = ACH_INFO[k];
+    return '<div class="abadge"><i>' + a[0] + '</i><div><b>' + a[1] + '</b><span>' + a[2] + '</span></div></div>';
+  }).join('');
+
+  el('hud').classList.remove('on');
+  el('over').classList.add('on');
+}
+
+/* ===================================================================
+   RESIZE / FOCUS
+   =================================================================== */
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setSize(w, h);
+  const sc = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
+  POOL_W.pts.material.uniforms.uPix.value = sc;
+  POOL_D.pts.material.uniforms.uPix.value = sc;
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 220));
+resize();
+
+function onBlur(){
+  if (G.mode === 'run' || G.mode === 'count' || G.mode === 'done'){
+    G.blurPause = true;
+    el('pauseTag').classList.add('on');
+  }
+  audioSuspend();
+}
+function onFocus(){
+  if (G.blurPause){
+    G.blurPause = false;
+    if (!G.paused) el('pauseTag').classList.remove('on');
+  }
+  IN.up = IN.down = IN.left = IN.right = 0;
+  IN.tThr = IN.tRev = 0; IN.tSteer = 0;
+  G.acc = 0; G.last = performance.now();
+  if (!AU.muted && !G.paused) audioResume();
+}
+window.addEventListener('blur', onBlur);
+window.addEventListener('focus', onFocus);
+document.addEventListener('visibilitychange', () => { if (document.hidden) onBlur(); else onFocus(); });
+
+/* ===================================================================
+   COACHING — a few lines, only when they are useful
+   =================================================================== */
+function coachTick(dt){
+  if (G.mode !== 'run') return;
+  const S = PLAYER;
+  const v = Math.hypot(S.vx, S.vz);
+  const dw = P.dwater[S.pathI];
+  if (S.wallow && G.wallowT > 0.7){
+    coach('<b>Wallowing.</b> You are stuck on your own bow wave. Full thrust, hold it straight, and wait.', 3.4, 'wall');
+  } else if (!S.overWater && dw > 12 && dw < 95 && v < 15){
+    coach('Water ahead &mdash; <b>build speed now</b>. Below hump speed the crossing will cost you seconds.', 2.8, 'wpre');
+  } else if (S.surf === SF_MUD && v < 13){
+    coach('The bog. There is a cleaner line around the outside of it.', 3.0, 'mud');
+  } else if (v < 9 && S.prop < 0.25 && G.raceT > 3){
+    coach('No brakes, and no steering without thrust &mdash; <b>keep the power on</b>.', 3.0, 'pwr');
+  }
+}
+
+/* ===================================================================
+   MAIN LOOP
+   =================================================================== */
+const flashEl = el('flash');
+let frameNo = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  frameNo++;
+  if (!G.last) G.last = now;
+  let dt = (now - G.last) / 1000;
+  G.last = now;
+  if (!(dt > 0)) dt = 0;
+  if (dt > 0.25) dt = 0.25;
+
+  const halted = G.paused || G.blurPause || G.mode === 'menu' || G.mode === 'over';
+  const rdt = halted ? 0 : dt;
+
+  if (!halted && (G.mode === 'count' || G.mode === 'run' || G.mode === 'done')){
+    G.acc += dt;
+    if (G.acc > 0.30) G.acc = 0.30;
+    let steps = 0;
+    while (G.acc >= DT && steps < 40){
+      physTick(DT);
+      G.acc -= DT; steps++;
+    }
+    G.alpha = clamp(G.acc / DT, 0, 1);
+  }
+
+  /* ---- countdown ---- */
+  if (!halted && G.mode === 'count'){
+    const prev = G.countT;
+    G.countT += dt;
+    const lightsEl = el('lights');
+    lightsEl.classList.add('on');
+    for (let i = 0; i < 3; i++){
+      const on = G.countT >= (i + 1) * 0.95 && G.countT < 3.85;
+      el('l' + i).className = 'lamp' + (on ? ' red' : (G.countT >= 3.85 ? ' green' : ''));
+    }
+    for (let i = 1; i <= 3; i++){
+      if (prev < i * 0.95 && G.countT >= i * 0.95) beep(520, 0.16, 0.20, 'square');
+    }
+    if (prev < 3.85 && G.countT >= 3.85){
+      beep(1046, 0.55, 0.26, 'square');
+      bigMsg('GO', 1.1);
+      G.mode = 'run';
+      for (const S of RS) S.hold = null;
+      setTimeout(() => { el('lights').classList.remove('on'); }, 900);
+      coach('Keep the throttle pinned &mdash; the rudders only bite in the prop wash.', 3.6, 'start');
+    } else if (G.countT < 0.4){
+      bigMsg('LIGHTS OUT IN…', 0.9);
+    }
+  }
+
+  /* ---- after the race ends, hold the camera on it for a beat ---- */
+  if (!halted && G.mode === 'done'){
+    G.doneT += dt;
+    if (G.doneT > (G.why === 'dnf' ? 3.4 : 2.8)) showResult();
+  }
+
+  /* ---- visuals ---- */
+  if (G.mode === 'menu' || G.mode === 'over') GT += dt;   /* the lake keeps moving */
+  for (const S of RS){
+    placeCraft(S, G.alpha);
+    if (rdt > 0) craftFx(S, rdt, S === PLAYER);
+  }
+  if (rdt > 0 || frameNo < 4){
+    stepPool(POOL_W, Math.max(rdt, 0.0001));
+    stepPool(POOL_D, Math.max(rdt, 0.0001));
+  }
+  updateBuoys();
+
+  G.shake *= Math.max(0, 1 - rdt * 3.6);
+  if (G.mode === 'menu') menuCamera(dt);
+  else updateCamera(Math.max(rdt, 0.0001), false);
+
+  if (G.msgT > 0){ G.msgT -= dt; if (G.msgT <= 0) bigMsgEl.classList.remove('on'); }
+  if (G.coachT > 0){ G.coachT -= dt; if (G.coachT <= 0) coachEl.classList.remove('on'); }
+  if (!halted) coachTick(dt);
+  if (!halted) updateHUD(Math.max(rdt, 0.0001));
+  audioFrame(PLAYER, dt);
+
+  waterMat.uniforms.uTime.value = GT;
+  waterMat.uniforms.uCam.value.copy(camera.position);
+  window.__sky.position.copy(camera.position);
+
+  if (G.flash > 0.002){
+    flashEl.style.opacity = G.flash.toFixed(3);
+    G.flash = Math.max(0, G.flash - (0.6 + G.flash * 3) * Math.max(dt, 0.001));
+  } else if (flashEl.style.opacity !== '0'){ flashEl.style.opacity = '0'; G.flash = 0; }
+
+  renderer.render(scene, camera);
+}
+
+/* ===================================================================
+   BOOT
+   =================================================================== */
+resetRace();
+camMode = 2; camInit = false;
+updateCamera(0.016, true);
+G.mode = 'menu';
+(function greet(){
+  let tries = 0;
+  const t = setInterval(() => {
+    tries++;
+    const a = window.__arcade;
+    if (a){
+      clearInterval(t);
+      try {
+        if (a.player && !a.player.isGuest && a.player.displayName)
+          el('pilot').textContent = 'DRIVER: ' + a.player.displayName;
+      } catch (e){}
+    }
+    if (tries > 40) clearInterval(t);
+  }, 250);
+})();
+requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>
