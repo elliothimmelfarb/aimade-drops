@@ -567,6 +567,12 @@ var K = {
      but a fistful of lock at 150 km/h is not instantly fatal.  The +26
      keeps the launch from being a coin toss.                             */
   steerMax0: 0.24, steerA: 78.0, steerDen: 45.0, steerMin: 0.018, steerRate: 4.4, steerBack: 1.55,
+  /* power-pull trim: opposite lock the driver holds against the traction
+     yaw moment.  gain in rad per N.m, capped, and rate limited so it
+     cannot snap in on a single noisy tyre force.                       */
+  trimGain: 0.045, trimMax: 0.075, trimRate: 3.2,
+  trimShare: 0.80, trimFloor: 0.012,
+  holdP: 1.00, holdD: 0.30, holdMax: 0.060, holdSpan: 0.12, holdRelease: 0.30,
 
   /* --- limits -------------------------------------------------------- */
   rollPast: 7 * DEG,      /* past the balance angle by this and it is gone */
@@ -974,7 +980,7 @@ function createOutfit(C) {
     sx: [0, 0, 0], sy: [0, 0, 0],       /* relaxed slip states              */
     fx: [0, 0, 0], fy: [0, 0, 0], load: [0, 0, 0], scrub: [0, 0, 0],
     wOmega: 0, eOmega: K.rpmIdle * Math.PI / 30, gear: 0, shiftT: 0, shiftFrom: 0, shiftLock: 0, shiftEvt: 0,
-    steer: 0, steerCmd: 0, thr: 0, brk: 0,
+    steer: 0, steerCmd: 0, trim: 0, holdYaw: 0, thr: 0, brk: 0,
     hint: i0, s: C.startS, t: 0, prevS: C.startS,
     speed: 0, roll: 0, pitch: 0, yaw: C.psi[i0],
     rollRate: 0, latG: 0, vertG: 1,
@@ -1005,7 +1011,7 @@ function resetOutfit(S) {
   S.susU[0] = S.susU[1] = S.susU[2] = 0;
   S.sx[0] = S.sx[1] = S.sx[2] = 0; S.sy[0] = S.sy[1] = S.sy[2] = 0;
   S.wOmega = 0; S.eOmega = K.rpmIdle * Math.PI / 30; S.gear = 0; S.shiftT = 0; S.shiftLock = 0; S.shiftEvt = 0; S.fxRearPrev = 0;
-  S.steer = 0; S.steerCmd = 0; S.thr = 0; S.brk = 0;
+  S.steer = 0; S.steerCmd = 0; S.trim = 0; S.yaw = C.psi[i0]; S.holdYaw = S.yaw; S.thr = 0; S.brk = 0;
   S.hint = i0; S.s = C.startS; S.prevS = C.startS; S.t = 0; S.splitEvt = 0; S.monkeyG = 0;
   S.time = 0; S.running = 0; S.finished = 0; S.crash = null;
   S.sector = 0; S.splits = [0, 0, 0];
@@ -1199,6 +1205,8 @@ function stepOutfit(S, inp, dt) {
      The clutch is a torque-limited damper between the crank and the gearbox
      input.  Solved implicitly for Tc, because an explicit step at 120 Hz
      with a stiff clutch rings itself to bits.                             */
+  /* genuine forward ground speed -- the gearbox shifts on this */
+  var vFwd = Math.max(0, cvx * _fw[0] + cvy * _fw[1] + cvz * _fw[2]);
   var g = K.gears[S.gear];
   if (S.shiftT > 0) { S.shiftT -= dt; if (S.shiftT < 0) S.shiftT = 0; }
   var clutchOn = (S.shiftT > 0) ? 0 : 1;
@@ -1235,15 +1243,20 @@ function stepOutfit(S, inp, dt) {
   /* automatic gearbox.  Rev-matching on the shift is what stops it hunting
      up three gears in a row, and it is what makes the blip audible.       */
   if (S.shiftT <= 0 && S.shiftLock <= 0) {
-    /* decisions are made on ROAD speed, not on crank speed: while the
-       clutch is slipping the crank tells you nothing about the gear     */
-    var roadRpm = S.wOmega * g * 30 / Math.PI;
+    /* decisions are made on ROAD speed, not on crank speed and not on the
+       driven wheel either.  The crank is useless while the clutch slips,
+       and S.wOmega is useless while the tyre is lit up or the wheel is in
+       the air -- a spinning rear would otherwise shift the box up through
+       the gears with the machine standing still.  vFwd is the genuine
+       forward ground speed, so roadRpm is what the wheel WOULD be doing
+       with no slip at all.                                              */
+    var roadRpm = (vFwd / K.wheel[1].r) * g * 30 / Math.PI;
     if (S.rpm > K.rpmUp && roadRpm > K.rpmUp - 900 && S.gear < K.gears.length - 1 && S.thr > 0.15) {
       S.gear++; S.shiftT = K.shiftTime; S.shiftFrom = S.rpm; S.shiftEvt = 1;
       S.shiftLock = 0.22;
       S.eOmega = Math.max(K.rpmIdle * Math.PI / 30, S.wOmega * K.gears[S.gear] * 1.01);
     } else if (S.gear > 0) {
-      var rpmDown = S.wOmega * K.gears[S.gear - 1] * 30 / Math.PI;
+      var rpmDown = (vFwd / K.wheel[1].r) * K.gears[S.gear - 1] * 30 / Math.PI;
       if (roadRpm < K.rpmDn && rpmDown < K.rpmUp - 400) {
         S.gear--; S.shiftT = K.shiftTime * 0.8; S.shiftFrom = S.rpm; S.shiftEvt = -1;
         S.shiftLock = 0.20;
@@ -1255,7 +1268,72 @@ function stepOutfit(S, inp, dt) {
 
   /* --- 5c. tyres --------------------------------------------------------- */
   var steerMax = clamp(K.steerA / (speed * speed + K.steerDen), K.steerMin, K.steerMax0);
-  S.steer = S.steerCmd * steerMax;
+  /* --- the driver's hands -------------------------------------------------
+     Drive is delivered by one wheel sitting on the bike centreline, but the
+     combined centre of mass sits about 0.33 m outboard of it, over towards
+     the chair.  Every newton of traction therefore also feeds in a nose-
+     towards-the-chair yaw moment of roughly 0.33 x Fx: some 750 N.m at a
+     full-bore launch.  That pull is the defining trait of a sidecar outfit
+     and it is real, but it is also three orders of magnitude more than the
+     aero fin below can damp, so left entirely to itself the machine settles
+     into a steady 0.3 rad/s left-hander -- speed independent -- and is into
+     the village wall fourteen metres off the line with the bars dead ahead.
+     What is missing is not the physics, it is the driver: a real one trims
+     that pull out on the bars continuously without thinking about it.  So
+     give the model some hands.  The trim is a feed-forward sized from the
+     traction actually being delivered, it deliberately cancels only most of
+     the pull, and it is capped well inside the available lock -- so the
+     outfit still tugs towards the chair when you get on the power, still
+     steps out if you are greedy with it, and neutral bars now mean what
+     they mean on a real machine: hold this line, not weld the wheel dead
+     ahead.
+     Two parts, because cancelling the pull is not on its own enough.  A
+     three-wheeler whose thrust line misses its centre of mass has no
+     passive directional stability whatever -- no trail, no fin and no
+     weathercock will restore a heading once it has gone, and a free front
+     wheel is if anything destabilising.  So the feed-forward nulls the
+     known moment, and a light hand on the bars holds the rest: a yaw-rate
+     term that fades out completely as soon as you ask for any real lock,
+     which is exactly when a driver stops holding a line and starts
+     choosing one.  Anywhere you are actually steering -- every corner,
+     every slide, every correction -- it contributes nothing.
+     The feed-forward is scaled by the front tyre's own load, because the
+     lock needed to make a given counter-moment is set by what the front
+     can generate: unscaled, a gain sized for the light front of a launch
+     over-trims by half once aero and a settled chassis have loaded it up,
+     and the machine wanders off the other side of the road instead.     */
+  var pull = -S.xcg * S.fxRearPrev;          /* nose-left yaw moment, N.m  */
+  var trimT = clamp(K.trimGain * pull / Math.max(250, contact[0].N),
+    -K.trimMax, K.trimMax);
+  var hold = 1 - Math.min(1, Math.abs(S.steerCmd) / K.holdRelease);
+  if (hold > 0 && contact[0].on && speed > 2.0) {
+    /* hands steady on the bars hold a HEADING, not a line.  Nulling the
+       moment is not on its own enough: cancel it perfectly and the machine
+       still tracks straight at whatever heading the last gust of camber
+       left it with, and a tenth of a degree is four metres over the length
+       of the village straight.  So latch the heading the moment the input
+       goes neutral and hold it, proportional plus rate.  It is emphatically
+       not a path follower -- it steers back to a remembered heading, never
+       towards the road -- so hands off into Glebe Arms still puts you
+       straight through the pub wall.                                     */
+    var dpsi = S.holdYaw - S.yaw;
+    while (dpsi > Math.PI) dpsi -= 2 * Math.PI;
+    while (dpsi < -Math.PI) dpsi += 2 * Math.PI;
+    dpsi = clamp(dpsi, -K.holdSpan, K.holdSpan);
+    trimT += hold * clamp(K.holdP * dpsi - K.holdD * S.wy, -K.holdMax, K.holdMax);
+  } else {
+    S.holdYaw = S.yaw;                       /* nothing to hold: re-latch  */
+  }
+  if (!contact[0].on) trimT = 0;             /* no front wheel, no trim    */
+  /* the trim shares one rack with the player, so it is never allowed to
+     out-muscle him: bound it to a fraction of the lock he himself has at
+     this speed.  Without this it reaches nearly three times the available
+     rack up at 180 km/h, where steerMax has wound right down, and the
+     bars stop answering.                                                */
+  var tcap = Math.min(K.trimMax, Math.max(K.trimFloor, K.trimShare * steerMax));
+  trimT = clamp(trimT, -tcap, tcap);
+  S.trim = approach(S.trim, trimT, K.trimRate, dt);
+  S.steer = S.steerCmd * steerMax + S.trim;
   var rearFx = 0;
   var maxScrub = 0;
   for (i = 0; i < 3; i++) {
