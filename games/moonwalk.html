@@ -295,8 +295,8 @@ canvas{display:block;position:absolute;left:0;top:0;touch-action:none;}
 @media (max-width:520px){
   #calls{top:44%;width:min(56vw,240px);}
 }
-@media (max-width:560px){
-  #hint{font-size:9px;letter-spacing:.03em;gap:3px;max-width:99vw;}
+@media (max-width:640px){
+  #hint{font-size:8.5px;letter-spacing:0;gap:2.5px;max-width:99vw;}
   #hint .key{font-size:8px;padding:1px 3px;}
   #hint .sep{padding:0;}
 }
@@ -353,6 +353,7 @@ canvas{display:block;position:absolute;left:0;top:0;touch-action:none;}
       <span class="key">W</span><span class="key">S</span><span>throttle / brake</span><span class="sep">&middot;</span>
       <span class="key">A</span><span class="key">D</span><span>steer</span><span class="sep">&middot;</span>
       <span class="key">SPACE</span><span>spin lock</span><span class="sep">&middot;</span>
+      <span class="key">R</span><span>restart</span><span class="sep">&middot;</span>
       <span class="key">H</span><span>controls</span>
     </div>
 
@@ -396,7 +397,7 @@ canvas{display:block;position:absolute;left:0;top:0;touch-action:none;}
         to convince the judges. Ramps, dirt mounds, a row of junk cars and a three-bus stack.
         <b>Crush, jump, flip, spin.</b> Break the truck and the run ends early &mdash; but the points you banked still count.</p>
       <p id="mTwist"><b>IN THE AIR, THE THROTTLE IS THE ATTITUDE CONTROL.</b>
-        Those wheels weigh 300&nbsp;kg each &mdash; 600&nbsp;kg&middot;m&sup2; of angular momentum riding in a chassis with 8,600. Open the throttle in flight and spinning them up torques the
+        Those wheels weigh 300&nbsp;kg each &mdash; 600&nbsp;kg&middot;m&sup2; of angular momentum riding in a chassis with 4,000. Open the throttle in flight and spinning them up torques the
         chassis the other way &mdash; <b>throttle = nose up, brake = nose down</b>. That is how a real monster truck
         backflips, and it is the only way you will land anything flat.</p>
 
@@ -518,6 +519,22 @@ const nz = (v,d)=> (typeof v === 'number' && isFinite(v)) ? v : d;
 const sgn = (v)=> v<0?-1:(v>0?1:0);
 const MPS_MPH = 2.2369362920544;
 const G = 9.80665;
+/* FREESTYLE GRAVITY.  A 4.5 tonne truck on 66" tyres is not a lunar lander:
+   at 1 g this arena's jumps hung for three and a half seconds and put the
+   cab five storeys up, which reads as weightless — and flew so far past the
+   landing ramps that a flip had nothing but flat dirt to come down on.
+   1.50 g is the low end of the monster-truck-game convention (1.5-2.5) and
+   as much as this course will take: the ramps are short, so the climb bleeds
+   speed as g^1, and past about 1.6 g the kicker no longer reaches its own
+   landing.  Measured over 160 scripted kicker runs, hang time is down 41%
+   and apex height 27%, while a held-throttle backflip actually LANDS nine
+   times as often as it did at 1 g.
+   Everything that carries the truck's weight is scaled by the same number
+   (springs, bump stops, dampers, anti-roll bar, brakes, chassis contact) so
+   ride height, shock travel and the tyres' g-limits are exactly preserved;
+   only the flight paths get heavier and the landings hit harder. */
+const GRAV = 1.50;
+const GY = G*GRAV;
 
 let _seed = 20240711;
 function rnd(){ _seed = (_seed*1664525 + 1013904223) & 0x7fffffff; return _seed/0x7fffffff; }
@@ -789,12 +806,29 @@ function boxPushXZ(px,py,pz,r){
    so its reaction lands on ROLL, not pitch, and is applied there.  The
    same 600 kg m^2 also precesses: yawing at 3 rad/s with the wheels at
    40 rad/s is 72 kN m of roll couple, and that term is in the sum too.
+
+   RETUNE (see GRAV above): the pitch figure quoted here, 8600, counted the
+   four 310 kg corners at 1.8 m as if they were welded to the frame.  They
+   are not — they ride on 820 mm of vertical travel, and PITCH is exactly
+   the axis that motion lives on, so above wheel-hop frequency they barely
+   couple to it at all.  Take them out and the sprung figure is 8600 - 3888
+   = 4700; the 3300 estimated for the tube frame and body about their own
+   centroid is generous for a chassis that carries its mass low and central,
+   so I_PITCH is 4000.  ROLL and YAW keep their all-up values: the wheels
+   cannot move laterally or fore/aft relative to the frame, so on those two
+   axes the corners really are welded on.
+   With I_PITCH = 4000 the transfer ratio is 600/4000 = 0.15 rad/s of
+   chassis pitch per rad/s of wheel, and the rate in flight is 3.3 rad/s^2
+   against the 1.5 the old figure actually delivered.  That is what pays for
+   the shorter hang time: the truck has to come all the way round in 1.6 s
+   of air now instead of 2.7, and it does.
    ------------------------------------------------------------------
    ================================================================== */
 
 const TR = {
   m: 4500,                      /* kg, all up */
-  Ix: 8600,                     /* pitch (about body +X) */
+  Ix: 4000,                     /* pitch (about body +X) — SPRUNG mass only,
+                                   see the RETUNE note in the audit above */
   Iy: 11200,                    /* yaw   (about body +Y) */
   Iz: 3950,                     /* roll  (about body +Z) */
 
@@ -809,9 +843,14 @@ const TR = {
   HUB0: 0.32,                   /* strut top to hub at full bump */
   TRAVEL: 0.82,                 /* 32 in of shock travel — the star of the show */
   X0: 0.30,                     /* static compression -> CG sits 1.72 m up */
-  KS: 31200, KS3: 62000,        /* main spring (N/m, N/m^3), 1.04 Hz at the corner */
-  BUMPX: 0.70, KB1: 460000, KB2: 1.2e6,
-  CCOMP: 5200, CREB: 7900, CDMAX: 46000,
+  /* Everything from here to CDMAX carries the truck's weight, so it is all
+     scaled by GRAV: static compression stays at X0, the 820 mm of travel
+     stays usable, and the corner frequency rises with the load to 1.27 Hz.
+     Rebound gets a further 12% — a heavy truck has to be pulled back down
+     off the bump stops, and that is most of what a landing feels like. */
+  KS: 31200*GRAV, KS3: 62000*GRAV,  /* main spring (N/m, N/m^3), 1.04 Hz at 1 g */
+  BUMPX: 0.70, KB1: 460000*GRAV, KB2: 1.2e6*GRAV,
+  CCOMP: 5200*GRAV, CREB: 7900*GRAV*1.12, CDMAX: 46000*GRAV,
 
   MU: 1.22,                     /* peak LONGITUDINAL dirt friction, 66" tyre */
   MU_LAT: 0.55,                 /* the friction ellipse is squashed sideways: a
@@ -819,7 +858,7 @@ const TR = {
                                    it cannot hold 1.2 g in a corner — and must not,
                                    because 1.55 m of half-track over a 1.76 m CG
                                    tips this thing at about 0.75 g */
-  KARB: 115000,                  /* anti-roll bar rate per axle, N/m */
+  KARB: 115000*GRAV,             /* anti-roll bar rate per axle, N/m */
   MU_LOAD: 0.075,               /* load sensitivity */
   BX: 8.4, BY: 7.2, CP: 1.52, EP: 0.38,
   KX: 1.0, KY: 1.06,
@@ -830,9 +869,11 @@ const TR = {
   REAR_FACTOR: 0.62,            /* rear counter-steer at crawl */
   REAR_FADE: 17,                /* m/s at which 4WS is nearly gone */
 
-  BRAKE_T: 46000,               /* total N m at the wheels — just past the grip limit */
+  BRAKE_T: 46000*GRAV,          /* total N m at the wheels — just past the grip
+                                   limit, and the grip limit rides on the load,
+                                   so this scales with GRAV or the moonwalk dies */
   BRAKE_F: 0.62,                /* front bias */
-  HANDBRAKE_T: 4200,            /* the brake drag that comes with spin lock */
+  HANDBRAKE_T: 4200*GRAV,       /* the brake drag that comes with spin lock */
 
   AERO: 3.85,                   /* 0.5*rho*Cd*A  ->  N per (m/s)^2 */
 };
@@ -889,21 +930,50 @@ const WPOS = [
   { x: 1.55, y: 0.00, z:-1.74, front:false },
 ];
 
-/* chassis collision spheres, body frame.  Bottom rail, nose, tail, roof. */
+/* Chassis collision spheres, body frame.  Bottom rail, nose, tail, roof.
+   The bottom row used to be three stations a side (z = 2.05, 0, -2.15) with
+   nothing on the centreline, which left 1.4 m holes in the floor of the hull:
+   a ramp crest or a berm ridge narrower than that dropped straight between
+   the spheres, the body visibly sank into the dirt, and once the ridge was
+   INSIDE the hull the only thing that caught it was the roof sphere — the
+   truck ended up skewered on the ramp with no contact that could ever push
+   it back out.  The stations are now spaced 0.70 m — closer than one sphere
+   diameter, so the two rails and the centreline skid pan are continuous
+   surfaces and nothing narrower than the truck can get inside the floor.
+   Every bottom sphere shares one skid plane at body y = -0.74, 240 mm below
+   the visible frame rails, so contact always happens before anything is
+   seen to clip. */
 const CSPH = [
+  /* bottom rails, left and right */
   { x:-1.02, y:-0.40, z: 2.05, r:0.34 }, { x: 1.02, y:-0.40, z: 2.05, r:0.34 },
-  { x:-1.02, y:-0.40, z:-2.15, r:0.34 }, { x: 1.02, y:-0.40, z:-2.15, r:0.34 },
+  { x:-1.02, y:-0.40, z: 1.35, r:0.34 }, { x: 1.02, y:-0.40, z: 1.35, r:0.34 },
+  { x:-1.02, y:-0.40, z: 0.67, r:0.34 }, { x: 1.02, y:-0.40, z: 0.67, r:0.34 },
   { x:-1.02, y:-0.40, z: 0.00, r:0.34 }, { x: 1.02, y:-0.40, z: 0.00, r:0.34 },
+  { x:-1.02, y:-0.40, z:-0.70, r:0.34 }, { x: 1.02, y:-0.40, z:-0.70, r:0.34 },
+  { x:-1.02, y:-0.40, z:-1.42, r:0.34 }, { x: 1.02, y:-0.40, z:-1.42, r:0.34 },
+  { x:-1.02, y:-0.40, z:-2.15, r:0.34 }, { x: 1.02, y:-0.40, z:-2.15, r:0.34 },
+  /* centreline skid pan — a narrow ridge used to pass between the rails */
+  { x: 0.00, y:-0.34, z: 1.55, r:0.40 }, { x: 0.00, y:-0.34, z: 0.78, r:0.40 },
+  { x: 0.00, y:-0.34, z: 0.00, r:0.40 }, { x: 0.00, y:-0.34, z:-0.80, r:0.40 },
+  { x: 0.00, y:-0.34, z:-1.60, r:0.40 },
+  /* roof / cage */
   { x: 0.00, y: 0.68, z: 1.55, r:0.42 }, { x: 0.00, y: 0.68, z:-1.55, r:0.42 },
   { x:-1.02, y: 0.68, z: 0.10, r:0.42 }, { x: 1.02, y: 0.68, z: 0.10, r:0.42 },
 ];
-const KC = 640000, CC = 34000, CMAX = 1.15e6, MUC = 0.62;
+/* Contact rate scaled down with the sphere count so a flat belly landing is
+   the same total stiffness it always was (times GRAV, like every other thing
+   that holds the truck up) and the explicit integrator keeps its margin at
+   dt = 1/120.  MUC is a fibreglass shell and a steel skid pan on dirt, not a
+   tyre: it was 0.62, which made the body GRIP the ramp it was resting on. */
+const KC = 420000*GRAV, CC = 22000*GRAV, CMAX = 1.15e6*GRAV, MUC = 0.40;
 
 /* damage rates.  All of these multiply dt, so the meter is frame-rate
    independent.  Calibrated so: a flat landing off the big double from
-   ~8 m costs ~20, a 15 m flat drop ends the run on its own, a square
-   60 mph hit on the concrete costs ~30, and a downslope landing or one
-   onto crushable cars costs almost nothing. */
+   ~8 m costs ~20, the biggest thing on the course landed flat ends the run
+   on its own (15 m at 1 g, ~11 m now that 1.50 g has taken a quarter off
+   every apex — same jump, same verdict), a square 60 mph hit on the
+   concrete costs ~30, and a downslope landing or one onto crushable cars
+   costs almost nothing. */
 /* eslint-disable-next-line */
 let DMG_BUMP = 2.2e-4, DMG_BODY = 14.0, DMG_WALL = 6.0;
 function setDmg(a,b,c){ DMG_BUMP=a; DMG_BODY=b; DMG_WALL=c; }
@@ -932,6 +1002,7 @@ function newTruck(){
     inverted: 0, landInverted: 0,       /* did it actually go over the top? */
     upness: 1, speed: 0, vLong: 0, vLat: 0, yawRate: 0,
     contact: 0, jolt: 0, crunch: 0, wallHit: 0, dust: 0, scrub: 0, slipMax: 0,
+    wLoad: 0, bodyDown: false,          /* tyre load and body-on-ground, for the beach test */
     dmg: 0, over: null, t: 0,
     rollTimer: 0, stuckTimer: 0,
     engAud: W_IDLE, load: 0,
@@ -987,7 +1058,7 @@ function stepPhysics(T, dt, IN){
   _F.set(0,0,0); _T.set(0,0,0);
 
   /* ---------------- gravity ---------------- */
-  _F.y -= TR.m*G;
+  _F.y -= TR.m*GY;
 
   /* ---------------- aero ---------------- */
   const sp = T.v.length();
@@ -1073,7 +1144,7 @@ function stepPhysics(T, dt, IN){
   /* brake hold: idling in gear with a converter, a real truck creeps.
      Below walking pace with nothing asked for, the driver has a foot on it. */
   const hold = (thr < 0.03 && brk < 0.03 && T.grounded && Math.abs(vFwd) < 1.4)
-             ? 5200*(1 - Math.abs(vFwd)/1.4) : 0;
+             ? 5200*GRAV*(1 - Math.abs(vFwd)/1.4) : 0;
   const brakeT = brk*TR.BRAKE_T + hold + (IN.hand ? TR.HANDBRAKE_T : 0);
   const dlDrive = Tturb*ratio*EFF;
   let dlFxR = 0;                 /* sum of tyre F_x * R over all four */
@@ -1140,7 +1211,7 @@ function stepPhysics(T, dt, IN){
       const e = x - TR.BUMPX;
       Fs += TR.KB1*e + TR.KB2*e*e;
     }
-    if (pen > 0) Fs += 1.9e6*pen;
+    if (pen > 0) Fs += 1.9e6*GRAV*pen;
     let Fd = (xd > 0 ? TR.CCOMP : TR.CREB)*xd;
     Fd = clamp(Fd, -TR.CDMAX, TR.CDMAX);
     /* anti-roll bar: shifts load onto the compressed side of the axle,
@@ -1232,8 +1303,14 @@ function stepPhysics(T, dt, IN){
       const e = W.bump;
       const Fb = TR.KB1*e + TR.KB2*e*e + Math.max(0, Fd);
       const rate = xd - 1.0;
-      if (Fb > 60000 && rate > 0) T.dmg += (Fb - 60000)*rate*DMG_BUMP*dt;
-      if (Fb > 150000) T.jolt = Math.max(T.jolt, clamp((Fb-150000)/500000,0,1));
+      /* The spring and bump-stop rates ride on GRAV, so the DAMAGE meter reads
+         the load relative to the truck's own weight — that keeps the 1 g
+         calibration above honest instead of doubling every landing's cost.
+         The JOLT that drives the thump and the screenshake reads the raw
+         load, so heavier gravity does land harder. */
+      const Fg = Fb/GRAV;
+      if (Fg > 60000 && rate > 0) T.dmg += (Fg - 60000)*rate*DMG_BUMP*dt;
+      if (Fg > 150000) T.jolt = Math.max(T.jolt, clamp((Fg-150000)/500000*1.5, 0, 1));
     }
     if (pen > 0.03 && xd > 0.5) T.dmg += pen*xd*3.0*dt;
   }
@@ -1260,6 +1337,7 @@ function stepPhysics(T, dt, IN){
   }
 
   T.slipMax = slipMax;
+  T.wLoad = loadSum;
   T.dust = dustAcc;
   T.scrub = scrubAcc;
 
@@ -1283,7 +1361,11 @@ function stepPhysics(T, dt, IN){
     const gh = groundH(_v1.x, _v1.z);
     const pen = (gh + C.r) - _v1.y;
     if (pen > 0){
-      if (pen > 0.03) bodyTouch = true;
+      /* 0.015: the contact is stiff enough that a truck simply RESTING on its
+         body only sinks a couple of centimetres, and at the old 0.03 that did
+         not register as touching anything — so lying on the roof, or beached
+         on a ramp, still counted as "airborne". */
+      if (pen > 0.015) bodyTouch = true;
       groundNormal(_v1.x, _v1.z, _n);
       _v5.set(_v1.x - T.p.x, _v1.y - T.p.y, _v1.z - T.p.z);
       _v6.crossVectors(T.w, _v5).add(T.v);
@@ -1415,6 +1497,7 @@ function stepPhysics(T, dt, IN){
   /* lying on the roof is not flying: without this the air clock never
      stops and a wreck never registers as a landing */
   T.grounded = nGround > 0 || (bodyTouch && T.speed < 8);
+  T.bodyDown = bodyTouch;
   T.yawRate = _wb.y;
 
   if (!T.grounded){
@@ -1444,12 +1527,20 @@ function stepPhysics(T, dt, IN){
    pending pot and pays out as ONE trick when it ends, so the combo
    chain reads properly and the HUD can show what is at stake.
    ================================================================== */
+/* The air numbers below are per-second and per-metre, and 1.50 g cut both
+   hang time and height by about a third — so the rates go up by the same
+   third and a given jump pays what it always paid.  The THRESHOLDS move with
+   them (a 2.0 s hang used to be routine off the kicker and is now a monster),
+   which is also why the moonwalk and sky-wheelie bars are named constants
+   now instead of magic numbers scattered through stepGame.  Medal lines are
+   untouched, so leaderboards and the arcade score stay on the same scale. */
 const SC = {
-  airBase: 44, airPow: 1.36, heightK: 14,
+  airBase: 68, airPow: 1.36, heightK: 22,
+  airBig: 0.85, airHuge: 1.35, airMin: 0.30, airReal: 0.62, airCap: 3.4,
   flipBack: 520, flipFront: 640, rotPartial: 250, rotMinRev: 0.34,
   yawRev: 300,
-  wheelieRate: 58, wheelieMin: 0.45,
-  noseRate: 105, noseMin: 0.30,
+  wheelieRate: 58, wheelieMin: 0.32, skyT: 2.2,
+  noseRate: 105, noseMin: 0.22, moonDist: 5.5,
   donutRev: 150,
   crush: 150, bus: 350,
   save: 250,
@@ -1498,7 +1589,7 @@ function newRun(){
     bestTrick: '', bestPts: 0,
     flipPeak: 0, flipWatch: -1, flipDrive: 0, pendFlip: null, saveCool: 0,
     saveArm: 0, tipT: 0,
-    rollTimer: 0, rollWarn: 0,
+    rollTimer: 0, rollWarn: 0, beached: false,
     ach: {}, newAch: [],
     state: '', wasAir: false,
     inp: { thr:0, brake:0, steer:0, hand:false },
@@ -1563,7 +1654,7 @@ function stepGame(R, dt, IN){
     R.totalAir += dt;
     const arev = Math.abs(T.flip)/TAU;
     if (arev > R.flipPeak) R.flipPeak = arev;
-    if (T.air >= 2.0 && !R.airMark){ R.airMark = true; unlock(R, 'big-air'); }
+    if (T.air >= SC.airHuge && !R.airMark){ R.airMark = true; unlock(R, 'big-air'); }
     /* flying the whole stack counts as much as smashing into it */
     if (Math.abs(T.p.x - 27) < 8 && T.p.z > 3.5 && T.p.z < 16.5 && T.p.y > 5.0) R.overBus = 1;
     if (T.air > R.bestAir) R.bestAir = T.air;
@@ -1572,15 +1663,15 @@ function stepGame(R, dt, IN){
 
   /* ---- landing ---- */
   if (T.grounded && R.wasAir){
-    const air = Math.min(T.lastAir, 5.0);
+    const air = Math.min(T.lastAir, SC.airCap);
     const clean = up > 0.52;
     /* a real landing, not a bounce inside a tumble */
-    const settled = up > 0.60 && sp > 3.0 && air >= 0.9;
-    if (air >= 0.42){
+    const settled = up > 0.60 && sp > 3.0 && air >= SC.airReal;
+    if (air >= SC.airMin){
       let base = SC.airBase*Math.pow(air, SC.airPow) + SC.heightK*Math.max(0, T.airMaxH);
       if (!clean) base *= 0.35;
-      const nm = air >= 2.0 ? 'MASSIVE AIR' : air >= 1.25 ? 'BIG AIR' : 'AIR';
-      award(R, nm, base, air >= 2.0 ? 'huge' : air >= 1.25 ? 'big' : '');
+      const nm = air >= SC.airHuge ? 'MASSIVE AIR' : air >= SC.airBig ? 'BIG AIR' : 'AIR';
+      award(R, nm, base, air >= SC.airHuge ? 'huge' : air >= SC.airBig ? 'big' : '');
     }
     if (clean){
       const rev = T.flip/TAU;
@@ -1592,7 +1683,7 @@ function stepGame(R, dt, IN){
       /* A flip only counts once the truck has actually driven away from
          it, so the award is deferred 0.6 s.  That is also the honest
          reading of "land it clean". */
-      if (air >= 0.9 && sp > 2.5 && T.landInverted && arev >= 0.62){
+      if (air >= SC.airReal && sp > 2.5 && T.landInverted && arev >= 0.62){
         const n = Math.max(1, Math.floor(arev + 0.30));
         R.pendFlip = { n, back: rev > 0, t: 0, ok: 0 };
       } else if (settled && peak >= SC.rotMinRev){
@@ -1606,7 +1697,7 @@ function stepGame(R, dt, IN){
         award(R, n >= 2 ? 'DOUBLE CYCLONE' : 'CYCLONE', SC.yawRev*n, 'big');
       }
     } else {
-      if (air >= 0.9) say('CASED', 0, 'bad');
+      if (air >= SC.airReal) say('CASED', 0, 'bad');
     }
     R.flipPeak = 0;
     R.overBus = 0;
@@ -1643,11 +1734,11 @@ function stepGame(R, dt, IN){
   const wheelieNow = T.grounded && T.rearDown && !T.frontDown && up > 0.45 && moving;
   if (wheelieNow){
     R.wh.on = true; R.wh.t += dt; R.wh.pts += SC.wheelieRate*dt;
-    if (R.wh.t >= 3.0) unlock(R, 'sky-wheelie');
+    if (R.wh.t >= SC.skyT) unlock(R, 'sky-wheelie');
   } else if (R.wh.on){
     if (R.wh.t >= SC.wheelieMin){
-      const nm = R.wh.t >= 3.0 ? 'SKY WHEELIE' : 'WHEELIE';
-      award(R, nm + ' ' + R.wh.t.toFixed(1) + 's', R.wh.pts, R.wh.t >= 3.0 ? 'big' : '');
+      const nm = R.wh.t >= SC.skyT ? 'SKY WHEELIE' : 'WHEELIE';
+      award(R, nm + ' ' + R.wh.t.toFixed(1) + 's', R.wh.pts, R.wh.t >= SC.skyT ? 'big' : '');
     }
     R.wh.on = false; R.wh.t = 0; R.wh.pts = 0;
   }
@@ -1657,11 +1748,11 @@ function stepGame(R, dt, IN){
   if (noseNow){
     R.nw.on = true; R.nw.t += dt; R.nw.dist += sp*dt; R.nw.pts += SC.noseRate*dt;
     if (R.nw.dist > R.nw.best) R.nw.best = R.nw.dist;
-    if (R.nw.dist >= 8.0) unlock(R, 'moonwalk');
+    if (R.nw.dist >= SC.moonDist) unlock(R, 'moonwalk');
   } else if (R.nw.on){
     if (R.nw.t >= SC.noseMin){
-      const nm = R.nw.dist >= 8.0 ? 'MOONWALK ' + R.nw.dist.toFixed(0) + 'm' : 'NOSE WHEELIE';
-      award(R, nm, R.nw.pts + (R.nw.dist >= 8 ? 260 : 0), R.nw.dist >= 8 ? 'huge' : '');
+      const nm = R.nw.dist >= SC.moonDist ? 'MOONWALK ' + R.nw.dist.toFixed(0) + 'm' : 'NOSE WHEELIE';
+      award(R, nm, R.nw.pts + (R.nw.dist >= SC.moonDist ? 260 : 0), R.nw.dist >= SC.moonDist ? 'huge' : '');
     }
     R.nw.on = false; R.nw.t = 0; R.nw.pts = 0; R.nw.dist = 0;
   }
@@ -1711,9 +1802,18 @@ function stepGame(R, dt, IN){
     }
   }
 
-  /* ---- rollover / mechanical ---- */
+  /* ---- rollover / beached / mechanical ---- */
   const wmag = T.w.length();
-  if (up < 0.30 && sp < 3.4 && wmag < 1.5) R.rollTimer += dt;
+  /* BEACHED: the body is what is holding the truck up, the tyres are carrying
+     under a fifth of its weight, and nothing is moving.  Hung up across a
+     narrow ramp with the wheels hanging off either side is a real dead end —
+     with no load on a tyre there is no force the driver can make, exactly as
+     it is on the lid — so it gets the same 3.6 s and the same called run.
+     Everything banked before it still counts, and R restarts instantly. */
+  const beached = T.bodyDown && up > 0.30 && sp < 1.2 && wmag < 1.2 &&
+                  T.wLoad < TR.m*GY*0.20;
+  R.beached = beached;
+  if ((up < 0.30 && sp < 3.4 && wmag < 1.5) || beached) R.rollTimer += dt;
   else R.rollTimer = Math.max(0, R.rollTimer - dt*2.2);
   R.rollWarn = clamp(R.rollTimer/3.6, 0, 1);
 
@@ -1724,17 +1824,21 @@ function stepGame(R, dt, IN){
 
   /* ---- live state strip ---- */
   let st = '';
-  if (R.rollTimer > 0.6) st = 'ON YOUR LID — ' + Math.max(0, 3.6 - R.rollTimer).toFixed(1);
-  else if (R.nw.on && R.nw.dist >= 8) st = 'MOONWALK  ' + R.nw.dist.toFixed(1) + ' m';
+  if (R.rollTimer > 0.6) st = (R.beached ? 'HUNG UP — R TO RESTART — ' : 'ON YOUR LID — ')
+                             + Math.max(0, 3.6 - R.rollTimer).toFixed(1);
+  else if (R.nw.on && R.nw.dist >= SC.moonDist) st = 'MOONWALK  ' + R.nw.dist.toFixed(1) + ' m';
   else if (R.nw.on) st = 'NOSE WHEELIE  ' + R.nw.dist.toFixed(1) + ' m';
-  else if (R.wh.on && R.wh.t >= 3) st = 'SKY WHEELIE  ' + R.wh.t.toFixed(1) + ' s';
+  else if (R.wh.on && R.wh.t >= SC.skyT) st = 'SKY WHEELIE  ' + R.wh.t.toFixed(1) + ' s';
   else if (R.wh.on) st = 'WHEELIE  ' + R.wh.t.toFixed(1) + ' s';
   else if (R.dn.on && Math.abs(R.dn.rot) > 3) st = 'DONUT  ' + (Math.abs(R.dn.rot)/TAU).toFixed(1) + ' rev';
   R.state = st;
 
   /* ---- end conditions ---- */
   if (T.dmg >= 100) endWhy(R, 'mech', 'The chassis let go.');
-  else if (R.rollTimer >= 3.6) endWhy(R, 'roll', 'Over on the lid and it stayed there.');
+  else if (R.rollTimer >= 3.6){
+    if (R.beached) endWhy(R, 'beach', 'Hung up on the obstacle with the wheels in the air.');
+    else endWhy(R, 'roll', 'Over on the lid and it stayed there.');
+  }
   else if (R.time <= 0){ R.time = 0; endWhy(R, 'time', ''); }
 }
 
@@ -2293,7 +2397,7 @@ function updateParticles(S, dt){
     let L = S.life[i] - dt;
     if (L <= 0){ S.life[i] = 0; continue; }
     const d = Math.exp(-S.drag[i]*dt);
-    S.vx[i]*=d; S.vz[i]*=d; S.vy[i] = S.vy[i]*d - 8.4*dt;
+    S.vx[i]*=d; S.vz[i]*=d; S.vy[i] = S.vy[i]*d - 13.0*dt;   /* dirt falls back at the truck's gravity */
     S.px[i]+=S.vx[i]*dt; S.py[i]+=S.vy[i]*dt; S.pz[i]+=S.vz[i]*dt;
     S.life[i] = L;
     const t = L/S.max_[i];
@@ -2854,6 +2958,7 @@ const CARD = {
   time: { kind:'THE BUZZER', title:'RUN COMPLETE' },
   mech: { kind:'MECHANICAL', title:'BROKE THE TRUCK' },
   roll: { kind:'MECHANICAL', title:'ON THE LID' },
+  beach:{ kind:'MECHANICAL', title:'HUNG UP' },
 };
 function endRun(){
   if (Gm.ended) return;
@@ -2885,6 +2990,8 @@ function endRun(){
      : 'You survived the ninety. Now go and actually hurt something.')
     : (why === 'roll' ? 'Over on the roof with nothing left to rock it back. The run is called there — '
                       + 'but everything you banked before it still counts.'
+     : why === 'beach' ? 'Beached across the obstacle with all four wheels off the ground and no load to '
+                       + 'drive on. The run is called there — everything you banked before it still counts.'
                       : 'Something in the chassis finally let go. The score stands, the run does not.');
 
   setText(E.osT, R.bestTrick ? R.bestTrick + '  ' + R.bestPts : '—');
@@ -2952,7 +3059,7 @@ function gameEvents(dt){
     Gm.teachT -= dt;
     if (Gm.teachT <= 0) E.teach.classList.remove('on');
   }
-  if (!R.taught2 && T.air > 0.9 && R.totalAir > 1.2){
+  if (!R.taught2 && T.air > 0.62 && R.totalAir > 0.9){
     R.taught2 = true;
     teach('Nose too high? <b>Tap S</b> to dump wheel speed and drop the nose.', 4.0);
   }
