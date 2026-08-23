@@ -2040,70 +2040,138 @@ const boatMesh = [];
 for (let i = 0; i < 4; i++){ const m = buildBoat(i); scene.add(m); boatMesh.push(m); }
 
 /* ===================================================================
-   PARTICLES  -  roostertails, sponson fans, foam, wreckage spray
+   PARTICLES  -  roostertails, sponson fans, surface wash, wreckage spray
+
+   One instanced-quad system for the whole field: a single draw call, and
+   because each sprite is a quad rather than a GL point it can be stretched
+   along its own motion vector.  Water is drawn as MANY small, hard-edged,
+   low-alpha droplets; only the turbine haze keeps a soft round falloff.
    =================================================================== */
-const P_MAX = 6000;
+const P_MAX = 16000;
+const SPRITE_CAP_PX = 14;      /* no droplet may exceed this on screen */
 const PT = {
   head: 0,
   x: new Float32Array(P_MAX), y: new Float32Array(P_MAX), z: new Float32Array(P_MAX),
   vx: new Float32Array(P_MAX), vy: new Float32Array(P_MAX), vz: new Float32Array(P_MAX),
   life: new Float32Array(P_MAX), max: new Float32Array(P_MAX),
-  size: new Float32Array(P_MAX), kind: new Uint8Array(P_MAX), tint: new Float32Array(P_MAX)
+  size: new Float32Array(P_MAX), kind: new Uint8Array(P_MAX), tint: new Float32Array(P_MAX),
+  ang: new Float32Array(P_MAX), aux: new Float32Array(P_MAX)
 };
-const pGeo = new THREE.BufferGeometry();
-const pPos = new Float32Array(P_MAX * 3);
-const pCol = new Float32Array(P_MAX * 3);
-const pSiz = new Float32Array(P_MAX);
-const pAlp = new Float32Array(P_MAX);
-pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3).setUsage(THREE.DynamicDrawUsage));
-pGeo.setAttribute('pcol', new THREE.BufferAttribute(pCol, 3).setUsage(THREE.DynamicDrawUsage));
-pGeo.setAttribute('psize', new THREE.BufferAttribute(pSiz, 1).setUsage(THREE.DynamicDrawUsage));
-pGeo.setAttribute('palpha', new THREE.BufferAttribute(pAlp, 1).setUsage(THREE.DynamicDrawUsage));
+/* mode 0 = velocity-stretched water billboard
+   mode 1 = flat streak lying on the water, aligned to .ang
+   mode 2 = soft round haze (the only gaussian left in the game)          */
+const PK = [
+  /*0 roostertail arc  */ { col: [1.000, 0.982, 0.950], drag: 0.45, grav: 9.81, mode: 0, str: 0.075, alpha: 0.225, tail: 0.45 },
+  /*1 sponson fan      */ { col: [1.000, 0.992, 0.972], drag: 2.10, grav: 9.81, mode: 0, str: 0.085, alpha: 0.235, tail: 0.50 },
+  /*2 surface wash     */ { col: [0.945, 0.950, 0.945], drag: 2.40, grav: 0.00, mode: 1, str: 0.000, alpha: 0.135, tail: 0.55 },
+  /*3 heavy burst      */ { col: [1.000, 1.000, 0.990], drag: 1.10, grav: 9.81, mode: 0, str: 0.070, alpha: 0.420, tail: 0.50 },
+  /*4 turbine haze     */ { col: [0.620, 0.600, 0.620], drag: 0.85, grav: -1.10, mode: 2, str: 0.000, alpha: 0.075, tail: 0.60 },
+  /*5 roostertail root */ { col: [1.000, 0.995, 0.978], drag: 1.35, grav: 9.81, mode: 0, str: 0.075, alpha: 0.280, tail: 0.50 }
+];
+
+const pGeo = new THREE.InstancedBufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+  -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0
+]), 3));
+pGeo.setIndex([0, 1, 2, 0, 2, 3]);
+const iPos = new Float32Array(P_MAX * 3);
+const iDir = new Float32Array(P_MAX * 3);
+const iCol = new Float32Array(P_MAX * 3);
+const iAtr = new Float32Array(P_MAX * 4);
+const aPos = new THREE.InstancedBufferAttribute(iPos, 3).setUsage(THREE.DynamicDrawUsage);
+const aDir = new THREE.InstancedBufferAttribute(iDir, 3).setUsage(THREE.DynamicDrawUsage);
+const aCol = new THREE.InstancedBufferAttribute(iCol, 3).setUsage(THREE.DynamicDrawUsage);
+const aAtr = new THREE.InstancedBufferAttribute(iAtr, 4).setUsage(THREE.DynamicDrawUsage);
+pGeo.setAttribute('iPos', aPos);
+pGeo.setAttribute('iDir', aDir);
+pGeo.setAttribute('iCol', aCol);
+pGeo.setAttribute('iAtr', aAtr);
+pGeo.instanceCount = 0;
 pGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e7);
+
 const pMat = new THREE.ShaderMaterial({
-  transparent: true, depthWrite: false, blending: THREE.NormalBlending,
-  uniforms: { uPix: { value: DPR }, uFog: { value: new THREE.Color(FOG_COL) }, uFogD: { value: 0.00034 } },
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  blending: THREE.NormalBlending,
+  uniforms: {
+    uFog: { value: new THREE.Color(FOG_COL) }, uFogD: { value: 0.00034 },
+    uCamV: { value: new THREE.Vector3() },  /* camera world velocity   */
+    uCapK: { value: 0.02 }                  /* world size per unit depth */
+  },
   vertexShader: `
-    attribute vec3 pcol; attribute float psize; attribute float palpha;
-    uniform float uPix;
-    varying vec3 vC; varying float vA; varying float vD;
+    attribute vec3 iPos; attribute vec3 iDir; attribute vec3 iCol; attribute vec4 iAtr;
+    uniform vec3 uCamV; uniform float uCapK;
+    varying vec2 vUV; varying vec3 vC; varying float vA; varying float vD; varying float vM;
     void main(){
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      float mode = iAtr.w;
+      float al = iAtr.y;
+      vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
       vD = -mv.z;
+      /* screen-space clamp: nothing near the lens may bloom into a blob.
+         The haze is the one exception - it is meant to be a soft cloud. */
+      float sz = mode > 1.5 ? iAtr.x
+               : min(iAtr.x, uCapK * vD * (mode > 0.5 ? 1.6 : 1.0));
+      if (mode > 0.5 && mode < 1.5){
+        /* a flat streak of foam lying on the surface, never a floating ball */
+        vec3 f = normalize(vec3(iDir.x + 0.0001, 0.0, iDir.z));
+        vec3 r = vec3(-f.z, 0.0, f.x);
+        vec3 wp = iPos + f * (position.y * sz * iAtr.z) + r * (position.x * sz);
+        mv = modelViewMatrix * vec4(wp, 1.0);
+        vD = -mv.z;
+      } else {
+        /* elongate along the APPARENT screen motion: d/dt of the projection,
+           which is rv.xy + p.xy*rv.z/depth.  Water thrown past the lens
+           streaks radially; water hanging with the boat stays a droplet. */
+        vec3 rv = (modelViewMatrix * vec4(iDir - uCamV, 0.0)).xyz;
+        vec2 d = rv.xy + mv.xy * (rv.z / max(vD, 0.5));
+        float dl = length(d);
+        vec2 ax = dl > 0.001 ? d / dl : vec2(0.0, 1.0);
+        float el = clamp(1.0 + iAtr.z * dl, 1.0, 5.5);
+        al /= sqrt(el);
+        mv.xy += ax * (position.y * sz * el) + vec2(-ax.y, ax.x) * (position.x * sz);
+      }
       gl_Position = projectionMatrix * mv;
-      gl_PointSize = clamp(psize * uPix * 620.0 / max(1.0, -mv.z), 1.2, 50.0);
-      vC = pcol; vA = palpha * smoothstep(4.0, 15.0, vD);
+      vUV = position.xy * 2.0;
+      vC = iCol;
+      vA = al * smoothstep(1.6, 7.0, vD);
+      vM = mode;
     }
   `,
   fragmentShader: `
-    varying vec3 vC; varying float vA; varying float vD;
+    varying vec2 vUV; varying vec3 vC; varying float vA; varying float vD; varying float vM;
     uniform vec3 uFog; uniform float uFogD;
     void main(){
-      vec2 d = gl_PointCoord - 0.5;
-      float r2 = dot(d, d);
-      if (r2 > 0.25) discard;
-      float a = smoothstep(0.25, 0.02, r2);
-      float f = 1.0 - exp(-uFogD*uFogD*vD*vD*1.30);
-      vec3 c = mix(vC, uFog, clamp(f,0.0,1.0));
-      gl_FragColor = vec4(c, a * vA);
+      float r = length(vUV);
+      if (r > 1.0) discard;
+      /* water keeps a hard core with only a thin soft rim; haze stays soft */
+      float a = vM > 1.5 ? exp(-r * r * 2.6) : smoothstep(1.0, 0.74, r);
+      a *= vA;
+      if (a < 0.004) discard;
+      float f = 1.0 - exp(-uFogD * uFogD * vD * vD * 1.30);
+      gl_FragColor = vec4(mix(vC, uFog, clamp(f, 0.0, 1.0)), a);
     }
   `
 });
-const pPoints = new THREE.Points(pGeo, pMat);
+const pPoints = new THREE.Mesh(pGeo, pMat);
 pPoints.frustumCulled = false;
+pPoints.renderOrder = 4;
 scene.add(pPoints);
-/* 0 roostertail  1 sponson fan  2 foam on the surface  3 heavy burst  4 exhaust haze */
-const PCOL = [
-  [0.93, 0.96, 0.97], [0.97, 0.99, 1.00], [0.86, 0.91, 0.92], [1.00, 1.00, 0.99], [0.62, 0.60, 0.62]
-];
-function pSpawn(x, y, z, vx, vy, vz, life, size, kind, tint){
+
+function pSpawn(x, y, z, vx, vy, vz, life, size, kind, tint, ang, aux){
   const i = PT.head;
   PT.head = (PT.head + 1) % P_MAX;
   PT.x[i]=x; PT.y[i]=y; PT.z[i]=z;
   PT.vx[i]=vx; PT.vy[i]=vy; PT.vz[i]=vz;
-  PT.life[i]=life; PT.max[i]=life; PT.size[i]=size; PT.kind[i]=kind; PT.tint[i]=tint===undefined?1:tint;
+  PT.life[i]=life; PT.max[i]=life; PT.size[i]=size; PT.kind[i]=kind;
+  PT.tint[i]=tint===undefined?1:tint;
+  PT.ang[i]=ang===undefined?0:ang; PT.aux[i]=aux===undefined?1:aux;
 }
-function pReset(){ PT.head = 0; for (let i = 0; i < P_MAX; i++) PT.life[i] = 0; pGeo.setDrawRange(0, 0); }
+const emitAcc = [0, 0, 0, 0], fanAcc = [0, 0, 0, 0], washAcc = [0, 0, 0, 0];
+function pReset(){
+  PT.head = 0;
+  for (let i = 0; i < P_MAX; i++) PT.life[i] = 0;
+  for (let i = 0; i < 4; i++){ emitAcc[i] = 0; fanAcc[i] = 0; washAcc[i] = 0; }
+  pGeo.instanceCount = 0;
+}
 function pStep(dt, t){
   if (dt <= 0) return;
   let w = 0;
@@ -2111,114 +2179,182 @@ function pStep(dt, t){
     if (PT.life[i] <= 0) continue;
     PT.life[i] -= dt;
     if (PT.life[i] <= 0) continue;
-    const k = PT.kind[i];
-    const drag = k === 4 ? 0.85 : (k === 2 ? 3.2 : 1.05);
-    const g = k === 4 ? -1.1 : (k === 2 ? 0 : 9.81);
-    PT.vx[i] -= PT.vx[i] * drag * dt;
-    PT.vz[i] -= PT.vz[i] * drag * dt;
-    PT.vy[i] -= (g + PT.vy[i] * drag * 0.55) * dt;
+    let k = PT.kind[i];
+    let K = PK[k];
+    PT.vx[i] -= PT.vx[i] * K.drag * dt;
+    PT.vz[i] -= PT.vz[i] * K.drag * dt;
+    PT.vy[i] -= (K.grav + PT.vy[i] * K.drag * 0.55) * dt;
     PT.x[i] += PT.vx[i]*dt; PT.y[i] += PT.vy[i]*dt; PT.z[i] += PT.vz[i]*dt;
-    if (k === 2){ PT.y[i] = waterY(PT.x[i], PT.z[i], t) + 0.10; PT.vy[i] = 0; }
-    else if (k !== 4 && PT.vy[i] < 0){
-      const sy = waterY(PT.x[i], PT.z[i], t) + 0.06;
+    if (K.mode === 1){
+      PT.y[i] = waterY(PT.x[i], PT.z[i], t) + 0.055; PT.vy[i] = 0;
+    } else if (K.mode === 0 && PT.vy[i] < 0 && PT.y[i] < 1.2){
+      const sy = waterY(PT.x[i], PT.z[i], t) + 0.05;
       if (PT.y[i] < sy){
         PT.y[i] = sy; PT.vy[i] = 0;
-        PT.vx[i] *= 0.4; PT.vz[i] *= 0.4;
-        if (PT.life[i] > 0.30) PT.life[i] = 0.30;
+        /* a fifth of what the plume throws up lands and stays as foam */
+        if ((k === 0 || k === 3) && PT.life[i] > 0.25 && Math.random() < 0.20){
+          PT.ang[i] = Math.atan2(PT.vz[i], PT.vx[i]);
+          PT.aux[i] = 4.0 + Math.random() * 5.0;
+          PT.size[i] = PT.size[i] * 3.0 + 0.22;
+          PT.life[i] = Math.min(PT.life[i], 0.80);
+          PT.max[i]  = PT.life[i] * 1.30;
+          PT.kind[i] = 2; k = 2; K = PK[2];
+          PT.vx[i] *= 0.25; PT.vz[i] *= 0.25;
+        } else {
+          PT.vx[i] *= 0.35; PT.vz[i] *= 0.35;
+          if (PT.life[i] > 0.20) PT.life[i] = 0.20;
+        }
       }
     }
     const u = PT.life[i] / PT.max[i];
-    const c = PCOL[k], tn = PT.tint[i];
-    const fade = (u > 0.78 ? (1 - u) / 0.22 : u / 0.78);
-    pPos[w*3]=PT.x[i]; pPos[w*3+1]=PT.y[i]; pPos[w*3+2]=PT.z[i];
-    pCol[w*3]=c[0]*tn; pCol[w*3+1]=c[1]*tn; pCol[w*3+2]=c[2]*tn;
-    pSiz[w]=PT.size[i] * (k===4 ? (1 + (1-u)*2.4) : (k===2 ? (1.15 - u*0.45) : (0.45 + (1-u)*1.55)));
-    pAlp[w]= k===4 ? fade*0.12 : (k===2 ? fade*0.30 : (k===0 ? fade*0.60 : fade*0.85));
+    const tn = PT.tint[i];
+    const fd = Math.min(1, (1 - u) / 0.07) * Math.min(1, u / K.tail);
+    const s0 = PT.size[i];
+    const sz = K.mode === 1 ? s0 * (0.62 + (1 - u) * 0.85)
+             : K.mode === 2 ? s0 * (1.0 + (1 - u) * 1.6)
+             : s0 * (0.86 + (1 - u) * 0.34);
+    const w3 = w * 3, w4 = w * 4;
+    iPos[w3]=PT.x[i]; iPos[w3+1]=PT.y[i]; iPos[w3+2]=PT.z[i];
+    if (K.mode === 1){
+      iDir[w3]=Math.cos(PT.ang[i]); iDir[w3+1]=0; iDir[w3+2]=Math.sin(PT.ang[i]);
+    } else {
+      iDir[w3]=PT.vx[i]; iDir[w3+1]=PT.vy[i]; iDir[w3+2]=PT.vz[i];
+    }
+    iCol[w3]=K.col[0]*tn; iCol[w3+1]=K.col[1]*tn; iCol[w3+2]=K.col[2]*tn;
+    iAtr[w4]=sz; iAtr[w4+1]=K.alpha*fd;
+    iAtr[w4+2]= K.mode === 1 ? PT.aux[i] : K.str;
+    iAtr[w4+3]=K.mode;
     w++;
   }
-  pGeo.setDrawRange(0, w);
-  pGeo.attributes.position.needsUpdate = true;
-  pGeo.attributes.pcol.needsUpdate = true;
-  pGeo.attributes.psize.needsUpdate = true;
-  pGeo.attributes.palpha.needsUpdate = true;
+  pGeo.instanceCount = w;
+  if (w > 0){
+    aPos.addUpdateRange(0, w*3); aPos.needsUpdate = true;
+    aDir.addUpdateRange(0, w*3); aDir.needsUpdate = true;
+    aCol.addUpdateRange(0, w*3); aCol.needsUpdate = true;
+    aAtr.addUpdateRange(0, w*4); aAtr.needsUpdate = true;
+  }
 }
 
 /* ===================================================================
    SPRAY EMISSION  -  the namesake
+
+   Three distinct components per boat:
+     (a) low flat V fans off each sponson, hugging the surface
+     (b) THE ROOSTERTAIL - a narrow ballistic plume off the prop
+     (c) surface wash drawn as flat streaks lying on the water
    =================================================================== */
 const _e1 = { x: 0, y: 0, z: 0 };
-const emitAcc = [0, 0, 0, 0];
 function emitSpray(b, dt, near){
-  if (dt <= 0) return;
+  if (dt <= 0 || b.dead) return;
+  if (dt > 0.12) dt = 0.12;   /* a hitch must not fire a whole second at once */
   const spd = b.speed;
   if (spd < 6) return;
-  const budget = near ? 1 : 0.30;
+  /* far boats still throw a plume, just a cheaper one */
+  const ddx = b.px - CAM.pos.x, ddz = b.pz - CAM.pos.z;
+  const d2 = ddx * ddx + ddz * ddz;
+  const budget = near ? 1 : (d2 > 62500 ? 0.09 : (d2 > 14400 ? 0.20 : 0.38));
+  const tw = b.t;
+  const id = b.id;
 
-  /* the roostertail: what the surface-piercing wheel throws up behind her */
-  if (b.roost > 0.08 && spd > 16 && !b.dead){
-    const rate = (110 + 950 * b.roost) * budget;
-    emitAcc[b.id] += rate * dt;
-    let n = emitAcc[b.id] | 0;
-    emitAcc[b.id] -= n;
-    if (n > 80) n = 80;
-    b2w(b, 0, -0.30, -3.5, _e1);
+  /* ---- (b) THE ROOSTERTAIL ------------------------------------------ */
+  if (b.roost > 0.02 && spd > 14){
+    /* the wheel's own immersion drives it, but she still throws a tail when
+       she is up on the pipe, so speed and spool carry the rest.  The plume
+       fades out smoothly as she flies the wheel clear of the water. */
+    const q = Math.min(1, b.roost * 0.55 + 0.45 * Math.min(spd / 58, 1) * b.spool);
+    const g = Math.min(1, b.roost / 0.22);
+    emitAcc[id] += (2000 + 11500 * q) * g * budget * dt;
+    let n = emitAcc[id] | 0;
+    emitAcc[id] -= n;
+    if (n > 1400) n = 1400;
+    b2w(b, 0, -0.34, -3.55, _e1);
     const ox = b.px + _e1.x, oy = b.py + _e1.y, oz = b.pz + _e1.z;
-    const up = 7.5 + 0.185 * spd;
-    const back = 0.34 * spd;
+    /* height and reach both climb with road speed - this is the shot */
+    const up    = 5.0 + 0.225 * spd * (0.55 + 0.45 * q);
+    const carry = 0.42 * spd;   /* how much of her speed the water keeps  */
+    const back  = 0.10 * spd;   /* and how much the wheel throws astern   */
     for (let i = 0; i < n; i++){
-      const sp = (Math.random() - 0.5);
-      const sp2 = (Math.random() - 0.5);
-      /* a third of it is the dense root right off the wheel, the rest is
-         the arc that gives the sport its name */
-      const root = (i % 3) === 0;
-      const f = root ? (0.12 + Math.random() * 0.30) : (0.55 + Math.random() * 0.7);
+      const root = (i % 5) < 3;                 /* dense white base */
+      const sp = Math.random() - 0.5, sp2 = Math.random() - 0.5;
+      /* biased low so the plume is heavy at the root and feathers at the top */
+      const f = root ? (0.16 + Math.random() * 0.26)
+                     : (0.58 + Math.pow(Math.random(), 0.65) * 0.62);
+      const lat = root ? 2.4 : 2.2 + f * 2.6;   /* it fans as it climbs */
+      const cf = carry * (root ? 0.75 : 1.0) / Math.max(spd, 1);
       pSpawn(
-        ox + sp * (root ? 0.7 : 1.5), oy + 0.14, oz + sp2 * (root ? 0.5 : 1.1),
-        b.vx * 0.30 - b.fx * back * f + sp * (root ? 4.5 : 8.5),
-        up * f + Math.random() * 3.2,
-        b.vz * 0.30 - b.fz * back * f + sp2 * (root ? 4.5 : 8.5),
-        root ? (0.36 + Math.random() * 0.5) : (1.10 + Math.random() * 1.6 + f * 0.6),
-        root ? (0.50 + Math.random() * 0.55) : (0.72 + Math.random() * 0.95), 0, 1);
+        ox + sp * (root ? 0.55 : 0.85),
+        oy + (root ? Math.random() * 0.25 : 0.15 + Math.random() * 0.5),
+        oz + sp2 * (root ? 0.45 : 0.95),
+        b.vx * cf - b.fx * back * f * 0.6 + b.ex * sp * lat,
+        up * f + Math.random() * 1.4,
+        b.vz * cf - b.fz * back * f * 0.6 + b.ez * sp * lat,
+        root ? (0.24 + Math.random() * 0.26) : (0.85 + Math.random() * 1.00),
+        root ? (0.078 + Math.random() * 0.065) : (0.072 + Math.random() * 0.080),
+        root ? 5 : 0, 1);
     }
   }
-  /* sponson fans: two thin sheets thrown out sideways */
-  if (b.spraySm > 0.05 && spd > 12){
-    const n = Math.min(10, ((7 + 24 * Math.min(b.spraySm, 1.6)) * budget * dt * 30) | 0);
+
+  /* ---- (a) SPONSON FANS: two low flat sheets, never a cloud ---------- */
+  if (b.spraySm > 0.04 && spd > 10){
+    const q = Math.min(b.spraySm, 1.8);
+    fanAcc[id] += (280 + 840 * q) * budget * dt;
+    let n = fanAcc[id] | 0;
+    fanAcc[id] -= n;
+    if (n > 400) n = 400;
     for (let i = 0; i < n; i++){
-      const s = Math.random() < 0.5 ? -1 : 1;
-      b2w(b, s * 2.05, -0.60, 2.1, _e1);
+      const s = (i & 1) ? 1 : -1;
+      const zz = 1.35 + Math.random() * 1.5;
+      b2w(b, s * 2.05, -0.62, zz, _e1);
       const px = b.px + _e1.x, py = b.py + _e1.y, pz = b.pz + _e1.z;
-      const lat = 5 + Math.random() * 9;
-      pSpawn(px, Math.max(py, waterY(px, pz, b.t)) + 0.05, pz,
-        b.vx * 0.42 + b.ex * s * lat, 2.5 + Math.random() * 5.5, b.vz * 0.42 + b.ez * s * lat,
-        0.42 + Math.random() * 0.55, 0.26 + Math.random() * 0.30, 1, 1);
+      const lat = 6 + Math.random() * 10;
+      const fwd = 0.28 + Math.random() * 0.32;
+      const aft = 2 + Math.random() * 5;
+      pSpawn(px, Math.max(py, waterY(px, pz, tw)) + 0.05, pz,
+        b.vx * fwd + b.ex * s * lat - b.fx * aft,
+        1.3 + Math.random() * 3.0,
+        b.vz * fwd + b.ez * s * lat - b.fz * aft,
+        0.30 + Math.random() * 0.32,
+        0.052 + Math.random() * 0.056, 1, 1);
     }
   }
-  /* surface foam in the wake */
-  if (spd > 14){
-    const n = Math.min(4, (10 * budget * dt * 24) | 0);
+
+  /* ---- (c) SURFACE WASH: flat streaks on the water ------------------- */
+  if (spd > 12){
+    washAcc[id] += (75 + 90 * Math.min(b.spraySm, 1.5)) * budget * dt;
+    let n = washAcc[id] | 0;
+    washAcc[id] -= n;
+    if (n > 80) n = 80;
+    const hd = Math.atan2(b.fz, b.fx);
     for (let i = 0; i < n; i++){
-      b2w(b, (Math.random() - 0.5) * 5.5, 0, -4 - Math.random() * 7, _e1);
+      const s = Math.random() * 2 - 1;
+      const zz = 1.5 - Math.random() * 26;
+      b2w(b, s * (2.0 + Math.abs(zz - 1.5) * 0.16), 0, zz, _e1);
       const px = b.px + _e1.x, pz = b.pz + _e1.z;
-      pSpawn(px, waterY(px, pz, b.t) + 0.08, pz, 0, 0, 0, 1.2 + Math.random() * 1.4, 0.30 + Math.random() * 0.42, 2, 1);
+      pSpawn(px, waterY(px, pz, tw) + 0.055, pz, 0, 0, 0,
+        0.9 + Math.random() * 1.3,
+        0.11 + Math.random() * 0.15, 2, 1,
+        hd + s * 0.08, 6.0 + Math.random() * 7.0);
     }
   }
-  /* turbine haze */
+
+  /* ---- turbine haze -------------------------------------------------- */
   if (b.spool > 0.15 && near){
-    if (Math.random() < b.spool * 0.55){
+    if (Math.random() < b.spool * 16 * dt){
       b2w(b, 0, 1.0, -2.2, _e1);
       pSpawn(b.px + _e1.x, b.py + _e1.y, b.pz + _e1.z,
         b.vx * 0.5 - b.fx * 4, 1.5 + Math.random() * 2, b.vz * 0.5 - b.fz * 4,
-        0.7 + Math.random() * 0.7, 0.17, 4, 1);
+        0.7 + Math.random() * 0.7, 0.105, 4, 1);
     }
   }
 }
 function pBurst(x, y, z, spd, n, kind){
-  for (let i = 0; i < n; i++){
+  const k = kind === undefined ? 3 : kind;
+  const m = k === 3 ? n * 3 : n;
+  for (let i = 0; i < m; i++){
     const a = Math.random() * Math.PI * 2, e = Math.random();
     const s = spd * (0.35 + Math.random() * 0.9);
     pSpawn(x, y, z, Math.cos(a) * s * (1 - e * 0.5), s * e * 1.5 + 2.5, Math.sin(a) * s * (1 - e * 0.5),
-      0.7 + Math.random() * 1.5, 0.24 + Math.random() * 0.5, kind === undefined ? 3 : kind, 1);
+      0.7 + Math.random() * 1.5, 0.075 + Math.random() * 0.150, k, 1);
   }
 }
 
@@ -2516,15 +2652,18 @@ function updateCamera(b, dt, snap){
     return;
   }
   /* chase: behind, and she drops low as the speed builds */
-  const back = 13.8 + sp * 0.055;
-  const high = 6.0 - Math.min(sp, 90) * 0.026;
+  const back = 14.4 + sp * 0.055;
+  /* a touch high and a touch off the centreline, so her own roostertail
+     climbs into frame past the lens instead of hiding behind the hull */
+  const high = 6.7 - Math.min(sp, 90) * 0.026;
   _cv1.set(b.fx, 0, b.fz);
   if (_cv1.lengthSq() < 1e-6) _cv1.set(0, 0, 1);
   _cv1.normalize();
   /* the camera trails the velocity a little, so hard turns swing wide */
   const vh = Math.sqrt(b.vx * b.vx + b.vz * b.vz);
   if (vh > 8){ _cv2.set(b.vx / vh, 0, b.vz / vh); _cv1.lerp(_cv2, 0.35).normalize(); }
-  const tx = b.px - _cv1.x * back, tz = b.pz - _cv1.z * back;
+  const side = 1.15 * Math.min(1, sp / 30);
+  const tx = b.px - _cv1.x * back + _cv1.z * side, tz = b.pz - _cv1.z * back - _cv1.x * side;
   const ty = Math.max(waterY(tx, tz, b.t) + 1.5, b.py + high);
   if (snap){ CAM.lag.set(tx, ty, tz); }
   else {
@@ -3069,6 +3208,7 @@ function placeBoats(){
 }
 
 let seaCtrX = 0, seaCtrZ = 0, washPushT = 0;
+const _camPrev = new THREE.Vector3(), _camVR = new THREE.Vector3();
 function frame(now){
   rafId = requestAnimationFrame(frame);
   if (halted) return;
@@ -3130,7 +3270,17 @@ function frame(now){
   su.uCam.value.copy(camera.position);
   su.uFogD.value = scene.fog.density;
   pMat.uniforms.uFogD.value = scene.fog.density;
-  pMat.uniforms.uPix.value = DPR;
+  /* the spray is stretched along its motion RELATIVE TO THE LENS, and no
+     sprite is allowed past SPRITE_CAP_PX across, so nothing reads as bokeh */
+  if (rdt > 0.0008){
+    const ivd = 1 / rdt;
+    _camVR.set((CAM.pos.x - _camPrev.x) * ivd, (CAM.pos.y - _camPrev.y) * ivd, (CAM.pos.z - _camPrev.z) * ivd);
+    if (_camVR.lengthSq() > 22500) _camVR.set(0, 0, 0);   /* a restart snap */
+    pMat.uniforms.uCamV.value.lerp(_camVR, 0.35);
+  }
+  _camPrev.copy(CAM.pos);
+  pMat.uniforms.uCapK.value = SPRITE_CAP_PX * 2 * Math.tan(camera.fov * Math.PI / 360) /
+                              Math.max(1, window.innerHeight);
   skyMesh.position.set(camera.position.x, 0, camera.position.z);
   shore.position.y = 0;
 
