@@ -1,0 +1,3232 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ROTOVATOR</title>
+<style>
+  :root{
+    --void:#040713; --deep:#0a1226; --panel:#0c1428; --line:#1e3352;
+    --mint:#5ff0d8; --mint-d:#1c7c73; --ice:#dff4ff; --steel:#8fb4d6;
+    --amber:#ffb44d; --gold:#ffd98a; --plum:#b389ff; --danger:#ff5f52;
+    --good:#69f0a5; --dim:#7d95b8; --dim2:#4d6382;
+    --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+    --sans: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;background:var(--void);overflow:hidden;
+    font-family:var(--sans);color:var(--ice);touch-action:none;-webkit-user-select:none;user-select:none;}
+
+  /* RETINA BAR: canvas is always pinned to the viewport in CSS, independent of backing store */
+  #game{position:fixed;left:0;top:0;right:0;bottom:0;width:100%;height:100%;display:block;background:#040713;z-index:1;}
+
+  #ui{position:fixed;inset:0;z-index:5;pointer-events:none;}
+  .pane{pointer-events:auto;}
+
+  /* ===== panels ===== */
+  .panel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 28%,rgba(14,28,58,.66),rgba(3,6,14,.90));
+    padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+    -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
+  .card{width:min(580px,95vw);max-height:94vh;overflow:auto;background:linear-gradient(180deg,#0d1730,#070c1a);
+    border:1px solid var(--line);border-radius:16px;padding:20px 22px;
+    box-shadow:0 24px 70px rgba(0,0,0,.65),inset 0 1px 0 rgba(120,200,255,.10);}
+  .title{font-size:clamp(28px,7.4vw,46px);font-weight:800;letter-spacing:5px;margin:0 0 2px;line-height:1.05;
+    background:linear-gradient(90deg,var(--mint),#eafcff 45%,var(--amber));
+    -webkit-background-clip:text;background-clip:text;color:transparent;}
+  .sub{color:var(--dim);font-size:12.5px;margin:0 0 14px;letter-spacing:1.4px;text-transform:uppercase;font-family:var(--mono);}
+  .h{font-size:11px;letter-spacing:2.4px;color:var(--mint);text-transform:uppercase;margin:15px 0 7px;font-weight:700;font-family:var(--mono);}
+  .h.sec{color:var(--amber);}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:6px 0;font-size:14px;color:#cfe2f5;}
+  .row .k{display:inline-flex;gap:4px;flex:0 0 auto;align-items:center;}
+  .pair{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+  kbd{display:inline-block;min-width:22px;text-align:center;padding:3px 7px;border-radius:6px;
+    background:#12203c;border:1px solid #2b466e;border-bottom-width:2px;
+    font:700 11.5px/1 var(--mono);color:#bfe8ff;}
+  .desc{color:#a9c2dc;}
+  .desc b{color:#eaf6ff;}
+  .primary-list .row{font-size:15px;}
+  .divider{height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent);margin:15px 0 4px;}
+  .btn{pointer-events:auto;cursor:pointer;display:inline-block;margin-top:16px;padding:12px 26px;border-radius:11px;
+    font-weight:800;letter-spacing:1.6px;font-size:15px;border:none;color:#04202a;font-family:var(--sans);
+    background:linear-gradient(180deg,#8ffbe6,#38c9b4);box-shadow:0 8px 24px rgba(80,230,205,.28);}
+  .btn.alt{background:linear-gradient(180deg,#1b2c4c,#122038);color:#bfe8ff;border:1px solid #2b466e;box-shadow:none;margin-left:8px;}
+  .btn:active{transform:translateY(1px);}
+  .note{margin-top:11px;color:var(--dim);font-size:12.5px;line-height:1.55;}
+  .note b{color:#cfe2f5;}
+  .hidden{display:none!important;}
+  .scorebig{font-size:clamp(38px,11vw,62px);font-weight:800;color:#eafcff;letter-spacing:1px;margin:2px 0;font-family:var(--mono);}
+  .stat{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dashed #17253f;font-size:13.5px;color:#a9c2dc;}
+  .stat b{color:#eafcff;font-family:var(--mono);}
+  .verdict{font-size:19px;font-weight:800;letter-spacing:2px;margin:2px 0 8px;font-family:var(--mono);}
+  .win{color:var(--good);} .lose{color:var(--danger);}
+  .badges{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px;}
+  .bdg{font-size:11px;padding:4px 9px;border-radius:14px;background:#12203c;border:1px solid #2b466e;color:#bfe8ff;font-family:var(--mono);letter-spacing:.4px;}
+  .tierlist{font-size:12.5px;color:#a9c2dc;line-height:1.7;font-family:var(--mono);}
+  .tierlist span{color:var(--mint);}
+
+  /* ===== hint strip (keyboard mode only) ===== */
+  #hint{position:fixed;left:0;right:0;margin:0 auto;
+    bottom:max(7px,env(safe-area-inset-bottom));
+    width:max-content;max-width:min(96vw,780px);
+    display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:wrap;
+    z-index:6;pointer-events:none;opacity:.6;padding:4px 9px;border-radius:16px;
+    background:rgba(6,12,24,.44);}
+  #hint .chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:#cfe2f5;white-space:nowrap;font-family:var(--mono);}
+  #hint .kc{padding:2px 5px;border-radius:5px;background:rgba(35,60,98,.75);border:1px solid rgba(70,110,160,.6);font-size:10px;font-weight:700;}
+
+  /* ===== touch controls ===== */
+  #touch{position:fixed;inset:0;z-index:6;pointer-events:none;display:none;}
+  #touch.on{display:block;}
+  .tbtn{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;background:rgba(10,20,40,.60);border:1px solid rgba(80,140,190,.45);color:#bfe8ff;
+    font-weight:800;font-family:var(--mono);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+    box-shadow:0 6px 18px rgba(0,0,0,.4);text-align:center;line-height:1.15;}
+  .tbtn:active{transform:scale(.94);background:rgba(30,60,100,.8);}
+  #tGrab{right:max(14px,env(safe-area-inset-right));bottom:calc(max(16px,env(safe-area-inset-bottom)) + 4px);
+    width:98px;height:98px;font-size:14px;letter-spacing:.6px;
+    background:radial-gradient(circle at 40% 34%,rgba(95,240,216,.42),rgba(8,26,40,.75));border-color:rgba(95,240,216,.6);}
+  #tWarp{right:calc(max(14px,env(safe-area-inset-right)) + 112px);bottom:calc(max(16px,env(safe-area-inset-bottom)) + 62px);
+    width:62px;height:62px;font-size:12px;}
+  #tL{left:max(14px,env(safe-area-inset-left));bottom:calc(max(16px,env(safe-area-inset-bottom)) + 6px);width:70px;height:70px;font-size:24px;}
+  #tR{left:calc(max(14px,env(safe-area-inset-left)) + 84px);bottom:calc(max(16px,env(safe-area-inset-bottom)) + 6px);width:70px;height:70px;font-size:24px;}
+  #tHelp{right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));width:40px;height:40px;font-size:18px;}
+  .tlab{position:absolute;pointer-events:none;font-size:9.5px;font-family:var(--mono);color:#7d95b8;letter-spacing:1px;}
+
+  #greet{position:fixed;left:50%;transform:translateX(-50%);top:max(9px,env(safe-area-inset-top));
+    z-index:7;pointer-events:none;font-size:11px;color:#8ffbe6;opacity:.85;font-family:var(--mono);letter-spacing:1px;
+    text-shadow:0 1px 4px rgba(0,0,0,.9);white-space:nowrap;}
+  @media (max-width:520px){ .card{padding:16px 14px;} .row{font-size:13.5px;} }
+  @media (max-height:520px){ .card{padding:14px 16px;} .h{margin:10px 0 5px;} .title{font-size:clamp(22px,6vw,32px);} }
+</style>
+
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <!-- ============ START ============ -->
+  <div id="startScreen" class="panel pane">
+    <div class="card">
+      <div class="title">ROTOVATOR</div>
+      <div class="sub">Momentum-exchange tether &middot; low orbit &middot; catch, fling, survive</div>
+
+      <div class="h">Primary controls</div>
+      <div class="primary-list">
+        <div class="row"><span class="k"><kbd>A</kbd><kbd>&larr;</kbd></span><span class="desc"><b>Retrograde burn</b> &mdash; slow down, drop the orbit</span></div>
+        <div class="row"><span class="k"><kbd>D</kbd><kbd>&rarr;</kbd></span><span class="desc"><b>Prograde burn</b> &mdash; speed up, raise the orbit</span></div>
+        <div class="row"><span class="k"><kbd>Space</kbd></span><span class="desc"><b>Grab / Throw</b> &mdash; hold to catch, press to release</span></div>
+        <div class="row"><span class="k"><kbd>W</kbd><kbd>&uarr;</kbd> hold</span><span class="desc"><b>Time warp</b> &mdash; skip the coast, up to &times;80</span></div>
+      </div>
+
+      <div class="h sec">Secondary</div>
+      <div class="row" style="font-size:12.5px">
+        <span class="pair"><span class="k"><kbd>P</kbd><kbd>Esc</kbd></span><span class="desc">Pause</span></span>
+        <span class="pair"><span class="k"><kbd>H</kbd><kbd>?</kbd></span><span class="desc">Controls</span></span>
+        <span class="pair"><span class="k"><kbd>R</kbd></span><span class="desc">Restart</span></span>
+        <span class="pair"><span class="k"><kbd>M</kbd></span><span class="desc">Mute</span></span>
+        <span class="pair"><span class="k">wheel</span><span class="desc">Zoom</span></span>
+      </div>
+
+      <div class="divider"></div>
+      <div class="note">Your tether spins so its <b>tip is nearly still over the ground</b> at the bottom of each swing. Ground pads lob capsules that cannot reach orbit &mdash; catch one there and fling it where the contract wants it.
+      <br><br><b>Momentum is the economy.</b> Catching slow mass drags your orbit <b>down</b>; throwing mass <b>up</b> drags it down again; throwing mass <b>down</b> &mdash; deorbit and disposal runs &mdash; <b>boosts you</b>. Trash is your engine. Decay into the air and you burn.
+      <br><br>Null the <b>PHASE</b> needle, warp to the pass, release on the lit arc. <b>Press H or ? any time to see these controls.</b></div>
+      <button class="btn pane" id="startBtn">LAUNCH OPERATIONS</button>
+    </div>
+  </div>
+
+  <!-- ============ PAUSE / CONTROLS ============ -->
+  <div id="pausePanel" class="panel pane hidden">
+    <div class="card">
+      <div class="title" style="font-size:clamp(20px,5.2vw,29px);letter-spacing:3px">PAUSED &mdash; CONTROLS</div>
+      <div class="sub" id="pauseSub">Tether ops manual</div>
+      <div class="h">Primary</div>
+      <div class="row"><span class="k"><kbd>A</kbd> / <kbd>&larr;</kbd></span><span class="desc"><b>Retrograde burn</b> &middot; touch: <b>&#9664;</b></span></div>
+      <div class="row"><span class="k"><kbd>D</kbd> / <kbd>&rarr;</kbd></span><span class="desc"><b>Prograde burn</b> &middot; touch: <b>&#9654;</b></span></div>
+      <div class="row"><span class="k"><kbd>Space</kbd></span><span class="desc"><b>Grab</b> (hold to arm the tip) / <b>Throw</b> (press to release) &middot; touch: <b>GRAB</b></span></div>
+      <div class="row"><span class="k"><kbd>W</kbd> / <kbd>&uarr;</kbd></span><span class="desc"><b>Time warp</b> &mdash; hold to ramp, release to drop &middot; touch: <b>WARP</b></span></div>
+      <div class="h sec">Secondary</div>
+      <div class="row"><span class="k"><kbd>P</kbd> / <kbd>Esc</kbd></span><span class="desc">Pause &mdash; this panel</span></div>
+      <div class="row"><span class="k"><kbd>H</kbd> / <kbd>?</kbd></span><span class="desc">Show these controls at any time</span></div>
+      <div class="row"><span class="k"><kbd>R</kbd></span><span class="desc">Restart the run (no page reload)</span></div>
+      <div class="row"><span class="k"><kbd>M</kbd></span><span class="desc">Mute / unmute</span></div>
+      <div class="row"><span class="k"><kbd>C</kbd></span><span class="desc">Camera: auto-frame / free zoom</span></div>
+      <div class="row"><span class="k">wheel / pinch</span><span class="desc">Manual zoom override</span></div>
+      <div class="divider"></div>
+      <div class="note"><b>The loop:</b> null the <span style="color:#5ff0d8">PHASE</span> needle with small burns so the tip is at the bottom of its swing when the capsule reaches apex &rarr; hold <b>Space</b> through the window to catch &rarr; wait for the right tether angle &rarr; press <b>Space</b> to throw. Watch the dashed prediction: it tells you exactly where the payload ends up.</div>
+      <button class="btn pane" id="resumeBtn">RESUME</button>
+      <span class="btn alt pane" id="restartBtn2">RESTART</span>
+      <span class="btn alt pane hidden" id="endRunBtn">END RUN &amp; SUBMIT</span>
+    </div>
+  </div>
+
+  <!-- ============ MESSAGE / GAME OVER ============ -->
+  <div id="msgPanel" class="panel pane hidden">
+    <div class="card" id="msgCard"></div>
+  </div>
+
+  <div id="hint">
+    <span class="chip"><span class="kc">A D</span>burn</span>
+    <span class="chip"><span class="kc">Space</span>grab / throw</span>
+    <span class="chip"><span class="kc">W</span>warp</span>
+    <span class="chip"><span class="kc">H</span>controls</span>
+  </div>
+
+  <div id="touch">
+    <div class="tbtn" id="tL">&#9664;</div>
+    <div class="tbtn" id="tR">&#9654;</div>
+    <div class="tbtn" id="tWarp">WARP</div>
+    <div class="tbtn" id="tGrab">GRAB</div>
+    <div class="tbtn" id="tHelp">?</div>
+  </div>
+  <div id="greet"></div>
+</div>
+
+<!-- aimade.games Arcade SDK -->
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+  window.__arcade = null;
+  (function(){ try { Arcade.ready().then(function(a){ window.__arcade = a; }); } catch(e){} })();
+  function arcadeSubmit(score, meta){ try { if (typeof score==='number' && isFinite(score)) Arcade.ready().then(function(a){ a.scores.submit(score, meta||{}); }).catch(function(){}); } catch(e){} }
+  function arcadeUnlock(slug){ try { Arcade.ready().then(function(a){ a.achievements.unlock(slug); }).catch(function(){}); } catch(e){} }
+</script>
+
+<script>
+"use strict";
+(function(){
+// ============================================================================
+//  ROTOVATOR — a momentum-exchange tether in low orbit.
+//  Everything below is a genuine simulation: fixed-timestep symplectic
+//  integration of a rigid two-mass tether plus free bodies in a real
+//  gravity field.  Momentum exchange is never bookkept — it falls out of
+//  conserving linear + angular momentum when mass is added to or removed
+//  from the rotating tip.
+// ============================================================================
+
+// ---------------------------------------------------------------- constants
+const TAU = Math.PI*2;
+
+// -- world (Kerbal-style scaling: small dense planet, ~3 min low orbit) -----
+const R_P      = 3000;        // planet radius (m)
+const MU       = 1.5e8;       // planet gravitational parameter (m^3/s^2)
+const G_SURF   = MU/(R_P*R_P);// 16.67 m/s^2 at the surface
+const T_PLANET = 900;         // planet rotation period (s)
+const OM_P     = TAU/T_PLANET;
+
+const ATM_TOP  = 400;         // visible atmosphere interface altitude (m)
+const ATM_DRAW = 620;         // altitude the glow fades out at
+const RHO0     = 0.055;       // sea-level density (kg/m^3)
+const H_SCALE  = 118;         // density scale height (m)
+const RHO_CUT  = 1300;        // above this altitude density is exactly zero
+
+const R_MOON   = 26000;       // moon orbital radius (m)
+const MU_MOON  = 1.2e6;       // moon gravitational parameter
+const RAD_MOON = 620;         // moon body radius (m)
+const T_MOON   = TAU*Math.sqrt(R_MOON*R_MOON*R_MOON/MU); // ~2151 s
+
+// -- station / tether -------------------------------------------------------
+const TIP_ARM  = 260;         // body-frame offset of the grapple tip (m)
+const CW_ARM   = -86.67;      // body-frame offset of the counterweight (m)
+const M_TIP    = 700;         // tip module mass (kg)
+const M_CW_DRY = 2070;        // counterweight dry mass (kg)
+const PROP_MAX = 30;          // propellant capacity (kg)  ->  23.7 m/s of dv
+const SPIN0    = 0.22;        // tether spin rate (rad/s) — 28.6 s per rotation
+                              // tip speed at the bottom of the swing = 57.2 m/s,
+                              // a third of orbital speed: fast enough that catching
+                              // costs real altitude, slow enough that a throw at the
+                              // top of the swing still leaves a bound orbit.
+const V_EX     = 2200;        // thruster exhaust velocity (m/s)
+const THRUST   = 1000;        // thruster force (N) -> 0.357 m/s^2 dry
+const THR_TAU  = 0.30;        // throttle ramp time constant (s) — analog feel
+
+const CD_A_STA = 14.0;        // Cd*A of the counterweight+hub (m^2)
+const CD_A_TIP = 3.0;         // Cd*A of the tip module
+const BALLISTIC= 0.0014;      // capsules: Cd*A per kg  (beta ~ 714 kg/m^2)
+
+// -- capture ---------------------------------------------------------------
+const CAP_R    = 110;         // hard capture radius at the tip (m)
+const CAP_V    = 70;          // hard capture relative-speed limit (m/s)
+const ASSIST_R = 250;         // grapple-net reach (m)
+const ASSIST_V = 105;         // grapple-net relative-speed limit (m/s)
+const ASSIST_K = 0.45;        // net spring (1/s^2 per m)  — a real force
+const ASSIST_C = 1.40;        // net damping (1/s)
+const ASSIST_A = 26;          // max net acceleration on the payload (m/s^2)
+const ARM_TIME = 1.25;        // grapple stays armed this long after a tap (s)
+const POD_HOLD = 9.0;         // hold a propellant pod this long to pump it aboard (s)
+// Momentum management: the counterweight carries a flywheel that eases the
+// tether back to its design spin rate.  Bounded torque, so every catch, throw
+// and mass transfer still shows as a real spin transient first — it just stops
+// atmospheric drag torque from quietly killing the tether over a long run.
+const SPIN_TAU = 25;          // s
+const SPIN_TQ  = 40000;       // N*m ceiling on the trim torque
+let spinTrimOn = true;        // (the verifier disables it to isolate gravity)
+const COMMIT_MISS = 230;      // coarse gate on the analytic phase model (m)
+const TRUE_GATE   = 150;      // hard gate on the fully integrated encounter (m)
+
+// -- danger ----------------------------------------------------------------
+const WARN_ALT = 700;         // perigee altitude that starts the klaxon (m)
+const SKIM_ALT = 650;         // 'skimmer' achievement threshold (m)
+const Q_HEAT   = 35;          // dynamic pressure where heating starts (Pa)
+const Q_SCALE  = 420;         // Pa per unit heat rate
+const COOL     = 0.10;        // radiative cooling per second
+
+// -- integration -----------------------------------------------------------
+const PHYS_DT  = 1/240;       // fixed physics timestep (s)
+const MAX_STEP = 420;         // hard cap on substeps per rendered frame
+const WARP_MAX = 80;
+
+// ---------------------------------------------------------------- utilities
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function wrapPi(a){ a=(a+Math.PI)%TAU; if(a<0)a+=TAU; return a-Math.PI; }
+function easeApproach(cur,tgt,rate,dt){ return cur+(tgt-cur)*(1-Math.exp(-rate*dt)); }
+function fmt(n,d){ return (Math.round(n*Math.pow(10,d||0))/Math.pow(10,d||0)).toFixed(d||0); }
+function fmtInt(n){ return Math.round(n).toLocaleString('en-US'); }
+function sgn(x){ return x<0?-1:1; }
+
+// deterministic RNG for endless contracts + scenery
+let _seed = 1337;
+function rnd(){ _seed = (_seed*1664525 + 1013904223) >>> 0; return _seed/4294967296; }
+function rndRange(a,b){ return a+(b-a)*rnd(); }
+
+// ============================================================================
+//  CANVAS / DPR   (retina bar: CSS pins the canvas, backing store sized apart)
+// ============================================================================
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d', {alpha:false});
+let W=0,H=0,DPR=1,MIN_D=0;
+let resScale=1;                  // adaptive internal-resolution governor
+function resize(){
+  DPR = Math.min((window.devicePixelRatio||1)*resScale, 2.5);
+  W = Math.max(1, window.innerWidth); H = Math.max(1, window.innerHeight);
+  cv.width  = Math.round(W*DPR);
+  cv.height = Math.round(H*DPR);
+  // CSS size is pinned to the viewport regardless of the backing store size
+  cv.style.width='100%'; cv.style.height='100%';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  MIN_D = Math.min(W,H);
+  buildBackdrop();
+  layoutHUD();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>setTimeout(resize,140));
+
+// ============================================================================
+//  AUDIO — WebAudio oscillators / noise only
+// ============================================================================
+const Snd = (function(){
+  let ac=null, master=null, muted=false, allowed=false;
+  let thrNode=null, thrGain=null, thrFilt=null, thrOsc=null, thrOscG=null;
+  let roarNode=null, roarGain=null, roarFilt=null;
+  let warpOsc=null, warpGain=null;
+  let noiseB=null;
+  function ensure(){
+    if(ac) return true;
+    if(!allowed) return false;   // never build a context before a user gesture
+    try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return false; }
+    master = ac.createGain(); master.gain.value = muted?0:0.85; master.connect(ac.destination);
+    const n=Math.floor(ac.sampleRate*2), b=ac.createBuffer(1,n,ac.sampleRate), d=b.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+    noiseB=b;
+    return true;
+  }
+  function resume(){ if(ac&&ac.state==='suspended'){ try{ac.resume();}catch(e){} } }
+  function now(){ return ac?ac.currentTime:0; }
+  function blip(freq,dur,vol,type,slide){
+    if(!ensure())return; resume();
+    const t=now(); const o=ac.createOscillator(); o.type=type||'sine';
+    o.frequency.setValueAtTime(freq,t);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,slide),t+dur);
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol),t+Math.min(0.02,dur*0.25));
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.02);
+  }
+  function noiseHit(dur,vol,f0,f1,type){
+    if(!ensure())return; resume();
+    const t=now(); const s=ac.createBufferSource(); s.buffer=noiseB; s.loop=true;
+    const f=ac.createBiquadFilter(); f.type=type||'bandpass';
+    f.frequency.setValueAtTime(f0,t); f.frequency.exponentialRampToValueAtTime(Math.max(40,f1),t+dur); f.Q.value=1.1;
+    const g=ac.createGain(); g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol,t+Math.min(0.03,dur*0.2));
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t+dur+0.05);
+  }
+  return {
+    init(){ allowed=true; if(ensure()) resume(); },
+    ready(){ return !!ac; },
+    setMute(m){ muted=m; if(master) master.gain.setTargetAtTime(m?0:0.85, now(), 0.02); },
+    // ---- continuous: thruster ------------------------------------------
+    thruster(level){
+      if(level>0.002 && !ensure()) return;
+      if(!ac) return;
+      if(!thrNode && level>0.002){
+        thrNode=ac.createBufferSource(); thrNode.buffer=noiseB; thrNode.loop=true;
+        thrFilt=ac.createBiquadFilter(); thrFilt.type='lowpass'; thrFilt.frequency.value=420; thrFilt.Q.value=0.8;
+        thrGain=ac.createGain(); thrGain.gain.value=0;
+        thrNode.connect(thrFilt); thrFilt.connect(thrGain); thrGain.connect(master); thrNode.start();
+        thrOsc=ac.createOscillator(); thrOsc.type='sawtooth'; thrOsc.frequency.value=52;
+        thrOscG=ac.createGain(); thrOscG.gain.value=0; thrOsc.connect(thrOscG); thrOscG.connect(master); thrOsc.start();
+      }
+      if(thrGain){
+        const t=now();
+        thrGain.gain.setTargetAtTime(0.30*level, t, 0.05);
+        thrOscG.gain.setTargetAtTime(0.055*level, t, 0.06);
+        thrFilt.frequency.setTargetAtTime(300+700*level, t, 0.08);
+      }
+    },
+    // ---- continuous: reentry roar --------------------------------------
+    roar(level){
+      if(level>0.002 && !ensure()) return;
+      if(!ac) return;
+      if(!roarNode && level>0.002){
+        roarNode=ac.createBufferSource(); roarNode.buffer=noiseB; roarNode.loop=true;
+        roarFilt=ac.createBiquadFilter(); roarFilt.type='lowpass'; roarFilt.frequency.value=900;
+        roarGain=ac.createGain(); roarGain.gain.value=0;
+        roarNode.connect(roarFilt); roarFilt.connect(roarGain); roarGain.connect(master); roarNode.start();
+      }
+      if(roarGain){ const t=now();
+        roarGain.gain.setTargetAtTime(0.38*level, t, 0.10);
+        roarFilt.frequency.setTargetAtTime(500+1800*level, t, 0.12); }
+    },
+    warpHum(level){
+      if(level>0.002 && !ensure()) return;
+      if(!ac) return;
+      if(!warpOsc && level>0.002){
+        warpOsc=ac.createOscillator(); warpOsc.type='triangle'; warpOsc.frequency.value=70;
+        warpGain=ac.createGain(); warpGain.gain.value=0;
+        warpOsc.connect(warpGain); warpGain.connect(master); warpOsc.start();
+      }
+      if(warpGain){ const t=now();
+        warpGain.gain.setTargetAtTime(0.035*level, t, 0.12);
+        warpOsc.frequency.setTargetAtTime(60+120*level, t, 0.2); }
+    },
+    // ---- one-shots -------------------------------------------------------
+    swoosh(speed){ // tether passes the bottom of its swing
+      if(!ensure())return; const v=clamp(speed/260,0.15,1);
+      noiseHit(0.30, 0.055+0.05*v, 260+900*v, 130, 'bandpass');
+    },
+    tick(pitch){ blip(560+pitch*720, 0.045, 0.075, 'square'); },
+    clunk(){ // capture
+      if(!ensure())return;
+      noiseHit(0.20, 0.30, 2600, 300, 'lowpass');
+      blip(150, 0.34, 0.34, 'sine', 62);
+      blip(300, 0.14, 0.10, 'triangle', 190);
+    },
+    twang(){ // release
+      if(!ensure())return;
+      blip(720, 0.30, 0.20, 'triangle', 150);
+      noiseHit(0.42, 0.16, 1500, 240, 'bandpass');
+    },
+    chime(good){
+      if(!ensure())return;
+      const ns = good? [523.25,659.25,783.99,1046.5] : [392,329.63,261.63];
+      for(let i=0;i<ns.length;i++){
+        const t=now()+i*0.085; const o=ac.createOscillator(); o.type='triangle'; o.frequency.value=ns[i];
+        const g=ac.createGain(); g.gain.setValueAtTime(0.0001,t);
+        g.gain.exponentialRampToValueAtTime(0.11,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.42);
+        o.connect(g); g.connect(master); o.start(t); o.stop(t+0.45);
+      }
+    },
+    klaxon(){
+      if(!ensure())return;
+      blip(392,0.26,0.13,'square',330);
+      const t=now()+0.28; const o=ac.createOscillator(); o.type='square'; o.frequency.setValueAtTime(330,t);
+      const g=ac.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.12,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.26); o.connect(g); g.connect(master); o.start(t); o.stop(t+0.3);
+    },
+    boom(){ if(!ensure())return; noiseHit(1.5,0.42,900,60,'lowpass'); blip(90,1.1,0.30,'sine',34); },
+    launchRumble(){ if(!ensure())return; noiseHit(1.4,0.24,420,90,'lowpass'); blip(70,1.0,0.16,'sine',40); },
+    ui(){ blip(440,0.05,0.05,'square'); },
+    stopAll(){
+      try{
+        if(thrGain) thrGain.gain.setTargetAtTime(0,now(),0.02);
+        if(thrOscG) thrOscG.gain.setTargetAtTime(0,now(),0.02);
+        if(roarGain) roarGain.gain.setTargetAtTime(0,now(),0.02);
+        if(warpGain) warpGain.gain.setTargetAtTime(0,now(),0.02);
+      }catch(e){}
+    }
+  };
+})();
+// ============================================================================
+//  SIMULATION CORE
+// ============================================================================
+
+let simTime = 0;   // seconds of simulated time since the run began
+
+// ---- moon ------------------------------------------------------------------
+const moon = { th0: 1.05, th:1.05, x:0, y:0, on:true };
+function moonAt(t, out){
+  const th = moon.th0 + (TAU/T_MOON)*t;
+  out.x = R_MOON*Math.cos(th); out.y = R_MOON*Math.sin(th); out.th = th;
+}
+const _mScratch = {x:0,y:0,th:0};
+
+// ---- gravity (planet + moon), no allocation --------------------------------
+let _gx=0,_gy=0;
+function grav(x,y,mx,my){
+  const r2 = x*x+y*y;
+  const r = Math.sqrt(r2);
+  const k = -MU/(r2*r);
+  _gx = k*x; _gy = k*y;
+  if(moon.on){
+    const dx = x-mx, dy = y-my;
+    const d2 = dx*dx+dy*dy;
+    const d = Math.sqrt(d2);
+    if(d>1){ const km = -MU_MOON/(d2*d); _gx += km*dx; _gy += km*dy; }
+  }
+}
+function density(alt){
+  if(alt>=RHO_CUT) return 0;
+  if(alt<0) alt=0;
+  return RHO0*Math.exp(-alt/H_SCALE);
+}
+
+// ---- station rigid body ----------------------------------------------------
+// parts carry a body-frame offset bx along the rod; +bx is toward the grapple.
+const ST = {
+  x:0,y:0,vx:0,vy:0,
+  phi:0, w:SPIN0,
+  parts:[],
+  M:0, bxCom:0, I:1,
+  prop:PROP_MAX,
+  heat:0, maxQ:0, tipQ:0,
+  throttle:0, throttleCmd:0,
+  propBurned:0
+};
+function stRecalc(){
+  let M=0,s=0;
+  for(let i=0;i<ST.parts.length;i++){ M+=ST.parts[i].m; s+=ST.parts[i].m*ST.parts[i].bx; }
+  ST.M=M; ST.bxCom = s/M;
+  let I=0;
+  for(let i=0;i<ST.parts.length;i++){ const d=ST.parts[i].bx-ST.bxCom; I+=ST.parts[i].m*d*d; }
+  ST.I=Math.max(1,I);
+}
+function tipArm(){ return TIP_ARM - ST.bxCom; }
+function payloadPart(){ for(let i=0;i<ST.parts.length;i++) if(ST.parts[i].kind==='payload') return ST.parts[i]; return null; }
+
+// tip state scratch
+let _tx=0,_ty=0,_tvx=0,_tvy=0;
+function computeTip(){
+  const d = tipArm();
+  const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+  _tx = ST.x + d*ux; _ty = ST.y + d*uy;
+  _tvx = ST.vx - ST.w*uy*d; _tvy = ST.vy + ST.w*ux*d;
+}
+
+// ---- momentum-exchange attach / detach ------------------------------------
+// Rigid, perfectly plastic grapple. Linear + angular momentum are conserved
+// exactly across the mass change; the orbit change is a consequence, never a
+// bookkept "cost".
+function attachMass(m, px, py, pvx, pvy, cda, kind, meta){
+  // total momentum before.  The grapple snaps the payload onto the tip, so the
+  // payload's angular momentum is accounted at the tip point it ends up on.
+  let Px=0,Py=0,Ao=0;
+  const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+  const armPre=TIP_ARM-ST.bxCom;
+  const gx=ST.x+armPre*ux, gy=ST.y+armPre*uy;
+  for(let i=0;i<ST.parts.length;i++){
+    const p=ST.parts[i], d=p.bx-ST.bxCom;
+    const x=ST.x+d*ux, y=ST.y+d*uy;
+    const vx=ST.vx-ST.w*uy*d, vy=ST.vy+ST.w*ux*d;
+    Px+=p.m*vx; Py+=p.m*vy; Ao+=p.m*(x*vy-y*vx);
+  }
+  Px+=m*pvx; Py+=m*pvy; Ao+=m*(gx*pvy-gy*pvx);
+  // insert at the tip
+  ST.parts.push({m:m, bx:TIP_ARM, cda:cda, kind:kind, meta:meta||null, q:0});
+  // new COM (positions of existing parts are unchanged; payload snaps to the tip)
+  let M=0,sx=0,sy=0,sb=0;
+  const oldBxCom=ST.bxCom;
+  for(let i=0;i<ST.parts.length;i++){
+    const p=ST.parts[i], d=p.bx-oldBxCom;
+    const x=ST.x+d*ux, y=ST.y+d*uy;
+    M+=p.m; sx+=p.m*x; sy+=p.m*y; sb+=p.m*p.bx;
+  }
+  const cx=sx/M, cy=sy/M;
+  ST.M=M; ST.bxCom=sb/M;
+  ST.x=cx; ST.y=cy;
+  ST.vx=Px/M; ST.vy=Py/M;
+  // angular momentum about the new COM
+  const Lc = Ao - M*(cx*ST.vy - cy*ST.vx);
+  let I=0;
+  for(let i=0;i<ST.parts.length;i++){ const d=ST.parts[i].bx-ST.bxCom; I+=ST.parts[i].m*d*d; }
+  ST.I=Math.max(1,I);
+  ST.w = Lc/ST.I;
+}
+function detachPart(idx){
+  const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+  let Px=0,Py=0,Ao=0;
+  for(let i=0;i<ST.parts.length;i++){
+    const p=ST.parts[i], d=p.bx-ST.bxCom;
+    const x=ST.x+d*ux, y=ST.y+d*uy;
+    const vx=ST.vx-ST.w*uy*d, vy=ST.vy+ST.w*ux*d;
+    Px+=p.m*vx; Py+=p.m*vy; Ao+=p.m*(x*vy-y*vx);
+  }
+  const p=ST.parts[idx], dp=p.bx-ST.bxCom;
+  const rx=ST.x+dp*ux, ry=ST.y+dp*uy;
+  const rvx=ST.vx-ST.w*uy*dp, rvy=ST.vy+ST.w*ux*dp;
+  Px-=p.m*rvx; Py-=p.m*rvy; Ao-=p.m*(rx*rvy-ry*rvx);
+  const oldBxCom=ST.bxCom;
+  ST.parts.splice(idx,1);
+  let M=0,sx=0,sy=0,sb=0;
+  for(let i=0;i<ST.parts.length;i++){
+    const q=ST.parts[i], d=q.bx-oldBxCom;
+    const x=ST.x+d*ux, y=ST.y+d*uy;
+    M+=q.m; sx+=q.m*x; sy+=q.m*y; sb+=q.m*q.bx;
+  }
+  const cx=sx/M, cy=sy/M;
+  ST.M=M; ST.bxCom=sb/M; ST.x=cx; ST.y=cy;
+  ST.vx=Px/M; ST.vy=Py/M;
+  const Lc = Ao - M*(cx*ST.vy - cy*ST.vx);
+  let I=0;
+  for(let i=0;i<ST.parts.length;i++){ const d=ST.parts[i].bx-ST.bxCom; I+=ST.parts[i].m*d*d; }
+  ST.I=Math.max(1,I);
+  ST.w=Lc/ST.I;
+  return {m:p.m, x:rx, y:ry, vx:rvx, vy:rvy, cda:p.cda, meta:p.meta};
+}
+
+// ---- free bodies -----------------------------------------------------------
+const bodies = [];
+function addBody(o){
+  o.alive=true; o.age=0; o.heat=0; o.q=0; o.trail=o.trail||null;
+  bodies.push(o); return o;
+}
+
+// ---- conic elements --------------------------------------------------------
+const _orb = {a:0,e:0,rp:0,ra:0,argp:0,h:0,energy:0,period:0,ok:false};
+function conic(x,y,vx,vy){
+  const r=Math.sqrt(x*x+y*y);
+  const v2=vx*vx+vy*vy;
+  const energy=0.5*v2-MU/r;
+  const h=x*vy-y*vx;
+  const a=-MU/(2*energy);
+  const ecc2=1+2*energy*h*h/(MU*MU);
+  const e=Math.sqrt(Math.max(0,ecc2));
+  const rdv=x*vx+y*vy;
+  const ex=(v2/MU-1/r)*x-(rdv/MU)*vx;
+  const ey=(v2/MU-1/r)*y-(rdv/MU)*vy;
+  _orb.a=a; _orb.e=e; _orb.h=h; _orb.energy=energy;
+  _orb.rp=a*(1-e); _orb.ra=(e<1)?a*(1+e):Infinity;
+  _orb.argp=Math.atan2(ey,ex);
+  _orb.period=(e<1&&a>0)?TAU*Math.sqrt(a*a*a/MU):Infinity;
+  _orb.ok=(e<1&&a>0);
+  return _orb;
+}
+
+// ---- Kepler: time between two true anomalies on a bound ellipse ------------
+function nuToM(nu,e){
+  const t2=Math.tan(nu/2);
+  const E=2*Math.atan2(Math.sqrt(1-e)*t2, Math.sqrt(1+e));
+  return E-e*Math.sin(E);
+}
+// Solve the ballistic lob that puts a capsule at (rt, vr, vt) from the surface.
+const _lsol = {ok:false, tf:0, dnu:0, vr0:0, vt0:0, a:0, e:0};
+function solveLaunch(rt, vr, vt){
+  _lsol.ok=false;
+  if(vt<=0) return _lsol;
+  const h=rt*vt;
+  const eps=0.5*(vr*vr+vt*vt)-MU/rt;
+  if(eps>=-1) return _lsol;
+  const a=-MU/(2*eps);
+  const e=Math.sqrt(Math.max(1e-9,1+2*eps*h*h/(MU*MU)));
+  if(e>=0.999999) return _lsol;
+  const p=h*h/MU;
+  let c=(p/rt-1)/e; c=clamp(c,-1,1);
+  let nuT=Math.acos(c); if(vr<0) nuT=TAU-nuT;
+  let c0=(p/R_P-1)/e;
+  if(c0>1||c0<-1) return _lsol;      // trajectory never reaches the surface
+  const nu0=Math.acos(clamp(c0,-1,1)); // ascending branch, 0..PI
+  let dnu=nuT-nu0;
+  if(dnu<=0.001) return _lsol;
+  const n=Math.sqrt(MU/(a*a*a));
+  let dM=nuToM(nuT,e)-nuToM(nu0,e);
+  if(dM<0) dM+=TAU;
+  const tf=dM/n;
+  if(!(tf>0.5)||tf>200) return _lsol;
+  _lsol.ok=true; _lsol.tf=tf; _lsol.dnu=dnu; _lsol.a=a; _lsol.e=e;
+  _lsol.vr0=(MU/h)*e*Math.sin(nu0);
+  _lsol.vt0=h/R_P;
+  return _lsol;
+}
+
+// ---- lightweight propagation table for launch planning ---------------------
+const TBL_N = 2000, TBL_DT = 0.25;
+const tblX=new Float64Array(TBL_N), tblY=new Float64Array(TBL_N),
+      tblVX=new Float64Array(TBL_N), tblVY=new Float64Array(TBL_N);
+let tblCount=0;
+function buildTable(){
+  let x=ST.x,y=ST.y,vx=ST.vx,vy=ST.vy;
+  const dt=TBL_DT;
+  let mt=simTime;
+  for(let i=0;i<TBL_N;i++){
+    tblX[i]=x; tblY[i]=y; tblVX[i]=vx; tblVY[i]=vy;
+    moonAt(mt,_mScratch);
+    grav(x,y,_mScratch.x,_mScratch.y);
+    vx+=_gx*dt; vy+=_gy*dt; x+=vx*dt; y+=vy*dt;
+    mt+=dt;
+    if(x*x+y*y < R_P*R_P){ tblCount=i+1; return; }
+  }
+  tblCount=TBL_N;
+}
+
+// ---- forecast: true min distance between tip and a free body ---------------
+const _fc = {miss:1e9, relV:0, t:0, valid:false};
+function forecastMiss(body, horizon, startAt){
+  // integrate copies of the station COM/tether and the body
+  let sx=ST.x, sy=ST.y, svx=ST.vx, svy=ST.vy, sphi=ST.phi, sw=ST.w;
+  let bx=body.x, by=body.y, bvx=body.vx, bvy=body.vy;
+  const t0=startAt||0;
+  const arm=tipArm();
+  let t=0, best=1e9, bestV=0, bestT=0;
+  let mt=simTime;
+  const dt=0.05;
+  const steps=Math.min(6000, Math.ceil(horizon/dt));
+  for(let i=0;i<steps;i++){
+    moonAt(mt,_mScratch);
+    grav(sx,sy,_mScratch.x,_mScratch.y); svx+=_gx*dt; svy+=_gy*dt; sx+=svx*dt; sy+=svy*dt;
+    sphi+=sw*dt;
+    mt+=dt; t+=dt;
+    if(t<t0) continue;                       // the capsule is not airborne yet
+    grav(bx,by,_mScratch.x,_mScratch.y);
+    let ax=_gx, ay=_gy;
+    const r=Math.sqrt(bx*bx+by*by), rh=density(r-R_P);
+    if(rh>0){
+      const avx=-OM_P*by, avy=OM_P*bx;
+      const rvx=bvx-avx, rvy=bvy-avy, sp=Math.sqrt(rvx*rvx+rvy*rvy);
+      if(sp>1e-6){ const k=-0.5*rh*sp*body.cda/body.m; ax+=k*rvx; ay+=k*rvy; }
+    }
+    bvx+=ax*dt; bvy+=ay*dt; bx+=bvx*dt; by+=bvy*dt;
+    const ux=Math.cos(sphi), uy=Math.sin(sphi);
+    const tx=sx+arm*ux, ty=sy+arm*uy;
+    const dx=bx-tx, dy=by-ty;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d<best){
+      best=d; bestT=t;
+      const tvx=svx-sw*uy*arm, tvy=svy+sw*ux*arm;
+      bestV=Math.sqrt((bvx-tvx)*(bvx-tvx)+(bvy-tvy)*(bvy-tvy));
+    }
+    if(bx*bx+by*by < R_P*R_P) break;
+  }
+  _fc.miss=best; _fc.relV=bestV; _fc.t=bestT; _fc.valid=true;
+  return _fc;
+}
+
+// ---- analytic impact solve (used by the release guide) ---------------------
+const _imp={th:0,dt:0,ok:false};
+function impactSolve(x,y,vx,vy,o){
+  _imp.ok=false;
+  if(!(o.rp<R_P)) return _imp;
+  if(!(o.e>1e-6)) return _imp;
+  const p=o.h*o.h/MU;
+  let cr=clamp((p/Math.sqrt(x*x+y*y)-1)/o.e,-1,1);
+  let nuR=Math.acos(cr);
+  if((x*vx+y*vy)<0) nuR=TAU-nuR;
+  let ci=clamp((p/R_P-1)/o.e,-1,1);
+  const nuI=TAU-Math.acos(ci);          // descending crossing of the surface
+  if(!o.ok) return _imp;                 // only bound arcs are solved here
+  let dM=nuToM(nuI,o.e)-nuToM(nuR,o.e);
+  while(dM<0) dM+=TAU;
+  const n=Math.sqrt(MU/(o.a*o.a*o.a));
+  _imp.dt=dM/n;
+  _imp.th=o.argp+nuI;
+  _imp.ok=true;
+  return _imp;
+}
+// how good would a release right here be?  err<=1 means the contract is met.
+function releaseErr(x,y,vx,vy,tOff){
+  const c=G.contract; if(!c) return 99;
+  const o=conic(x,y,vx,vy);
+  if(c.kind==='lift'||c.kind==='pod'){
+    if(!o.ok) return 99;
+    const per=o.rp-R_P;
+    if(per<430) return 99;
+    const lo=c.band[0], hi=c.band[1], mid=(lo+hi)/2, half=(hi-lo)/2;
+    return Math.abs((o.ra-R_P)-mid)/half;
+  }
+  if(c.kind==='dispose'){
+    if(o.rp>=R_P) return clamp((o.rp-R_P)/1400,1.02,99);
+    // it has to reenter AND it has to pay: the boost the station keeps is the
+    // energy the payload gives up, which is maximised at the bottom of the swing
+    const arm=tipArm(), u=Math.abs(ST.w)*arm;
+    const r0=Math.hypot(ST.x,ST.y), v0=Math.hypot(ST.vx,ST.vy);
+    const eLo=0.5*(v0-u)*(v0-u)-MU/Math.max(1,r0-arm);
+    const eHi=0.5*(v0+u)*(v0+u)-MU/(r0+arm);
+    const bq=clamp((eHi-o.energy)/Math.max(1,eHi-eLo),0,1);
+    return (1-bq)/0.32;
+  }
+  if(c.kind==='return'){
+    const im=impactSolve(x,y,vx,vy,o);
+    if(!im.ok) return clamp((o.rp-R_P)/1400+1.02,1.02,99);
+    const zt=ZONES[c.zone].th0+OM_P*(simTime+tOff+im.dt);
+    return Math.abs(wrapPi(im.th-zt))*180/Math.PI/c.tol;
+  }
+  if(c.kind==='moon'){
+    if(o.ra<R_MOON*0.5 && o.ok) return 99;
+    return moonMinFor(x,y,vx,vy,tOff)/MOON_CAPTURE;
+  }
+  return 99;
+}
+// coarse propagation of a hypothetical release, looking for the moon
+const _m2={x:0,y:0,th:0};
+function moonMinFor(x,y,vx,vy,tOff){
+  let mt=simTime+tOff, best=1e9;
+  const dt=4.0;
+  for(let i=0;i<430;i++){
+    const th=moon.th0+(TAU/T_MOON)*mt;
+    _m2.x=R_MOON*Math.cos(th); _m2.y=R_MOON*Math.sin(th);
+    const r2=x*x+y*y, r=Math.sqrt(r2);
+    let k=-MU/(r2*r);
+    let ax=k*x, ay=k*y;
+    const dx=x-_m2.x, dy=y-_m2.y, d2=dx*dx+dy*dy, d=Math.sqrt(d2);
+    if(d<best) best=d;
+    if(d>1){ const km=-MU_MOON/(d2*d); ax+=km*dx; ay+=km*dy; }
+    vx+=ax*dt; vy+=ay*dt; x+=vx*dt; y+=vy*dt; mt+=dt;
+    if(r<R_P) break;
+    if(r>R_MOON*2.4) break;
+  }
+  return best;
+}
+
+// ---- release guide: the future tip path, marked where a throw would score --
+const GUIDE_N=170;
+const gPhi=new Float32Array(GUIDE_N);
+const gGood=new Uint8Array(GUIDE_N);
+let guideN=0, guideErrNow=99, guideAny=false, guideBest=99;
+function buildGuide(){
+  const pay=payloadPart();
+  if(!pay || !G.contract){ guideN=0; guideErrNow=99; guideAny=false; guideBest=99; return; }
+  let x=ST.x,y=ST.y,vx=ST.vx,vy=ST.vy,phi=ST.phi;
+  const w=ST.w, arm=tipArm();
+  const T=TAU/Math.abs(w);
+  const N=(G.contract.kind==='moon')?52:GUIDE_N;
+  const dt=T*1.06/N;
+  let mt=simTime;
+  guideAny=false; guideBest=99;
+  for(let i=0;i<N;i++){
+    const ux=Math.cos(phi), uy=Math.sin(phi);
+    const tx=x+arm*ux, ty=y+arm*uy;
+    const tvx=vx-w*uy*arm, tvy=vy+w*ux*arm;
+    gPhi[i]=phi;
+    const e=releaseErr(tx,ty,tvx,tvy,mt-simTime);
+    gGood[i]=e<=1?1:0;
+    if(gGood[i]) guideAny=true;
+    if(e<guideBest) guideBest=e;
+    if(i===0) guideErrNow=e;
+    moonAt(mt,_mScratch);
+    grav(x,y,_mScratch.x,_mScratch.y);
+    vx+=_gx*dt; vy+=_gy*dt; x+=vx*dt; y+=vy*dt; phi+=w*dt; mt+=dt;
+  }
+  guideN=N;
+}
+
+// ---- trajectory prediction for a throw ------------------------------------
+const PRED_MAX = 420;
+const predX=new Float32Array(PRED_MAX), predY=new Float32Array(PRED_MAX);
+const pred = {n:0, apo:0, peri:0, ok:false, impact:false, impactTh:0, impactT:0,
+              moonMin:1e9, moonT:0, escape:false};
+function predictThrow(px,py,pvx,pvy,cda,m,mode){
+  const c=conic(px,py,pvx,pvy);
+  pred.apo=c.ok? c.ra : Infinity;
+  pred.peri=c.rp; pred.ok=c.ok; pred.escape=!c.ok;
+  pred.impact=false; pred.moonMin=1e9; pred.n=0;
+  let dt = (mode==='moon')?1.1:0.35;
+  let horizon = (mode==='moon')?2400:(mode==='down'?520:300);
+  const steps=Math.min(3400,Math.ceil(horizon/dt));
+  let x=px,y=py,vx=pvx,vy=pvy,t=0,mt=simTime;
+  const every=Math.max(1,Math.floor(steps/PRED_MAX));
+  for(let i=0;i<steps;i++){
+    moonAt(mt,_mScratch);
+    grav(x,y,_mScratch.x,_mScratch.y);
+    let ax=_gx, ay=_gy;
+    const r=Math.sqrt(x*x+y*y), rh=density(r-R_P);
+    if(rh>0){
+      const avx=-OM_P*y, avy=OM_P*x;
+      const rvx=vx-avx, rvy=vy-avy, sp=Math.sqrt(rvx*rvx+rvy*rvy);
+      if(sp>1e-6){ const k=-0.5*rh*sp*cda/m; ax+=k*rvx; ay+=k*rvy; }
+    }
+    vx+=ax*dt; vy+=ay*dt; x+=vx*dt; y+=vy*dt;
+    mt+=dt; t+=dt;
+    const dmx=x-_mScratch.x, dmy=y-_mScratch.y;
+    const dm=Math.sqrt(dmx*dmx+dmy*dmy);
+    if(dm<pred.moonMin){ pred.moonMin=dm; pred.moonT=t; }
+    if(i%every===0 && pred.n<PRED_MAX){ predX[pred.n]=x; predY[pred.n]=y; pred.n++; }
+    if(x*x+y*y <= R_P*R_P){
+      pred.impact=true; pred.impactT=t; pred.impactTh=Math.atan2(y,x);
+      if(pred.n<PRED_MAX){ predX[pred.n]=x; predY[pred.n]=y; pred.n++; }
+      break;
+    }
+    if(x*x+y*y > (R_MOON*1.9)*(R_MOON*1.9)) break;
+  }
+  return pred;
+}
+// ============================================================================
+//  GAME STATE / CONTRACTS
+// ============================================================================
+const State = {START:0, PLAY:1, OVER:2};
+
+const PADS = [
+  {name:'KETO',  th0:0.00},
+  {name:'HALDE', th0:2.28},
+  {name:'VOR',   th0:4.36}
+];
+const ZONES = [
+  {name:'ARRAY-1', th0:3.55},
+  {name:'ARRAY-2', th0:5.60},
+  {name:'ARRAY-3', th0:1.30}
+];
+function padTheta(p,t){ return p.th0 + OM_P*t; }
+
+// altitudes are in metres above the surface
+const LADDER = [
+  {tier:'I',   name:'SHAKEDOWN',    kind:'lift',    mass:70,  pad:0, band:[2600,5400], reward:700,
+   brief:'Catch the test article and put it into any stable orbit between 2.6 and 5.4 km.'},
+  {tier:'I',   name:'CLEAN SWEEP',  kind:'dispose', mass:220, reward:900,
+   brief:'220 kg of station waste is already on the grapple. Throw it DOWN — at the bottom of the swing — so it reenters. You keep every metre per second it gives back.'},
+  {tier:'II',  name:'DEPOT RUN',    kind:'lift',    mass:90,  pad:1, band:[3200,4700], reward:1100,
+   brief:'Depot resupply. Apoapsis must land inside a 1.5 km band.'},
+  {tier:'II',  name:'SAMPLE DROP',  kind:'return',  mass:110, pad:2, zone:0, tol:12, reward:1400,
+   brief:'Catch the sample can and throw it DOWN onto the recovery array. Downward throws boost you.'},
+  {tier:'II',  name:'TANKER POD',   kind:'pod',     mass:60,  pad:0, band:[3000,4600], reward:1000,
+   brief:'A propellant pod. HOLD it for 4 s to pump 40 kg aboard, or throw it into the band for full score.'},
+  {tier:'III', name:'TIGHT BAND',   kind:'lift',    mass:100, pad:1, band:[4800,6200], reward:1700,
+   brief:'Observation slot. Read the lit arc on the tip path and release inside it.'},
+  {tier:'III', name:'DERELICT',     kind:'dispose', mass:260, reward:1500,
+   brief:'A dead tug has been winched onto the tip. Dump it retrograde and harvest the boost.'},
+  {tier:'III', name:'PRECISION',    kind:'return',  mass:130, pad:2, zone:1, tol:7,  reward:2100,
+   brief:'Crew return. The recovery array is 7 degrees wide. Nothing less will do.'},
+  {tier:'IV',  name:'HEAVY LIFT',   kind:'lift',    mass:200, pad:0, band:[4000,5400], reward:2400,
+   brief:'200 kg. Both the catch and the throw will cost you real altitude — plan the budget.'},
+  {tier:'IV',  name:'DEEP FIELD',   kind:'return',  mass:150, pad:1, zone:2, tol:5,  reward:2800,
+   brief:'Deep-field cores, 5 degrees of tolerance, and the boost you badly need.'},
+  {tier:'V',   name:'HIGH ORBIT',   kind:'lift',    mass:120, pad:2, band:[8500,12000], reward:3200,
+   brief:'Relay bird to a 9-12 km apoapsis. Release near the top of the swing and hold your nerve.'},
+  {tier:'V',   name:'MOON SHOT',    kind:'moon',    mass:140, pad:0, reward:6500,
+   brief:'Transfer injection. Throw so the payload reaches the moon marker. Everything you have learned, in one release.'}
+];
+const MOON_CAPTURE = 5200; // m — how close the payload must pass the moon
+
+const G = {
+  state:State.START, paused:false, pausedByBlur:false, muted:false,
+  score:0, streak:0, best:0,
+  ci:0, endless:false, endlessN:0,
+  contract:null, pad:PADS[0], zone:ZONES[0],
+  armed:false, armT:0, holdT:0,
+  warp:1, warpCmd:false, warpMaxNow:WARP_MAX,
+  slow:1,
+  shake:0, camLean:0,
+  banner:'', bannerSub:'', bannerT:0,
+  msgOpen:false, submitted:false,
+  runTime:0, contractT:0, sinceCatch:0, propAtStart:0,
+  cleanStreak:0, cleanFlag:true,
+  caught:0, thrown:0, lost:0, bestAcc:0, totalAcc:0, accN:0,
+  warned:false, warnLatch:false, burning:false, burnT:0, dead:false, deadReason:'',
+  ach:{}, camMode:'auto', userZoom:1,
+  absorbT:0, lastRelV:0, lastEnergy:0,
+  padState:'idle', padMsg:'', tLaunch:0, tPass:0, phaseErr:0, missEst:0, lockPlan:null,
+  liveMiss:0, liveRelV:0, liveT:0, liveValid:false,
+  firstHint:true, tutorial:0
+};
+
+function unlock(slug){
+  if(G.ach[slug]) return;
+  G.ach[slug]=true;
+  arcadeUnlock(slug);
+  pushToast('BADGE  '+slug.toUpperCase().replace(/-/g,' '));
+}
+
+// ---------------------------------------------------------------- toasts
+const toasts=[];
+function pushToast(txt){ toasts.push({t:txt, life:3.4}); if(toasts.length>4) toasts.shift(); }
+function banner(t,sub,dur){ G.banner=t; G.bannerSub=sub||''; G.bannerT=dur||2.2; }
+
+// ============================================================================
+//  RUN SETUP
+// ============================================================================
+function newRun(){
+  simTime=0; _seed=20260824;
+  bodies.length=0; particles.length=0; toasts.length=0; sparks.length=0;
+  ST.parts.length=0;
+  ST.parts.push({m:M_CW_DRY+PROP_MAX, bx:CW_ARM, cda:CD_A_STA, kind:'cw', q:0});
+  ST.parts.push({m:M_TIP,             bx:TIP_ARM, cda:CD_A_TIP, kind:'tip', q:0});
+  ST.prop=PROP_MAX; ST.heat=0; ST.throttle=0; ST.throttleCmd=0; ST.propBurned=0;
+  stRecalc();
+  const r0=5000;
+  const v0=Math.sqrt(MU/r0);
+  const th0=-0.80;
+  ST.x=r0*Math.cos(th0); ST.y=r0*Math.sin(th0);
+  ST.vx=-v0*Math.sin(th0); ST.vy=v0*Math.cos(th0);
+  ST.phi=th0+Math.PI; ST.w=SPIN0;
+  moon.th0=1.05; moon.on=true; moonAt(0,moon);
+  G.score=0; G.streak=0; G.ci=0; G.endless=false; G.endlessN=0;
+  G.caught=0; G.thrown=0; G.lost=0; G.bestAcc=0; G.totalAcc=0; G.accN=0;
+  G.armed=false; G.armT=0; G.warp=1; G.warpCmd=false; G.slow=1;
+  G.shake=0; G.camLean=0; G.bannerT=0; G.submitted=false;
+  G.runTime=0; G.contractT=0; G.cleanStreak=0; G.cleanFlag=true;
+  G.warned=false; G.warnLatch=false; G.burning=false; G.burnT=0; G.dead=false; G.deadReason='';
+  G.ach={}; G.userZoom=1; G.absorbT=0; G.lockPlan=null; G.liveValid=false;
+  G.firstHint=true; G.tutorial=0; G.runToken=(G.runToken||0)+1;
+  assBody=null; assFx=0; assFy=0; predValid=false; guideN=0; guideErrNow=99; guideAny=false;
+  cam.init=false;
+  beginContract(0);
+  seedPhase();
+  replan();
+  refreshThrottleCmd();
+}
+
+// Seed the opening tether phase so the operator's first move is a catch, not a
+// wait: find the earliest pass the pads can serve and rotate the tether so the
+// tip bottoms out exactly there.
+function seedPhase(){
+  buildTable();
+  const arm=tipArm();
+  _cands.length=0;
+  for(let i=0;i<PADS.length;i++) scanPad(PADS[i], arm, _cands);
+  if(!_cands.length) return;
+  _cands.sort((a,b)=>a.t-b.t);
+  let pick=null;
+  for(let i=0;i<_cands.length;i++){
+    const e=evalPass(_cands[i].pad,_cands[i].t,arm);
+    if(e.ok && e.tL>16){ pick={t:e.tPass, perr:e.perr}; break; }
+  }
+  if(!pick) return;
+  ST.phi=(ST.phi+(pick.perr-1.0)*ST.w+TAU*4)%TAU;
+}
+function contractFor(i){
+  if(i<LADDER.length) return LADDER[i];
+  // endless: escalating randomised contracts
+  const n=i-LADDER.length;
+  const kinds=['lift','return','dispose','lift','return'];
+  const k=kinds[Math.floor(rnd()*kinds.length)];
+  const mass=Math.round(rndRange(80,120)+n*14);
+  const base=Math.round(1800+n*420);
+  if(k==='lift'){
+    const lo=Math.round(rndRange(2800,8000)); const w=Math.max(700, 1500-n*70);
+    return {tier:'∞', name:'CONTRACT '+(n+1), kind:'lift', mass:mass, pad:Math.floor(rnd()*3),
+            band:[lo,lo+w], reward:base, brief:'Open contract. Apoapsis band '+lo+'–'+(lo+w)+' m.'};
+  }
+  if(k==='return'){
+    const tol=Math.max(4, 11-n*0.7);
+    return {tier:'∞', name:'CONTRACT '+(n+1), kind:'return', mass:mass, pad:Math.floor(rnd()*3),
+            zone:Math.floor(rnd()*3), tol:tol, reward:base, brief:'Open contract. Recovery array, '+fmt(tol,1)+'° tolerance.'};
+  }
+  return {tier:'∞', name:'CONTRACT '+(n+1), kind:'dispose', mass:Math.round(180+n*22), reward:base,
+          brief:'Open contract. Waste consignment — throw it down and take the boost.'};
+}
+
+function beginContract(i){
+  G.ci=i;
+  if(i>=LADDER.length) G.endlessN=i-LADDER.length+1;
+  const c=contractFor(i);
+  G.contract=c;
+  G.contractT=0; G.sinceCatch=0;
+  G.propAtStart=ST.prop;
+  G.cleanFlag=true;
+  G.pad = PADS[c.pad||0];
+  G.zone = ZONES[c.zone||0];
+  G.padState='idle'; G.padMsg=''; G.lockPlan=null; G.liveValid=false;
+  G.absorbT=0; G.rejectPass=null;
+  // dispose contracts arrive already on the grapple
+  if(c.kind==='dispose'){
+    computeTip();
+    attachMass(c.mass, _tx, _ty, _tvx, _tvy, c.mass*BALLISTIC, 'payload', {contract:true, kind:'waste'});
+    banner('CONSIGNMENT ABOARD', c.mass+' kg on the grapple — throw it DOWN', 3.2);
+  } else {
+    let tgt='';
+    if(c.kind==='lift'||c.kind==='pod') tgt='catch, then throw UP into '+c.band[0]+'–'+c.band[1]+' m';
+    else if(c.kind==='return') tgt='catch, then throw DOWN onto '+ZONES[c.zone].name+' (±'+fmt(c.tol,0)+'°)';
+    else if(c.kind==='moon') tgt='catch, then throw for the moon';
+    banner('CONTRACT  '+c.name, tgt, 3.4);
+  }
+  Snd.chime(true);
+}
+
+// ============================================================================
+//  LAUNCH PLANNING  (the ground crew tracks you and lobs when a catch is on)
+// ============================================================================
+let planTimer=0;
+const _cands=[];
+// Scan the propagated station track for every time the geometry lets `pad` put
+// a capsule's apex on the tether tip's low point.  Pure root-finding on a real
+// ballistic solution — the pad never cheats, it just declines to waste a
+// capsule on a pass that cannot be caught.
+function scanPad(pad, arm, out){
+  let prevM=NaN, prevOK=false;
+  for(let i=2;i<tblCount;i++){
+    const t=i*TBL_DT;
+    const x=tblX[i], y=tblY[i], vx=tblVX[i], vy=tblVY[i];
+    const r=Math.sqrt(x*x+y*y);
+    if(r<R_P+200) break;
+    const vr=(x*vx+y*vy)/r, vt=(x*vy-y*vx)/r;
+    const rt=r-arm;
+    if(rt<R_P+120){ prevOK=false; continue; }
+    const sol=solveLaunch(rt, vr, vt-ST.w*arm);
+    if(!sol.ok){ prevOK=false; continue; }
+    const tL=t-sol.tf;
+    if(tL<1.0){ prevOK=false; continue; }
+    const theta=Math.atan2(y,x);
+    const m=wrapPi(theta - sol.dnu - padTheta(pad, simTime+tL));
+    if(prevOK && prevM<0 && m>=0 && (m-prevM)<Math.PI){
+      const f=(0-prevM)/(m-prevM);
+      out.push({pad:pad, t:(i-1+f)*TBL_DT});
+      if(out.length>=14) return;
+    }
+    prevM=m; prevOK=true;
+  }
+}
+// Closest approach between a tip sweeping past a body that tops out at the
+// tip's low point, when the tether phase is `perr` seconds off.  Minimised over
+// time in the encounter frame — the same geometry the live forecast integrates,
+// just solved cheaply enough to run on every candidate pass.
+function missFromPhase(perr, arm, rt){
+  const w=Math.abs(ST.w), u=w*arm, g=MU/(rt*rt);
+  let best=1e9;
+  for(let i=-30;i<=30;i++){
+    const tau=i*0.5;
+    const a=w*(tau-perr);
+    const rad=arm*(1-Math.cos(a))+0.5*g*tau*tau;
+    const tan=arm*Math.sin(a)-u*tau;
+    const d=Math.sqrt(rad*rad+tan*tan);
+    if(d<best) best=d;
+  }
+  return best;
+}
+// Turn a candidate pass time into a full launch solution + phase report.
+const _cand={ok:false,tPass:0,tL:0,perr:0,miss:0,sol:null,padTh:0,tgx:0,tgy:0};
+function evalPass(pad, tPass, arm){
+  _cand.ok=false;
+  const i0=Math.max(0,Math.min(tblCount-2,Math.floor(tPass/TBL_DT)));
+  const f=(tPass-i0*TBL_DT)/TBL_DT;
+  const x=lerp(tblX[i0],tblX[i0+1],f), y=lerp(tblY[i0],tblY[i0+1],f);
+  const vx=lerp(tblVX[i0],tblVX[i0+1],f), vy=lerp(tblVY[i0],tblVY[i0+1],f);
+  const r=Math.sqrt(x*x+y*y);
+  const vr=(x*vx+y*vy)/r, vt=(x*vy-y*vx)/r;
+  const sol=solveLaunch(r-arm, vr, vt-ST.w*arm);
+  if(!sol.ok) return _cand;
+  const theta=Math.atan2(y,x);
+  const tL=tPass-sol.tf;
+  if(tL<0.2) return _cand;
+  // the tip has to be at the bottom of its swing when the capsule tops out
+  const phiAt=ST.phi+ST.w*tPass;
+  const dphi=wrapPi(theta+Math.PI-phiAt);
+  const perr=dphi/ST.w;
+  _cand.ok=true; _cand.tPass=tPass; _cand.tL=tL; _cand.perr=perr;
+  _cand.miss=missFromPhase(perr, arm, r-arm);
+  _cand.sol={tf:sol.tf,dnu:sol.dnu,vr0:sol.vr0,vt0:sol.vt0};
+  _cand.padTh=padTheta(pad, simTime+tL);
+  const rt=r-arm;                       // where the tip bottoms out
+  _cand.tgx=rt*Math.cos(theta); _cand.tgy=rt*Math.sin(theta);
+  return _cand;
+}
+// The closed-form lob ignores drag on the way up, which lands the apex a few
+// tens of metres low.  Shoot the real integrator and Newton-correct the launch
+// speed and flight-path angle until the capsule arrives ON the tip's low point.
+const _sp={x:0,y:0}, _sp1={x:0,y:0}, _sp2={x:0,y:0};
+function shootPos(px,py,vx,vy,tf,cda,m,out){
+  const n=Math.max(8,Math.ceil(tf/0.05)), h=tf/n;
+  let x=px,y=py,mt=simTime;
+  for(let i=0;i<n;i++){
+    const th=moon.th0+(TAU/T_MOON)*mt;
+    _m2.x=R_MOON*Math.cos(th); _m2.y=R_MOON*Math.sin(th);
+    grav(x,y,_m2.x,_m2.y);
+    let ax=_gx, ay=_gy;
+    const r=Math.sqrt(x*x+y*y), rh=density(r-R_P);
+    if(rh>0){
+      const avx=-OM_P*y, avy=OM_P*x;
+      const rvx=vx-avx, rvy=vy-avy, sp=Math.sqrt(rvx*rvx+rvy*rvy);
+      if(sp>1e-6){ const k=-0.5*rh*sp*cda/m; ax+=k*rvx; ay+=k*rvy; }
+    }
+    vx+=ax*h; vy+=ay*h; x+=vx*h; y+=vy*h; mt+=h;
+    if(x*x+y*y<R_P*R_P*0.98) break;
+  }
+  out.x=x; out.y=y;
+}
+const _ref={k:1,d:0};
+function refineLaunch(px,py,vr,vt,rhx,rhy,thx,thy,tf,tgx,tgy,cda,m){
+  let k=1, d=0;
+  const shoot=(kk,dd,o)=>{
+    const c=Math.cos(dd), sn=Math.sin(dd);
+    const vrr=(vr*c-vt*sn)*kk, vtt=(vr*sn+vt*c)*kk;
+    shootPos(px,py, vrr*rhx+vtt*thx, vrr*rhy+vtt*thy, tf, cda, m, o);
+  };
+  for(let it=0;it<3;it++){
+    shoot(k,d,_sp);
+    const ex=_sp.x-tgx, ey=_sp.y-tgy;
+    if(ex*ex+ey*ey<9) break;
+    const hk=0.003, hd=0.003;
+    shoot(k+hk,d,_sp1); shoot(k,d+hd,_sp2);
+    const j11=(_sp1.x-_sp.x)/hk, j12=(_sp2.x-_sp.x)/hd;
+    const j21=(_sp1.y-_sp.y)/hk, j22=(_sp2.y-_sp.y)/hd;
+    const det=j11*j22-j12*j21;
+    if(!isFinite(det)||Math.abs(det)<1e-9) break;
+    k=clamp(k+(-ex*j22+ey*j12)/det, 0.85, 1.18);
+    d=clamp(d+( ex*j21-ey*j11)/det, -0.30, 0.30);
+  }
+  _ref.k=k; _ref.d=d; return _ref;
+}
+function replan(){
+  const c=G.contract;
+  G.padState='idle'; G.padMsg='';
+  if(!c || c.kind==='dispose' || payloadPart() || anyCapsule()){ return; }
+  buildTable();
+  const arm=tipArm();
+  _cands.length=0;
+  // the contract's home pad is scanned first so it wins ties
+  const order=[PADS[c.pad||0]];
+  for(let i=0;i<PADS.length;i++) if(PADS[i]!==order[0]) order.push(PADS[i]);
+  for(let i=0;i<order.length;i++) scanPad(order[i], arm, _cands);
+  if(!_cands.length){ G.padState='hold'; G.padMsg='NO SOLUTION — ORBIT OUT OF REACH'; G.missEst=Infinity; return; }
+  _cands.sort((a,b)=>a.t-b.t);
+  let go=null, fallback=null;
+  for(let i=0;i<_cands.length;i++){
+    const e=evalPass(_cands[i].pad, _cands[i].t, arm);
+    if(!e.ok) continue;
+    const rec={pad:_cands[i].pad, tPass:e.tPass, tL:e.tL, perr:e.perr, miss:e.miss, sol:e.sol, padTh:e.padTh, tgx:e.tgx, tgy:e.tgy};
+    if(!fallback || (rec.miss+0.9*rec.tL) < (fallback.miss+0.9*fallback.tL)) fallback=rec;
+    if(rec.miss<COMMIT_MISS){ go=rec; break; }
+  }
+  const use=go||fallback;
+  if(!use){ G.padState='hold'; G.padMsg='NO SOLUTION'; G.missEst=Infinity; return; }
+  G.pad=use.pad; G.tPass=use.tPass; G.tLaunch=use.tL;
+  G.phaseErr=use.perr; G.missEst=use.miss;
+  if(!go){ G.padState='hold'; return; }
+  G.padState='go';
+  if(use.tL<=2.6){
+    if(G.rejectPass!=null && Math.abs(simTime+use.tPass-G.rejectPass)<3){ G.padState='hold'; return; }
+    const padTh=use.padTh;
+    const rhx=Math.cos(padTh), rhy=Math.sin(padTh);
+    const thx=-Math.sin(padTh), thy=Math.cos(padTh);
+    const px=(R_P+3)*rhx, py=(R_P+3)*rhy;
+    const cda=c.mass*BALLISTIC;
+    const rf=refineLaunch(px,py, use.sol.vr0, use.sol.vt0, rhx,rhy,thx,thy,
+                          use.sol.tf, use.tgx, use.tgy, cda, c.mass);
+    const cs=Math.cos(rf.d), sn=Math.sin(rf.d);
+    const vr=(use.sol.vr0*cs-use.sol.vt0*sn)*rf.k;
+    const vt=(use.sol.vr0*sn+use.sol.vt0*cs)*rf.k;
+    // final gate: integrate the actual planned capsule against the actual
+    // tether and only commit if the encounter really is inside the envelope
+    const probe={x:px,y:py,vx:vr*rhx+vt*thx,vy:vr*rhy+vt*thy,m:c.mass,cda:cda};
+    const fm=forecastMiss(probe, use.tPass+10, use.tL);
+    G.missEst=Math.max(G.missEst, fm.miss);
+    if(fm.miss>TRUE_GATE){
+      G.rejectPass=simTime+use.tPass;
+      G.padState='hold'; G.padMsg='PASS DECLINED — '+fmtInt(fm.miss)+' m';
+      return;
+    }
+    G.lockPlan={
+      t: simTime+use.tL,
+      x:px, y:py,
+      vx: vr*rhx + vt*thx,
+      vy: vr*rhy + vt*thy,
+      tPass: simTime+use.tPass, padName:use.pad.name
+    };
+  }
+}
+function anyCapsule(){ for(let i=0;i<bodies.length;i++) if(bodies[i].kind==='capsule'&&bodies[i].alive) return true; return false; }
+function firstCapsule(){ for(let i=0;i<bodies.length;i++) if(bodies[i].kind==='capsule'&&bodies[i].alive) return bodies[i]; return null; }
+
+function fireCapsule(){
+  const p=G.lockPlan; if(!p) return;
+  const c=G.contract;
+  const b=addBody({
+    kind:'capsule', x:p.x, y:p.y, vx:p.vx, vy:p.vy,
+    m:c.mass, cda:c.mass*BALLISTIC, type:(c.kind==='pod'?'pod':(c.kind==='moon'?'heavy':'cap')),
+    spin:rndRange(-1.2,1.2), rot:0, apexT:p.tPass
+  });
+  computeArc(b);
+  G.lockPlan=null; G.rejectPass=null;
+  G.padState='away';
+  banner('CAPSULE AWAY', 'PAD '+p.padName+' — '+c.mass+' kg on a ballistic arc', 2.4);
+  Snd.launchRumble();
+  G.warpCmd=false; G.warp=1;
+  for(let i=0;i<26;i++){
+    const a=Math.atan2(p.y,p.x)+rndRange(-0.35,0.35);
+    spawnParticle(p.x, p.y, Math.cos(a)*rndRange(-40,40)-p.vx*0.05, Math.sin(a)*rndRange(-40,40)-p.vy*0.05,
+                  rndRange(1.4,3.0), '#ffd08a', rndRange(14,30));
+  }
+  return b;
+}
+
+// ============================================================================
+//  WORLD STEP
+// ============================================================================
+let assFx=0, assFy=0, assBody=null;
+function computeAssist(){
+  assFx=0; assFy=0; assBody=null;
+  if(!G.armed || payloadPart()) return;
+  computeTip();
+  let best=null, bd=1e9;
+  for(let i=0;i<bodies.length;i++){
+    const b=bodies[i];
+    if(b.kind!=='capsule'||!b.alive) continue;
+    const dx=b.x-_tx, dy=b.y-_ty; const d=Math.sqrt(dx*dx+dy*dy);
+    if(d<ASSIST_R && d<bd){ bd=d; best=b; }
+  }
+  if(!best) return;
+  const rvx=best.vx-_tvx, rvy=best.vy-_tvy;
+  const rel=Math.sqrt(rvx*rvx+rvy*rvy);
+  if(rel>ASSIST_V) return;
+  let ax=ASSIST_K*(_tx-best.x)-ASSIST_C*rvx;
+  let ay=ASSIST_K*(_ty-best.y)-ASSIST_C*rvy;
+  const am=Math.sqrt(ax*ax+ay*ay);
+  if(am>ASSIST_A){ ax*=ASSIST_A/am; ay*=ASSIST_A/am; }
+  assBody=best; assFx=ax*best.m; assFy=ay*best.m;
+}
+
+function stepStation(dt){
+  const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+  let Fx=0,Fy=0,Tq=0,mq=0,tq=0;
+  for(let i=0;i<ST.parts.length;i++){
+    const p=ST.parts[i]; const d=p.bx-ST.bxCom;
+    const px=ST.x+d*ux, py=ST.y+d*uy;
+    const pvx=ST.vx-ST.w*uy*d, pvy=ST.vy+ST.w*ux*d;
+    grav(px,py,moon.x,moon.y);
+    let fx=p.m*_gx, fy=p.m*_gy;
+    const r=Math.sqrt(px*px+py*py);
+    const rh=density(r-R_P);
+    if(rh>0){
+      const avx=-OM_P*py, avy=OM_P*px;
+      const rvx=pvx-avx, rvy=pvy-avy;
+      const sp=Math.sqrt(rvx*rvx+rvy*rvy);
+      const q=0.5*rh*sp*sp;
+      p.q=q; if(q>mq) mq=q;
+      if(p.kind!=='cw' && q>tq) tq=q;
+      if(sp>1e-6){ const k=-q*p.cda/sp; fx+=k*rvx; fy+=k*rvy; }
+    } else p.q=0;
+    Fx+=fx; Fy+=fy;
+    Tq += (d*ux)*fy - (d*uy)*fx;
+  }
+  ST.maxQ=mq; ST.tipQ=tq;
+  // spin trim (torque only — it cannot change the orbit)
+  if(spinTrimOn) Tq += clamp((SPIN0-ST.w)*ST.I/SPIN_TAU, -SPIN_TQ, SPIN_TQ);
+  // grapple-net reaction at the tip (equal and opposite to the payload force)
+  if(assBody){
+    const d=tipArm();
+    Fx-=assFx; Fy-=assFy;
+    Tq += (d*ux)*(-assFy) - (d*uy)*(-assFx);
+  }
+  // thruster at the centre of mass, along the velocity vector
+  if(ST.prop>0 && Math.abs(ST.throttle)>0.002){
+    const sp=Math.sqrt(ST.vx*ST.vx+ST.vy*ST.vy);
+    if(sp>1e-6){
+      const boost = G.burning? 1.6 : 1.0;
+      const F=THRUST*ST.throttle*boost;
+      Fx+=F*ST.vx/sp; Fy+=F*ST.vy/sp;
+      const used=Math.min(ST.prop, THRUST*Math.abs(ST.throttle)*boost/V_EX*dt);
+      ST.prop-=used; ST.propBurned+=used;
+      ST.parts[0].m-=used;
+      if(used>0) G.cleanFlag=false;
+      stRecalcLight();
+    }
+  }
+  if(ST.prop<=0){ ST.prop=0; ST.throttle*= Math.exp(-dt*8); }
+  // symplectic (semi-implicit) Euler
+  ST.vx += (Fx/ST.M)*dt; ST.vy += (Fy/ST.M)*dt;
+  ST.w  += (Tq/ST.I)*dt;
+  ST.x  += ST.vx*dt;     ST.y  += ST.vy*dt;
+  ST.phi+= ST.w*dt;
+  if(ST.phi>TAU) ST.phi-=TAU; else if(ST.phi<0) ST.phi+=TAU;
+  // heating from dynamic pressure (hub weighted, tip contributes)
+  const qEff = ST.maxQ*0.75 + ST.tipQ*0.25;
+  const rate = (qEff-Q_HEAT)/Q_SCALE;
+  ST.heat += (rate>0? rate : -COOL)*dt;
+  if(ST.heat<0) ST.heat=0;
+}
+function stRecalcLight(){
+  let M=0,s=0;
+  for(let i=0;i<ST.parts.length;i++){ M+=ST.parts[i].m; s+=ST.parts[i].m*ST.parts[i].bx; }
+  ST.M=M; ST.bxCom=s/M;
+  let I=0;
+  for(let i=0;i<ST.parts.length;i++){ const d=ST.parts[i].bx-ST.bxCom; I+=ST.parts[i].m*d*d; }
+  ST.I=Math.max(1,I);
+}
+
+function stepBodies(dt){
+  for(let i=bodies.length-1;i>=0;i--){
+    const b=bodies[i];
+    if(!b.alive){ bodies.splice(i,1); continue; }
+    grav(b.x,b.y,moon.x,moon.y);
+    let ax=_gx, ay=_gy;
+    const r=Math.sqrt(b.x*b.x+b.y*b.y);
+    const rh=density(r-R_P);
+    if(rh>0){
+      const avx=-OM_P*b.y, avy=OM_P*b.x;
+      const rvx=b.vx-avx, rvy=b.vy-avy;
+      const sp=Math.sqrt(rvx*rvx+rvy*rvy);
+      const q=0.5*rh*sp*sp; b.q=q;
+      if(sp>1e-6){ const k=-q*b.cda/b.m/sp; ax+=k*rvx; ay+=k*rvy; }
+      b.heat=Math.min(1,b.heat+Math.max(0,(q-120)/900)*dt);
+    } else { b.q=0; b.heat*=Math.exp(-dt*0.6); }
+    if(b===assBody){ ax+=assFx/b.m; ay+=assFy/b.m; }
+    b.vx+=ax*dt; b.vy+=ay*dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
+    b.rot=(b.rot||0)+(b.spin||0)*dt;
+    b.age+=dt;
+    const r2=b.x*b.x+b.y*b.y;               // radius AFTER the step
+    if(r2<=R_P*R_P){ onBodyImpact(b); b.alive=false; }
+    else if(r2>(R_MOON*2.6)*(R_MOON*2.6)){ b.alive=false; }
+  }
+}
+
+function onBodyImpact(b){
+  const th=Math.atan2(b.y,b.x);
+  for(let i=0;i<18;i++){
+    const a=th+rndRange(-0.5,0.5);
+    spawnParticle(R_P*Math.cos(th), R_P*Math.sin(th),
+      Math.cos(a)*rndRange(20,120), Math.sin(a)*rndRange(20,120), rndRange(0.9,2.0), '#ffb46a', rndRange(10,22));
+  }
+  if(b.kind==='capsule'){
+    G.lost++; G.streak=0;
+    G.score=Math.max(0,G.score-250);
+    banner('PAYLOAD LOST', 'The capsule fell back and broke up — -250', 3.0);
+    Snd.chime(false);
+    G.padState='idle';
+  }
+}
+
+// ============================================================================
+//  CAPTURE
+// ============================================================================
+function tryCapture(){
+  if(!G.armed || payloadPart()) return;
+  computeTip();
+  for(let i=0;i<bodies.length;i++){
+    const b=bodies[i];
+    if(b.kind!=='capsule'||!b.alive) continue;
+    const dx=b.x-_tx, dy=b.y-_ty; const d=Math.sqrt(dx*dx+dy*dy);
+    if(d>CAP_R) continue;
+    const rvx=b.vx-_tvx, rvy=b.vy-_tvy;
+    const rel=Math.sqrt(rvx*rvx+rvy*rvy);
+    if(rel>CAP_V) continue;
+    doCapture(b, rel);
+    return;
+  }
+}
+function doCapture(b, rel){
+  const eBefore = specEnergy();
+  const c=G.contract;
+  b.alive=false;
+  const idx=bodies.indexOf(b); if(idx>=0) bodies.splice(idx,1);
+  attachMass(b.m, b.x, b.y, b.vx, b.vy, b.cda, 'payload',
+             {contract:true, kind:(c&&c.kind==='pod')?'pod':'cargo'});
+  const eAfter = specEnergy();
+  G.caught++; G.lastRelV=rel; G.armed=false; G.armT=0; G.absorbT=0; G.sinceCatch=0; assBody=null; assFx=0; assFy=0;
+  const dAlt = orbitDrop(eBefore, eAfter);
+  Snd.clunk();
+  G.shake=Math.min(1.0, 0.34+rel/220);
+  for(let i=0;i<22;i++){
+    spawnSpark(_tx,_ty, rndRange(-90,90)+_tvx*0.02, rndRange(-90,90)+_tvy*0.02, rndRange(0.25,0.7));
+  }
+  unlock('first-catch');
+  const per=conic(ST.x,ST.y,ST.vx,ST.vy).rp-R_P;
+  if(per<SKIM_ALT) unlock('skimmer');
+  banner('CAPTURED', 'Δv '+fmt(rel,1)+' m/s relative  ·  orbit '+(dAlt<0?'−':'+')+fmt(Math.abs(dAlt),0)+' m', 2.8);
+  if(c && c.kind==='pod'){ G.absorbT=0; }
+  G.padState='idle';
+  G.liveValid=false;
+}
+function specEnergy(){
+  const r=Math.sqrt(ST.x*ST.x+ST.y*ST.y);
+  const v2=ST.vx*ST.vx+ST.vy*ST.vy;
+  return 0.5*v2-MU/r;
+}
+function orbitDrop(e0,e1){
+  const a0=-MU/(2*e0), a1=-MU/(2*e1);
+  return 2*(a1-a0); // change in the far apsis, metres
+}
+
+// ============================================================================
+//  RELEASE / GRADING
+// ============================================================================
+function doRelease(){
+  const p=payloadPart(); if(!p) return;
+  const idx=ST.parts.indexOf(p);
+  const c=G.contract;
+  const eBefore=specEnergy();
+  const rel=detachPart(idx);
+  const eAfter=specEnergy();
+  const gain=orbitDrop(eBefore,eAfter);
+  const b=addBody({kind:'thrown', x:rel.x, y:rel.y, vx:rel.vx, vy:rel.vy, m:rel.m,
+                   cda:rel.cda, type:(c&&c.kind==='dispose')?'waste':'cap', spin:rndRange(-2,2), rot:0});
+  Snd.twang();
+  G.shake=Math.max(G.shake,0.42);
+  G.thrown++;
+  for(let i=0;i<18;i++) spawnSpark(rel.x,rel.y, rndRange(-140,140), rndRange(-140,140), rndRange(0.2,0.55));
+  // a payload can be caught in the gap between two contracts; releasing it then
+  // is legal, it just isn't a delivery
+  if(!G.contract){ banner('PAYLOAD RELEASED','no active contract — that one was free',2.4); return; }
+  gradeRelease(rel, b, gain);
+}
+
+function gradeRelease(rel, body, gain){
+  const c=G.contract; if(!c) return;
+  const mode = (c.kind==='moon')?'moon':((c.kind==='return'||c.kind==='dispose')?'down':'up');
+  const pr=predictThrow(rel.x,rel.y,rel.vx,rel.vy,rel.cda,rel.m,mode);
+  const apoAlt = pr.ok? (pr.apo-R_P) : Infinity;
+  const perAlt = pr.peri-R_P;
+  let ok=false, acc=0, detail='';
+  if(c.kind==='lift' || (c.kind==='pod')){
+    const lo=c.band[0], hi=c.band[1], mid=(lo+hi)/2, half=(hi-lo)/2;
+    if(perAlt < 430){ ok=false; detail='PERIAPSIS '+fmt(perAlt,0)+' m — it will decay'; }
+    else if(!pr.ok){ ok=false; detail='ESCAPE TRAJECTORY — no orbit'; }
+    else if(apoAlt<lo||apoAlt>hi){ ok=false; detail='APOAPSIS '+fmt(apoAlt,0)+' m — outside '+lo+'–'+hi; }
+    else { ok=true; acc=clamp(1-Math.abs(apoAlt-mid)/half,0,1); detail='APOAPSIS '+fmt(apoAlt,0)+' m'; }
+  } else if(c.kind==='return'){
+    if(!pr.impact){ ok=false; detail='NO REENTRY — periapsis '+fmt(perAlt,0)+' m'; }
+    else {
+      const zt=ZONES[c.zone].th0+OM_P*(simTime+pr.impactT);
+      const err=Math.abs(wrapPi(pr.impactTh-zt))*180/Math.PI;
+      if(err>c.tol){ ok=false; detail='DOWN '+fmt(err,1)+'° from '+ZONES[c.zone].name; }
+      else { ok=true; acc=clamp(1-err/c.tol,0,1); detail='INSIDE '+ZONES[c.zone].name+' by '+fmt(c.tol-err,1)+'°'; }
+    }
+  } else if(c.kind==='dispose'){
+    const maxGain = disposeMaxGain(rel.m);
+    if(!pr.impact){ ok=false; detail='STILL IN ORBIT — periapsis '+fmt(perAlt,0)+' m'; }
+    else { ok=true; acc=clamp(gain/Math.max(1,maxGain),0,1); detail='REENTRY IN '+fmt(pr.impactT,0)+' s  ·  boost +'+fmt(gain,0)+' m'; }
+  } else if(c.kind==='moon'){
+    if(pr.moonMin<MOON_CAPTURE){ ok=true; acc=clamp(1-pr.moonMin/MOON_CAPTURE,0,1);
+      detail='MOON PASS AT '+fmt(pr.moonMin,0)+' m in '+fmt(pr.moonT/60,1)+' min'; }
+    else { ok=false; detail='MISSED BY '+fmtInt(pr.moonMin)+' m'; }
+  }
+  if(ok && gain>60 && (c.kind==='dispose'||c.kind==='return')) unlock('downmass-dividend');
+  finishContract(ok, acc, detail, rel.m);
+}
+function disposeMaxGain(m){
+  // the biggest possible boost: release exactly at the bottom of the swing
+  const arm=TIP_ARM-ST.bxCom;
+  const dv = ST.w*arm*m/Math.max(1,ST.M);
+  const r=Math.sqrt(ST.x*ST.x+ST.y*ST.y);
+  const v=Math.sqrt(ST.vx*ST.vx+ST.vy*ST.vy);
+  const a=-MU/(2*(0.5*v*v-MU/r));
+  return 2*(2*a*a*v*dv/MU);
+}
+
+function finishContract(ok, acc, detail, mass){
+  const c=G.contract; if(!c) return;
+  if(ok){
+    G.streak++;
+    const accMul = 0.45+1.15*acc;
+    const massMul= 0.6+0.4*(mass/120);
+    const streakMul = 1+0.11*Math.min(6,G.streak-1);
+    const catchBonus = Math.round(320*clamp(1-G.lastRelV/CAP_V,0,1));
+    // rewards a decisive throw, not a short wait for a launch window
+    const timeBonus = Math.round(Math.max(0, 300-6*G.sinceCatch));
+    const propPen = Math.round(Math.max(0,G.propAtStart-ST.prop)*110);
+    const pts = Math.max(0, Math.round(c.reward*accMul*massMul*streakMul) + catchBonus + timeBonus - propPen);
+    G.score+=pts;
+    G.bestAcc=Math.max(G.bestAcc,acc); G.totalAcc+=acc; G.accN++;
+    if(G.cleanFlag){ G.cleanStreak++; if(G.cleanStreak>=3) unlock('clean-hands'); }
+    else G.cleanStreak=0;
+    banner('CONTRACT COMPLETE  +'+fmtInt(pts), detail+'  ·  accuracy '+fmt(acc*100,0)+'%', 3.6);
+    Snd.chime(true);
+    pushToast('+'+fmtInt(pts)+'  '+c.name);
+    const next=G.ci+1;
+    G.contract=null; G.padState='idle'; G.lockPlan=null;
+    const tok=G.runToken;
+    if(next>=LADDER.length && !G.endless){
+      unlock('grand-tour');
+      G.ci=next;
+      setTimeout(()=>{ if(G.state===State.PLAY && tok===G.runToken) showCampaignWin(); }, 1500);
+      return;
+    }
+    setTimeout(()=>{ if(G.state===State.PLAY && tok===G.runToken) beginContract(next); }, 1700);
+  } else {
+    G.streak=0; G.cleanStreak=0;
+    banner('CONTRACT FAILED', detail+' — re-flying it', 3.4);
+    Snd.chime(false);
+    G.score=Math.max(0,G.score-150);
+    const cur=G.ci, tok=G.runToken;
+    G.contract=null; G.padState='idle'; G.lockPlan=null;
+    setTimeout(()=>{ if(G.state===State.PLAY && tok===G.runToken) beginContract(cur); }, 1800);
+  }
+}
+
+// ============================================================================
+//  HAZARDS / END OF RUN
+// ============================================================================
+function checkHazards(dt){
+  const c=conic(ST.x,ST.y,ST.vx,ST.vy);
+  const perAlt=c.rp-R_P;
+  const wasWarn=G.warned;
+  G.warned = (perAlt<WARN_ALT) || ST.heat>0.05;
+  if(G.warned && !wasWarn){ Snd.klaxon(); G.warnLatch=true; banner('ATMOSPHERE WARNING','Perigee '+fmt(perAlt,0)+' m — burn prograde or dump mass down',3.2); }
+  if(G.warnLatch && !G.warned && perAlt>900 && ST.heat<0.05){
+    unlock('hail-mary'); G.warnLatch=false;
+  }
+  G.burning = ST.heat>0.30;
+  // tether tip striking the ground
+  computeTip();
+  const tr=Math.sqrt(_tx*_tx+_ty*_ty);
+  if(tr<=R_P){ endRun(false,'TETHER STRIKE — the grapple tip hit the ground at '+fmtInt(Math.sqrt(_tvx*_tvx+_tvy*_tvy))+' m/s'); return; }
+  const hr=Math.sqrt(ST.x*ST.x+ST.y*ST.y);
+  if(hr<=R_P+40){ endRun(false,'IMPACT — the station came down'); return; }
+  if(ST.heat>=1){ endRun(false,'BURN-UP — drag heating destroyed the station'); return; }
+}
+
+function endRun(win, reason){
+  if(G.state!==State.PLAY) return;
+  G.state=State.OVER; G.dead=!win; G.deadReason=reason||'';
+  Snd.stopAll();
+  if(!win){ Snd.boom(); G.shake=1.4; explodeStation(); }
+  submitScore(win);
+  showOver(win, reason);
+}
+function submitScore(win){
+  if(G.submitted) return;
+  G.submitted=true;
+  arcadeSubmit(Math.round(G.score), {
+    contracts: Math.min(G.ci, LADDER.length + G.endlessN),
+    campaign: win?1:0,
+    bestAccuracy: Math.round(G.bestAcc*100),
+    caught: G.caught,
+    endless: G.endless?1:0
+  });
+}
+// ============================================================================
+//  PARTICLES
+// ============================================================================
+const particles=[], sparks=[];
+function spawnParticle(x,y,vx,vy,life,color,size){
+  if(particles.length>300) particles.shift();
+  particles.push({x:x,y:y,vx:vx,vy:vy,life:life,max:life,c:color,s:size});
+}
+function spawnSpark(x,y,vx,vy,life){
+  if(sparks.length>200) sparks.shift();
+  sparks.push({x:x,y:y,vx:vx,vy:vy,life:life,max:life});
+}
+function stepParticles(dt){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.life-=dt; if(p.life<=0){ particles.splice(i,1); continue; }
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=Math.exp(-dt*0.55); p.vy*=Math.exp(-dt*0.55);
+  }
+  for(let i=sparks.length-1;i>=0;i--){
+    const s=sparks[i];
+    s.life-=dt; if(s.life<=0){ sparks.splice(i,1); continue; }
+    s.x+=s.vx*dt; s.y+=s.vy*dt;
+  }
+}
+function explodeStation(){
+  const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+  for(let i=0;i<160;i++){
+    const f=rndRange(-1,1)*TIP_ARM;
+    const x=ST.x+f*ux, y=ST.y+f*uy;
+    spawnParticle(x,y, ST.vx*0.3+rndRange(-260,260), ST.vy*0.3+rndRange(-260,260),
+      rndRange(1.2,3.4), i%3===0?'#fff0c8':(i%3===1?'#ff9a4a':'#5ff0d8'), rndRange(6,26));
+  }
+  for(let i=0;i<70;i++) spawnSpark(ST.x,ST.y, rndRange(-420,420), rndRange(-420,420), rndRange(0.4,1.3));
+}
+
+// ============================================================================
+//  CAMERA
+// ============================================================================
+const cam={x:0,y:0,scale:0.05, init:false, auto:true, sx:0, sy:0, mode:'orbit'};
+function updateCamera(dt){
+  const c=conic(ST.x,ST.y,ST.vx,ST.vy);
+  const cap=firstCapsule();
+  const pay=payloadPart();
+  let tx=ST.x, ty=ST.y, span=0, mode='orbit';
+  let focus = !!pay || !!cap || ST.heat>0.04 || G.warned;
+  // widen for a payload on its way somewhere far
+  let far=null, farD=0;
+  for(let i=0;i<bodies.length;i++){
+    const b=bodies[i];
+    if(b.kind!=='thrown') continue;
+    const d=Math.hypot(b.x-ST.x,b.y-ST.y);
+    if(d>farD){ farD=d; far=b; }
+  }
+  if(focus){
+    mode='focus';
+    span=TIP_ARM*2.9;
+    if(cap){
+      const d=Math.hypot(cap.x-ST.x,cap.y-ST.y);
+      tx=(ST.x+cap.x)/2; ty=(ST.y+cap.y)/2;
+      span=Math.max(span, d*2.35+420);
+    }
+    if(pay) span=Math.max(span, TIP_ARM*3.4);
+    if(ST.heat>0.04) span=Math.max(span, TIP_ARM*4.2);
+    if(far && farD<7000){ tx=(tx+far.x)/2; ty=(ty+far.y)/2; span=Math.max(span, farD*2.3+500); }
+    span=Math.min(span, 26000);
+  }
+  if(!focus){
+    mode='orbit';
+    const ra=Math.min(isFinite(c.ra)?c.ra:R_P*3, R_MOON*1.15);
+    let rr=Math.max(ra, R_P*1.35);
+    if(far) rr=Math.max(rr, Math.hypot(far.x,far.y)*1.02);
+    tx=0; ty=0; span=rr*2.16;
+  }
+  cam.mode=mode;
+  let tscale = (MIN_D*0.86)/Math.max(600,span);
+  if(mode==='focus') tscale=(MIN_D*0.80)/Math.max(600,span);
+  tscale*=G.userZoom;
+  tscale=clamp(tscale, 0.0009, 3.2);
+  if(!cam.init){ cam.x=tx; cam.y=ty; cam.scale=tscale; cam.init=true; }
+  else {
+    const k=1-Math.exp(-dt*(mode==='focus'?2.6:1.7));
+    cam.x=lerp(cam.x,tx,k); cam.y=lerp(cam.y,ty,k);
+    cam.scale=Math.exp(lerp(Math.log(cam.scale), Math.log(tscale), 1-Math.exp(-dt*2.0)));
+  }
+  // shake
+  G.shake*=Math.exp(-dt*3.2); if(G.shake<0.002) G.shake=0;
+  const amp=G.shake*15;
+  cam.sx=(Math.random()*2-1)*amp; cam.sy=(Math.random()*2-1)*amp;
+}
+function wx2sx(x,y){ return W*0.5 + (x-cam.x)*cam.scale + cam.sx; }
+function wy2sy(x,y){ return H*0.5 - (y-cam.y)*cam.scale + cam.sy; }
+
+// ============================================================================
+//  ONE SIMULATION STEP OF THE WHOLE WORLD
+// ============================================================================
+function worldStep(dt){
+  simTime+=dt;
+  moonAt(simTime,moon);
+  ST.throttle = easeApproach(ST.throttle, ST.throttleCmd, 1/THR_TAU, dt);
+  if(G.armT>0) G.armT-=dt;
+  G.armed = (G.spaceHeld || G.armT>0) && !payloadPart();
+  computeAssist();
+  stepStation(dt);
+  stepBodies(dt);
+  tryCapture();
+  checkHazards(dt);
+  if(G.state!==State.PLAY) return;
+  G.contractT+=dt; G.sinceCatch+=dt;
+  const p=payloadPart();
+  if(p && p.meta && p.meta.kind==='pod'){
+    if(ST.prop < PROP_MAX-0.5){ G.absorbT+=dt; if(G.absorbT>=POD_HOLD) absorbPod(); }
+    else G.absorbT=0;
+  }
+}
+
+// mass transferred along the rod: exact, so the tether spins up like a skater
+function moveMass(fromIdx,toIdx,m){
+  const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+  let Px=0,Py=0,Ao=0;
+  for(let i=0;i<ST.parts.length;i++){
+    const p=ST.parts[i], d=p.bx-ST.bxCom;
+    const x=ST.x+d*ux, y=ST.y+d*uy;
+    const vx=ST.vx-ST.w*uy*d, vy=ST.vy+ST.w*ux*d;
+    Px+=p.m*vx; Py+=p.m*vy; Ao+=p.m*(x*vy-y*vx);
+  }
+  const ox=ST.x-ST.bxCom*ux, oy=ST.y-ST.bxCom*uy; // world position of the rod origin
+  ST.parts[fromIdx].m-=m; ST.parts[toIdx].m+=m;
+  let M=0,sb=0;
+  for(let i=0;i<ST.parts.length;i++){ M+=ST.parts[i].m; sb+=ST.parts[i].m*ST.parts[i].bx; }
+  ST.M=M; ST.bxCom=sb/M;
+  ST.x=ox+ST.bxCom*ux; ST.y=oy+ST.bxCom*uy;
+  ST.vx=Px/M; ST.vy=Py/M;
+  const Lc=Ao-M*(ST.x*ST.vy-ST.y*ST.vx);
+  let I=0;
+  for(let i=0;i<ST.parts.length;i++){ const d=ST.parts[i].bx-ST.bxCom; I+=ST.parts[i].m*d*d; }
+  ST.I=Math.max(1,I);
+  ST.w=Lc/ST.I;
+}
+function absorbPod(){
+  const p=payloadPart(); if(!p) return;
+  const idx=ST.parts.indexOf(p);
+  const take=Math.max(0, Math.min(18, PROP_MAX-ST.prop, p.m-20));
+  if(take>0){
+    moveMass(idx,0,take);      // propellant pumped down the rod into the tank
+    ST.prop+=take;
+  }
+  const shell=detachPart(ST.parts.indexOf(p));
+  addBody({kind:'thrown', x:shell.x, y:shell.y, vx:shell.vx, vy:shell.vy, m:shell.m,
+           cda:shell.cda, type:'shell', spin:rndRange(-3,3), rot:0});
+  G.absorbT=0;
+  banner('PROPELLANT ABOARD', '+'+fmt(take,0)+' kg  ·  tank '+fmt(ST.prop,0)+'/'+PROP_MAX+' kg', 3.0);
+  for(let i=0;i<20;i++) spawnSpark(shell.x,shell.y, rndRange(-90,90), rndRange(-90,90), rndRange(0.2,0.5));
+  finishContract(true, 0.55, 'PROPELLANT TRANSFER  +'+fmt(take,0)+' kg', G.contract?G.contract.mass:60);
+}
+
+// ============================================================================
+//  PER-FRAME UPDATE
+// ============================================================================
+let acc=0, tickAcc=0, lastBottomSign=0, replanT=0, forecastT=0, predT=0;
+let warpRamp=0;
+function update(dtReal){
+  if(G.state!==State.PLAY){ stepParticles(dtReal); updateCamera(dtReal); updateAudio(dtReal,0); return; }
+  G.runTime+=dtReal;
+
+  // ---- warp ceiling ----------------------------------------------------
+  let wmax=WARP_MAX;
+  if(Math.abs(ST.throttleCmd)>0.01) wmax=1;
+  if(payloadPart()) wmax=Math.min(wmax, guideErrNow<1.8?1:6);
+  const capW=firstCapsule();
+  if(capW){
+    computeTip();
+    const dW=Math.hypot(capW.x-_tx,capW.y-_ty);
+    wmax=Math.min(wmax, dW<1500?1:2);
+  }
+  if(ST.heat>0.02) wmax=1;
+  else if(G.warned) wmax=Math.min(wmax,6);
+  if(G.padState==='go' && G.tLaunch<26) wmax=Math.min(wmax, clamp(G.tLaunch*0.6,1,WARP_MAX));
+  G.warpMaxNow=wmax;
+  warpRamp=easeApproach(warpRamp, G.warpCmd?1:0, G.warpCmd?1.05:7.0, dtReal);
+  let warp=Math.min(Math.exp(Math.log(WARP_MAX)*warpRamp), wmax);
+  if(warp<1) warp=1;
+  G.warp=easeApproach(G.warp, warp, 7.0, dtReal);
+  if(G.warp<1) G.warp=1;
+
+  // ---- slow motion in the final approach --------------------------------
+  const cap=firstCapsule();
+  let slowT=1;
+  if(cap){
+    computeTip();
+    const d=Math.hypot(cap.x-_tx,cap.y-_ty);
+    if(d<460) slowT=lerp(0.34,1,clamp((d-120)/340,0,1));
+  }
+  // the release window is only a fraction of a second of tether phase, so the
+  // game leans into it the same way it does for a catch
+  if(payloadPart() && guideErrNow<2.6){
+    slowT=Math.min(slowT, lerp(0.35,1,clamp((guideErrNow-0.55)/2.0,0,1)));
+  }
+  G.slow=easeApproach(G.slow, slowT, 5.0, dtReal);
+
+  // ---- fixed-timestep simulation ---------------------------------------
+  acc += dtReal*G.warp*G.slow;
+  if(acc>3.5) acc=3.5;
+  let steps=0;
+  while(acc>=PHYS_DT && steps<MAX_STEP && G.state===State.PLAY){
+    worldStep(PHYS_DT); acc-=PHYS_DT; steps++;
+  }
+  if(steps>=MAX_STEP) acc=0;
+  if(G.state!==State.PLAY){ stepParticles(dtReal); updateCamera(dtReal); return; }
+
+  // ---- launch planning --------------------------------------------------
+  replanT-=dtReal;
+  if(G.lockPlan){
+    if(simTime>=G.lockPlan.t) fireCapsule();
+  } else if(replanT<=0){
+    replanT=0.33;
+    replan();
+  }
+  // ---- live intercept forecast -----------------------------------------
+  forecastT-=dtReal;
+  if(cap && forecastT<=0){
+    forecastT=0.10;
+    const f=forecastMiss(cap, 70);
+    G.liveMiss=f.miss; G.liveRelV=f.relV; G.liveT=f.t; G.liveValid=true;
+  } else if(!cap){ G.liveValid=false; }
+
+  // ---- throw prediction -------------------------------------------------
+  predT-=dtReal;
+  if(payloadPart() && predT<=0){
+    predT=0.055;
+    computeTip();
+    const c=G.contract;
+    const mode=(c&&c.kind==='moon')?'moon':((c&&(c.kind==='return'||c.kind==='dispose'))?'down':'up');
+    const p=payloadPart();
+    predictThrow(_tx,_ty,_tvx,_tvy,p.cda,p.m,mode);
+    buildGuide();
+    predValid=true;
+  } else if(!payloadPart()){ predValid=false; guideN=0; guideErrNow=99; guideAny=false; guideBest=99; }
+
+  stepParticles(dtReal);
+  updateCamera(dtReal);
+  updateAudio(dtReal, steps);
+  for(let i=toasts.length-1;i>=0;i--){ toasts[i].life-=dtReal; if(toasts[i].life<=0) toasts.splice(i,1); }
+  if(G.bannerT>0) G.bannerT-=dtReal;
+}
+let predValid=false;
+
+function updateAudio(dtReal, steps){
+  const live=(G.state===State.PLAY);
+  Snd.thruster(live? Math.abs(ST.throttle)*(ST.prop>0?1:0) : 0);
+  const roar=clamp((ST.maxQ-20)/260,0,1);
+  Snd.roar(live?roar:0);
+  Snd.warpHum(live?clamp((G.warp-1)/36,0,1):0);
+  if(!live) return;
+  // tether whoosh each time the tip sweeps the bottom of the arc
+  if(G.warp<3.2){
+    const th=Math.atan2(ST.y,ST.x);
+    const s=wrapPi(ST.phi-(th+Math.PI));
+    if(lastBottomSign<0 && s>=0 && Math.abs(s)<0.6) Snd.swoosh(Math.abs(ST.w)*tipArm());
+    lastBottomSign=s;
+  }
+  // proximity ticker while a capsule is inbound
+  const cap=firstCapsule();
+  if(cap){
+    computeTip();
+    const d=Math.hypot(cap.x-_tx,cap.y-_ty);
+    if(d<2400){
+      tickAcc+=dtReal;
+      const f=clamp(1-d/2400,0,1);
+      const iv=lerp(0.55,0.055,f*f);
+      if(tickAcc>=iv){ tickAcc=0; Snd.tick(f); }
+    }
+  }
+}
+
+// ============================================================================
+//  INPUT
+// ============================================================================
+const keyState={};
+let TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints>0);
+G.spaceHeld=false;
+let heldRetro=false, heldPro=false;
+function refreshThrottleCmd(){
+  ST.throttleCmd = (heldPro?1:0) - (heldRetro?1:0);
+}
+function spaceDown(){
+  Snd.init();
+  if(G.state!==State.PLAY||G.paused) return;
+  if(payloadPart()){ doRelease(); return; }
+  G.spaceHeld=true; G.armT=ARM_TIME;
+  if(!anyCapsule()) { /* armed anyway — harmless */ }
+}
+function spaceUp(){ G.spaceHeld=false; }
+
+function togglePause(force){
+  const el=document.getElementById('pausePanel');
+  const showing=!el.classList.contains('hidden');
+  if(force===true || (force===undefined && !showing)){
+    if(G.state!==State.PLAY) return;
+    G.paused=true; el.classList.remove('hidden');
+    document.getElementById('endRunBtn').classList.toggle('hidden', !G.endless);
+    Snd.stopAll();
+  } else {
+    G.paused=false; G.pausedByBlur=false; el.classList.add('hidden');
+  }
+}
+function openControls(){ if(G.state===State.PLAY) togglePause(true); }
+
+function hideMsg(){ document.getElementById('msgPanel').classList.add('hidden'); G.msgOpen=false; }
+function startGame(){
+  Snd.init();
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('greet').style.display='none';
+  hideMsg(); togglePause(false);
+  newRun();
+  G.state=State.PLAY;
+  acc=0; lastTS=performance.now();
+}
+function doRestart(){
+  Snd.stopAll();
+  hideMsg(); togglePause(false);
+  document.getElementById('startScreen').classList.add('hidden');
+  newRun();
+  G.state=State.PLAY;
+  acc=0; lastTS=performance.now();
+}
+
+window.addEventListener('keydown',(e)=>{
+  const k=e.key;
+  if(k==='Tab') return;
+  if(k===' '||k==='ArrowUp'||k==='ArrowDown'||k==='ArrowLeft'||k==='ArrowRight'||k==='/') e.preventDefault();
+  const rep=keyState[k];
+  keyState[k]=true;
+  if(G.state===State.START){ if(k===' '||k==='Enter') startGame(); return; }
+  if(G.state===State.OVER){
+    if(k==='Enter'||k===' '){ const b=document.getElementById('primaryOverBtn'); if(b) b.click(); return; }
+    if(k==='r'||k==='R'){ doRestart(); return; }
+    if(k==='m'||k==='M'){ G.muted=!G.muted; Snd.setMute(G.muted); return; }
+    return;
+  }
+  if(k==='p'||k==='P'||k==='Escape'){ togglePause(); return; }
+  if(k==='h'||k==='H'||k==='?'||k==='/'){ if(!G.paused) openControls(); else togglePause(false); return; }
+  if(k==='r'||k==='R'){ doRestart(); return; }
+  if(k==='m'||k==='M'){ G.muted=!G.muted; Snd.setMute(G.muted); banner(G.muted?'MUTED':'SOUND ON','',1.2); return; }
+  if(k==='c'||k==='C'){ G.userZoom=1; banner('CAMERA RESET','auto-framing',1.1); return; }
+  if(G.paused) return;
+  if(k==='a'||k==='A'||k==='ArrowLeft'){ heldRetro=true; refreshThrottleCmd(); Snd.init(); }
+  else if(k==='d'||k==='D'||k==='ArrowRight'){ heldPro=true; refreshThrottleCmd(); Snd.init(); }
+  else if(k==='w'||k==='W'||k==='ArrowUp'){ G.warpCmd=true; }
+  else if(k===' '){ if(!rep) spaceDown(); }
+});
+window.addEventListener('keyup',(e)=>{
+  const k=e.key; keyState[k]=false;
+  if(k==='a'||k==='A'||k==='ArrowLeft'){ heldRetro=false; refreshThrottleCmd(); }
+  else if(k==='d'||k==='D'||k==='ArrowRight'){ heldPro=false; refreshThrottleCmd(); }
+  else if(k==='w'||k==='W'||k==='ArrowUp'){ G.warpCmd=false; }
+  else if(k===' '){ spaceUp(); }
+});
+
+// wheel / pinch zoom (secondary)
+window.addEventListener('wheel',(e)=>{
+  if(G.state!==State.PLAY) return;
+  e.preventDefault();
+  G.userZoom=clamp(G.userZoom*Math.exp(-e.deltaY*0.0013),0.22,9);
+},{passive:false});
+const pinch={a:null,b:null,d0:0,z0:1};
+cv.addEventListener('pointerdown',(e)=>{
+  if(e.pointerType==='touch'){ if(!pinch.a) pinch.a=e; else if(!pinch.b){ pinch.b=e;
+    pinch.d0=Math.hypot(pinch.a.clientX-e.clientX, pinch.a.clientY-e.clientY); pinch.z0=G.userZoom; } }
+});
+cv.addEventListener('pointermove',(e)=>{
+  if(e.pointerType!=='touch'||!pinch.a||!pinch.b) return;
+  if(e.pointerId===pinch.a.pointerId) pinch.a=e; else if(e.pointerId===pinch.b.pointerId) pinch.b=e; else return;
+  const d=Math.hypot(pinch.a.clientX-pinch.b.clientX, pinch.a.clientY-pinch.b.clientY);
+  if(pinch.d0>4) G.userZoom=clamp(pinch.z0*(d/pinch.d0),0.22,9);
+});
+function pinchEnd(e){ if(pinch.a&&e.pointerId===pinch.a.pointerId) pinch.a=pinch.b, pinch.b=null;
+  else if(pinch.b&&e.pointerId===pinch.b.pointerId) pinch.b=null; }
+window.addEventListener('pointerup',pinchEnd);
+window.addEventListener('pointercancel',pinchEnd);
+
+// start on a tap anywhere
+cv.addEventListener('pointerdown',(e)=>{ if(G.state===State.START){ startGame(); } });
+
+// blur / visibility
+function releaseAllKeys(){
+  heldRetro=false; heldPro=false; G.warpCmd=false; G.spaceHeld=false;
+  for(const k in keyState) keyState[k]=false;
+  refreshThrottleCmd();
+}
+window.addEventListener('blur', ()=>{ releaseAllKeys(); if(G.state===State.PLAY && !G.paused){ G.pausedByBlur=true; togglePause(true); } });
+window.addEventListener('focus', ()=>{ if(G.paused && G.pausedByBlur){ lastTS=performance.now(); acc=0; togglePause(false); } });
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ releaseAllKeys(); if(G.state===State.PLAY&&!G.paused){ G.pausedByBlur=true; togglePause(true);} }
+  else if(G.paused&&G.pausedByBlur){ lastTS=performance.now(); acc=0; togglePause(false); }
+});
+
+// ---- touch buttons ----
+function bindHold(id,on,off){
+  const el=document.getElementById(id); if(!el) return;
+  el.addEventListener('pointerdown',(e)=>{ e.preventDefault(); e.stopPropagation(); Snd.init(); on(); });
+  el.addEventListener('pointerup',(e)=>{ e.preventDefault(); e.stopPropagation(); off&&off(); });
+  el.addEventListener('pointerleave',()=>{ off&&off(); });
+  el.addEventListener('pointercancel',()=>{ off&&off(); });
+}
+bindHold('tL', ()=>{ heldRetro=true; refreshThrottleCmd(); }, ()=>{ heldRetro=false; refreshThrottleCmd(); });
+bindHold('tR', ()=>{ heldPro=true;  refreshThrottleCmd(); }, ()=>{ heldPro=false;  refreshThrottleCmd(); });
+bindHold('tWarp', ()=>{ G.warpCmd=true; }, ()=>{ G.warpCmd=false; });
+bindHold('tGrab', ()=>{ spaceDown(); }, ()=>{ spaceUp(); });
+{
+  const h=document.getElementById('tHelp');
+  h.addEventListener('pointerdown',(e)=>{ e.preventDefault(); e.stopPropagation();
+    if(G.state===State.START){ return; }
+    if(!G.paused) openControls(); else togglePause(false); });
+}
+document.getElementById('startBtn').addEventListener('click',(e)=>{ e.stopPropagation(); startGame(); });
+document.getElementById('resumeBtn').addEventListener('click',()=>togglePause(false));
+document.getElementById('restartBtn2').addEventListener('click',doRestart);
+
+function applyInputMode(){
+  const t=document.getElementById('touch'), h=document.getElementById('hint');
+  if(TOUCH){ t.classList.add('on'); h.style.display='none'; }
+  else { t.classList.remove('on'); h.style.display='flex'; }
+}
+window.addEventListener('touchstart',function once(){ if(!TOUCH){ TOUCH=true; applyInputMode(); layoutHUD(); } },{passive:true,once:true});
+// ============================================================================
+//  BACKDROP SPRITES  (built once per resize — no per-frame gradients)
+// ============================================================================
+const SPR=1024;
+const COMP=1024;                 // composited glow+surface+shading, one drawImage
+const COMP_SPAN=R_P+ATM_DRAW*2.6;
+let planetSpr=null, shadeSpr=null, glowSpr=null, nebulaSpr=null, compSpr=null;
+let compRot=1e9;
+let starX=null, starY=null, starS=null, starA=null, STAR_N=0;
+const SUN_DIR = -2.30; // world direction the sun comes from
+
+function mkCanvas(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return c; }
+
+function buildBackdrop(){
+  if(!planetSpr){
+    // ---------- planet surface texture (rotates with the planet) ----------
+    planetSpr=mkCanvas(SPR,SPR);
+    const p=planetSpr.getContext('2d');
+    const R=SPR/2;
+    let g=p.createRadialGradient(R,R,R*0.05,R,R,R);
+    g.addColorStop(0,'#3d2233'); g.addColorStop(0.55,'#6d3c2c'); g.addColorStop(0.86,'#a45b34'); g.addColorStop(1,'#c17b45');
+    p.fillStyle=g; p.beginPath(); p.arc(R,R,R,0,TAU); p.fill();
+    p.save(); p.beginPath(); p.arc(R,R,R,0,TAU); p.clip();
+    // continental plates — irregular blobs, not concentric rings
+    _seed=99;
+    for(let i=0;i<52;i++){
+      const a=rnd()*TAU, rad=R*Math.sqrt(rnd())*0.94;
+      const cxp=R+Math.cos(a)*rad, cyp=R+Math.sin(a)*rad;
+      const base=R*(0.045+rnd()*0.13);
+      const dark=rnd()<0.55;
+      p.fillStyle= dark? 'rgba(52,26,32,'+(0.07+rnd()*0.10)+')'
+                       : 'rgba(226,150,92,'+(0.04+rnd()*0.08)+')';
+      const lobes=9+Math.floor(rnd()*4);
+      const lr=[];
+      for(let k=0;k<lobes;k++) lr.push(base*(0.66+0.5*rnd()));
+      const px2=k2=>cxp+Math.cos(k2/lobes*TAU)*lr[((k2%lobes)+lobes)%lobes];
+      const py2=k2=>cyp+Math.sin(k2/lobes*TAU)*lr[((k2%lobes)+lobes)%lobes];
+      p.beginPath();
+      p.moveTo((px2(0)+px2(1))/2,(py2(0)+py2(1))/2);
+      for(let k=1;k<=lobes;k++){
+        p.quadraticCurveTo(px2(k),py2(k),(px2(k)+px2(k+1))/2,(py2(k)+py2(k+1))/2);
+      }
+      p.closePath(); p.fill();
+    }
+    // a few faint cloud arcs
+    for(let i=0;i<9;i++){
+      const rr0=R*(0.30+0.66*rnd());
+      p.strokeStyle='rgba(255,220,190,'+(0.015+rnd()*0.03)+')';
+      p.lineWidth=R*(0.02+rnd()*0.05);
+      const a0=rnd()*TAU;
+      p.beginPath(); p.arc(R,R,rr0,a0,a0+0.7+rnd()*1.6); p.stroke();
+    }
+    // craters / basins
+    for(let i=0;i<150;i++){
+      const a=rnd()*TAU, rad=R*Math.sqrt(rnd())*0.985;
+      const x=R+Math.cos(a)*rad, y=R+Math.sin(a)*rad;
+      const s=R*(0.006+rnd()*0.035);
+      p.fillStyle='rgba(30,14,20,'+(0.10+rnd()*0.22)+')';
+      p.beginPath(); p.arc(x,y,s,0,TAU); p.fill();
+      p.fillStyle='rgba(255,206,150,'+(0.05+rnd()*0.10)+')';
+      p.beginPath(); p.arc(x-s*0.22,y-s*0.22,s*0.62,0,TAU); p.fill();
+    }
+    // scattered settlement lights
+    for(let i=0;i<90;i++){
+      const a=rnd()*TAU, rad=R*(0.955+rnd()*0.04);
+      p.fillStyle='rgba(255,225,160,'+(0.20+rnd()*0.5)+')';
+      p.fillRect(R+Math.cos(a)*rad, R+Math.sin(a)*rad, 1.6,1.6);
+    }
+    p.restore();
+
+    // ---------- day / night shading (fixed to the sun, not the planet) -----
+    shadeSpr=mkCanvas(SPR,SPR);
+    const s=shadeSpr.getContext('2d');
+    const dx=Math.cos(SUN_DIR), dy=-Math.sin(SUN_DIR); // screen space (y down)
+    let sg=s.createLinearGradient(R-dx*R,R-dy*R,R+dx*R,R+dy*R);
+    sg.addColorStop(0,'rgba(255,224,180,0.16)');
+    sg.addColorStop(0.34,'rgba(0,0,0,0)');
+    sg.addColorStop(0.58,'rgba(2,4,12,0.62)');
+    sg.addColorStop(1,'rgba(1,2,7,0.93)');
+    s.fillStyle=sg; s.beginPath(); s.arc(R,R,R,0,TAU); s.fill();
+
+    // ---------- atmosphere glow -------------------------------------------
+    const GS=1024; glowSpr=mkCanvas(GS,GS);
+    const q=glowSpr.getContext('2d');
+    const GR=GS/2;
+    const inner=GR*(R_P/(R_P+ATM_DRAW*2.6));
+    let gg=q.createRadialGradient(GR,GR,inner*0.985,GR,GR,GR);
+    gg.addColorStop(0,'rgba(90,220,255,0.0)');
+    gg.addColorStop(0.02,'rgba(120,235,255,0.55)');
+    gg.addColorStop(0.14,'rgba(70,170,240,0.24)');
+    gg.addColorStop(0.42,'rgba(40,90,190,0.09)');
+    gg.addColorStop(1,'rgba(20,40,120,0)');
+    q.fillStyle=gg; q.beginPath(); q.arc(GR,GR,GR,0,TAU); q.fill();
+    compSpr=mkCanvas(COMP,COMP);
+  }
+  // ---------- screen-space nebula wash + stars (depend on viewport) -------
+  nebulaSpr=mkCanvas(Math.max(2,Math.round(W/3)),Math.max(2,Math.round(H/3)));
+  const n=nebulaSpr.getContext('2d');
+  const nw=nebulaSpr.width, nh=nebulaSpr.height;
+  n.fillStyle='#040713'; n.fillRect(0,0,nw,nh);
+  let ng=n.createRadialGradient(nw*0.24,nh*0.22,0,nw*0.24,nh*0.22,nw*0.85);
+  ng.addColorStop(0,'rgba(40,70,150,0.30)'); ng.addColorStop(1,'rgba(6,10,26,0)');
+  n.fillStyle=ng; n.fillRect(0,0,nw,nh);
+  ng=n.createRadialGradient(nw*0.82,nh*0.78,0,nw*0.82,nh*0.78,nw*0.7);
+  ng.addColorStop(0,'rgba(96,40,120,0.22)'); ng.addColorStop(1,'rgba(6,10,26,0)');
+  n.fillStyle=ng; n.fillRect(0,0,nw,nh);
+
+  compRot=1e9;
+  STAR_N=Math.min(220, Math.round(W*H/7000));
+  starX=new Float32Array(STAR_N); starY=new Float32Array(STAR_N);
+  starS=new Float32Array(STAR_N); starA=new Float32Array(STAR_N);
+  _seed=4242;
+  for(let i=0;i<STAR_N;i++){
+    starX[i]=rnd()*W; starY[i]=rnd()*H;
+    starS[i]=rnd()<0.87?1:(rnd()<0.6?1.6:2.3);
+    starA[i]=0.22+rnd()*0.75;
+  }
+}
+
+// The atmosphere glow, the rotating surface and the day/night terminator are
+// three big alpha composites.  They only change as the planet turns, so they
+// are baked into one sprite a few times a minute and blitted once per frame.
+function buildComposite(){
+  const q=compSpr.getContext('2d');
+  const C=COMP/2;
+  q.setTransform(1,0,0,1,0,0);
+  q.clearRect(0,0,COMP,COMP);
+  const pr=C*(R_P/COMP_SPAN);
+  q.drawImage(glowSpr,0,0,COMP,COMP);
+  q.save(); q.translate(C,C); q.rotate(-OM_P*simTime);
+  q.drawImage(planetSpr,-pr,-pr,pr*2,pr*2); q.restore();
+  q.drawImage(shadeSpr, C-pr, C-pr, pr*2, pr*2);
+  compRot=OM_P*simTime;
+}
+
+// ============================================================================
+//  HUD LAYOUT
+// ============================================================================
+const HL={pad:12, colX:12, colY:12, colW:250, rightX:0, rightY:12, rightW:150, small:false};
+function layoutHUD(){
+  HL.pad = (W<430)?9:13;
+  HL.small = W<560 || H<520;
+  HL.colW = Math.round(Math.min(272, Math.max(168, W*0.30)));
+  if(W<560) HL.colW=Math.round(Math.min(215, W*0.53));
+  HL.rightW = Math.round(Math.min(158, Math.max(112, W*0.24)));
+  HL.colX = HL.pad; HL.colY = HL.pad;
+  HL.rightX = W-HL.pad-HL.rightW;
+  HL.rightY = HL.pad + (TOUCH? 46 : 0);
+}
+
+// ============================================================================
+//  CANVAS HUD PRIMITIVES
+// ============================================================================
+const MONO='ui-monospace,Menlo,Consolas,"Liberation Mono",monospace';
+function rrect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+}
+const hudRects=[];
+function panelBox(x,y,w,h,accent){
+  hudRects.push({x:x,y:y,w:w,h:h});
+  rrect(x,y,w,h,7);
+  ctx.fillStyle='rgba(8,16,32,0.72)'; ctx.fill();
+  ctx.strokeStyle=accent||'rgba(58,96,144,0.75)'; ctx.lineWidth=1; ctx.stroke();
+}
+function txt(s,x,y,size,color,align,weight){
+  ctx.font=(weight||'600')+' '+size+'px '+MONO;
+  ctx.fillStyle=color; ctx.textAlign=align||'left'; ctx.textBaseline='alphabetic';
+  ctx.fillText(s,x,y);
+}
+function bar(x,y,w,h,frac,col,bg){
+  ctx.fillStyle=bg||'rgba(255,255,255,0.09)'; ctx.fillRect(x,y,w,h);
+  ctx.fillStyle=col; ctx.fillRect(x,y,Math.max(0,Math.min(1,frac))*w,h);
+}
+
+// ============================================================================
+//  MAIN RENDER
+// ============================================================================
+function render(){
+  const sc=cam.scale;
+  if(nebulaSpr) ctx.drawImage(nebulaSpr,0,0,W,H);
+  else { ctx.fillStyle='#040713'; ctx.fillRect(0,0,W,H); }
+  // stars with a whisper of parallax
+  const ox=(-cam.x*sc*0.012)%W, oy=(cam.y*sc*0.012)%H;
+  for(let i=0;i<STAR_N;i++){
+    let x=starX[i]+ox, y=starY[i]+oy;
+    if(x<0)x+=W; else if(x>W)x-=W;
+    if(y<0)y+=H; else if(y>H)y-=H;
+    ctx.globalAlpha=starA[i]; ctx.fillStyle='#dff4ff';
+    ctx.fillRect(x,y,starS[i],starS[i]);
+  }
+  ctx.globalAlpha=1;
+
+  drawMoon(sc);
+  drawPlanet(sc);
+  drawGround(sc);
+  drawOrbits(sc);
+  drawBodies(sc);
+  drawStation(sc);
+  drawFX(sc);
+  drawWorldInstruments(sc);
+  drawHUD();
+  if(TOUCH){
+    const want=payloadPart()?'THROW':'GRAB';
+    const el=document.getElementById('tGrab');
+    if(el.textContent!==want) el.textContent=want;
+    // the touch pad must not sit on top of the start / pause / results cards
+    const on=(G.state===State.PLAY && !G.paused);
+    const t=document.getElementById('touch');
+    if(t.classList.contains('on')!==on) t.classList.toggle('on',on);
+  }
+}
+
+function drawMoon(sc){
+  const mx=wx2sx(moon.x,moon.y), my=wy2sy(moon.x,moon.y);
+  const mr=Math.max(2, RAD_MOON*sc);
+  // moon orbit ring
+  if(sc*R_MOON<Math.max(W,H)*2.4){
+    ctx.strokeStyle='rgba(90,150,210,0.14)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(wx2sx(0,0),wy2sy(0,0),R_MOON*sc,0,TAU); ctx.stroke();
+  }
+  if(mx<-mr-40||mx>W+mr+40||my<-mr-40||my>H+mr+40){
+    // off-screen marker for the moon when it matters
+    if(G.contract && G.contract.kind==='moon'){
+      const a=Math.atan2(my-H/2,mx-W/2);
+      const rx=W/2+Math.cos(a)*(Math.min(W,H)*0.42), ry=H/2+Math.sin(a)*(Math.min(W,H)*0.42);
+      ctx.save(); ctx.translate(rx,ry); ctx.rotate(a);
+      ctx.fillStyle='rgba(200,220,255,0.75)';
+      ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(-6,5); ctx.lineTo(-6,-5); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      txt('MOON', rx, ry-12, 9, 'rgba(200,220,255,0.8)','center');
+    }
+    return;
+  }
+  ctx.fillStyle='#c9cfe0';
+  ctx.beginPath(); ctx.arc(mx,my,mr,0,TAU); ctx.fill();
+  ctx.fillStyle='rgba(40,46,66,0.55)';
+  ctx.beginPath(); ctx.arc(mx+mr*0.30,my+mr*0.22,mr*0.92,0,TAU); ctx.fill();
+  if(mr>7){
+    ctx.fillStyle='rgba(70,76,96,0.5)';
+    ctx.beginPath(); ctx.arc(mx-mr*0.3,my-mr*0.2,mr*0.22,0,TAU); ctx.fill();
+  }
+  if(mr<9){ txt('MOON', mx, my-mr-7, 9, 'rgba(190,210,240,0.7)','center'); }
+}
+
+function drawPlanet(sc){
+  const cx=wx2sx(0,0), cy=wy2sy(0,0);
+  const pr=R_P*sc;
+  if(pr>Math.max(W,H)*3.2){
+    // extreme close range: cheap fill + limb
+    ctx.fillStyle='#5c3527';
+    ctx.beginPath(); ctx.arc(cx,cy,pr,0,TAU); ctx.fill();
+    ctx.strokeStyle='rgba(150,230,255,0.55)'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(cx,cy,pr,0,TAU); ctx.stroke();
+    return;
+  }
+  if(compSpr){
+    if(Math.abs(OM_P*simTime-compRot)>0.012) buildComposite();
+    const gs=COMP_SPAN*sc;
+    ctx.drawImage(compSpr, cx-gs, cy-gs, gs*2, gs*2);
+  }
+  // atmosphere interface line
+  const ar=(R_P+ATM_TOP)*sc;
+  if(ar-pr>1.2){
+    ctx.strokeStyle='rgba(120,220,255,0.20)'; ctx.lineWidth=1;
+    ctx.setLineDash([5,7]);
+    ctx.beginPath(); ctx.arc(cx,cy,ar,0,TAU); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawGround(sc){
+  const cx=wx2sx(0,0), cy=wy2sy(0,0);
+  const pr=R_P*sc;
+  if(pr<40) return;
+  // launch pads
+  for(let i=0;i<PADS.length;i++){
+    const p=PADS[i];
+    const th=padTheta(p,simTime);
+    const px=R_P*Math.cos(th), py=R_P*Math.sin(th);
+    const sx=wx2sx(px,py), sy=wy2sy(px,py);
+    if(sx<-60||sx>W+60||sy<-60||sy>H+60) continue;
+    const active = (G.contract && G.pad===p && G.contract.kind!=='dispose');
+    const col = active? '#ffd98a' : 'rgba(180,205,230,0.5)';
+    const ux=Math.cos(th), uy=-Math.sin(th);
+    ctx.strokeStyle=col; ctx.lineWidth=active?2:1;
+    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx+ux*(active?22:12), sy+uy*(active?22:12)); ctx.stroke();
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(sx,sy,active?4:2.4,0,TAU); ctx.fill();
+    if(active){
+      const pulse=0.4+0.6*Math.abs(Math.sin(G.runTime*3));
+      ctx.globalAlpha=pulse;
+      ctx.beginPath(); ctx.arc(sx,sy,9,0,TAU); ctx.strokeStyle='#ffd98a'; ctx.lineWidth=1.4; ctx.stroke();
+      ctx.globalAlpha=1;
+      txt('PAD '+p.name, sx+ux*28, sy+uy*28+3, 10, '#ffd98a','center');
+    }
+  }
+  // recovery arrays
+  if(G.contract && (G.contract.kind==='return')){
+    const z=ZONES[G.contract.zone];
+    const th=z.th0+OM_P*simTime;
+    const tol=G.contract.tol*Math.PI/180;
+    ctx.strokeStyle='rgba(179,137,255,0.85)'; ctx.lineWidth=Math.max(2,4*Math.min(1,sc*40));
+    ctx.beginPath(); ctx.arc(cx,cy,pr, -(th+tol), -(th-tol)); ctx.stroke();
+    ctx.strokeStyle='rgba(179,137,255,0.30)'; ctx.lineWidth=1;
+    for(const s of [-1,1]){
+      const a=th+s*tol;
+      ctx.beginPath();
+      ctx.moveTo(wx2sx(R_P*Math.cos(a),R_P*Math.sin(a)), wy2sy(R_P*Math.cos(a),R_P*Math.sin(a)));
+      ctx.lineTo(wx2sx((R_P+900)*Math.cos(a),(R_P+900)*Math.sin(a)), wy2sy((R_P+900)*Math.cos(a),(R_P+900)*Math.sin(a)));
+      ctx.stroke();
+    }
+    const lx=(R_P+1200)*Math.cos(th), ly=(R_P+1200)*Math.sin(th);
+    txt(z.name, wx2sx(lx,ly), wy2sy(lx,ly), 10, 'rgba(200,170,255,0.9)','center');
+  }
+}
+
+function drawOrbits(sc){
+  const c=conic(ST.x,ST.y,ST.vx,ST.vy);
+  const fx=wx2sx(0,0), fy=wy2sy(0,0);
+  if(c.ok && c.a*sc<Math.max(W,H)*26){
+    const b=c.a*Math.sqrt(Math.max(0,1-c.e*c.e));
+    const ecx=-c.a*c.e*Math.cos(c.argp), ecy=-c.a*c.e*Math.sin(c.argp);
+    const perAlt=c.rp-R_P;
+    const danger=clamp(1-(perAlt-120)/900,0,1);
+    ctx.save();
+    ctx.strokeStyle='rgba(95,240,216,'+(0.30+0.25*(1-danger))+')';
+    if(danger>0.35) ctx.strokeStyle='rgba(255,'+Math.round(240-140*danger)+',110,'+(0.35+0.35*danger)+')';
+    ctx.lineWidth=1.3; ctx.setLineDash([7,6]);
+    ctx.beginPath();
+    ctx.ellipse(wx2sx(ecx,ecy), wy2sy(ecx,ecy), c.a*sc, b*sc, -c.argp, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    // apsis markers
+    const pxx=c.rp*Math.cos(c.argp), pyy=c.rp*Math.sin(c.argp);
+    const axx=-c.ra*Math.cos(c.argp), ayy=-c.ra*Math.sin(c.argp);
+    if(isFinite(c.ra)) apsisMark(wx2sx(axx,ayy),wy2sy(axx,ayy),'AP '+fmt(c.ra-R_P,0),'rgba(120,200,255,0.85)');
+    apsisMark(wx2sx(pxx,pyy),wy2sy(pxx,pyy),'PE '+fmt(perAlt,0),
+      danger>0.35?'#ff7a5a':'rgba(120,255,220,0.9)');
+  }
+  // capsule ballistic arc
+  for(let i=0;i<bodies.length;i++){
+    const b=bodies[i];
+    if(b.kind!=='capsule'||!b.arc) continue;
+    ctx.strokeStyle='rgba(255,180,77,0.34)'; ctx.lineWidth=1.2; ctx.setLineDash([4,5]);
+    ctx.beginPath();
+    for(let k=0;k<b.arc.length;k+=2){
+      const X=wx2sx(b.arc[k],b.arc[k+1]), Y=wy2sy(b.arc[k],b.arc[k+1]);
+      if(k===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  // RELEASE DIAL — the tether angles at which a throw scores, lit on the arc
+  // the tip is about to sweep through.  This is the whole aiming instrument.
+  if(guideN>1 && payloadPart()){
+    const Sx=wx2sx(ST.x,ST.y), Sy=wy2sy(ST.x,ST.y);
+    const rr=tipArm()*sc;
+    if(rr>16){
+      ctx.strokeStyle='rgba(95,240,216,0.13)'; ctx.lineWidth=Math.max(2,rr*0.035);
+      ctx.beginPath(); ctx.arc(Sx,Sy,rr,0,TAU); ctx.stroke();
+      ctx.lineWidth=Math.max(3,rr*0.062); ctx.lineCap='round';
+      ctx.strokeStyle='rgba(120,255,190,0.9)';
+      let k=0;
+      while(k<guideN){
+        if(!gGood[k]){ k++; continue; }
+        let j=k; while(j+1<guideN && gGood[j+1]) j++;
+        ctx.beginPath(); ctx.arc(Sx,Sy,rr,-gPhi[j],-gPhi[k]); ctx.stroke();
+        k=j+1;
+      }
+      ctx.lineCap='butt';
+      // where the tip is now
+      const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+      ctx.fillStyle= guideErrNow<=1? '#c8ffe8':'rgba(223,244,255,0.8)';
+      ctx.beginPath(); ctx.arc(Sx+ux*rr, Sy-uy*rr, Math.max(2.5,rr*0.045),0,TAU); ctx.fill();
+    }
+  }
+  // predicted throw
+  if(predValid && payloadPart() && pred.n>1){
+    const good=predGood();
+    ctx.strokeStyle= good? 'rgba(120,255,190,0.9)':'rgba(255,190,110,0.65)';
+    ctx.lineWidth=1.7; ctx.setLineDash([9,5]);
+    ctx.beginPath();
+    for(let k=0;k<pred.n;k++){
+      const X=wx2sx(predX[k],predY[k]), Y=wy2sy(predX[k],predY[k]);
+      if(k===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    // end marker
+    const ex=predX[pred.n-1], ey=predY[pred.n-1];
+    ctx.fillStyle=good?'rgba(120,255,190,0.95)':'rgba(255,190,110,0.8)';
+    ctx.beginPath(); ctx.arc(wx2sx(ex,ey),wy2sy(ex,ey),3.4,0,TAU); ctx.fill();
+    // target band ring for lift contracts
+    const c2=G.contract;
+    if(c2&&(c2.kind==='lift'||c2.kind==='pod')&&c2.band){
+      ctx.strokeStyle='rgba(120,255,190,0.22)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(fx,fy,(R_P+c2.band[0])*sc,0,TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(fx,fy,(R_P+c2.band[1])*sc,0,TAU); ctx.stroke();
+    }
+  }
+}
+function predGood(){
+  const c=G.contract; if(!c) return false;
+  if(c.kind==='lift'||c.kind==='pod'){
+    if(!c.band) return false;
+    const apo=pred.apo-R_P, per=pred.peri-R_P;
+    return pred.ok && per>430 && apo>=c.band[0] && apo<=c.band[1];
+  }
+  if(c.kind==='return'){
+    if(!pred.impact) return false;
+    const zt=ZONES[c.zone].th0+OM_P*(simTime+pred.impactT);
+    return Math.abs(wrapPi(pred.impactTh-zt))*180/Math.PI <= c.tol;
+  }
+  if(c.kind==='dispose') return pred.impact;
+  if(c.kind==='moon') return pred.moonMin<MOON_CAPTURE;
+  return false;
+}
+function apsisMark(x,y,label,col){
+  if(x<-40||x>W+40||y<-30||y>H+30) return;
+  ctx.strokeStyle=col; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(x-5,y); ctx.lineTo(x+5,y); ctx.moveTo(x,y-5); ctx.lineTo(x,y+5); ctx.stroke();
+  txt(label,x+8,y+3.5,9.5,col,'left');
+}
+
+function drawBodies(sc){
+  for(let i=0;i<bodies.length;i++){
+    const b=bodies[i];
+    const x=wx2sx(b.x,b.y), y=wy2sy(b.x,b.y);
+    if(x<-60||x>W+60||y<-60||y>H+60){
+      if(b.kind==='capsule'){ edgeArrow(x,y,'#ffb44d'); }
+      continue;
+    }
+    const s=clamp(30*sc, 2.8, 9.5);
+    ctx.save(); ctx.translate(x,y); ctx.rotate(-(b.rot||0));
+    if(b.heat>0.02){
+      ctx.globalAlpha=Math.min(0.85,b.heat);
+      ctx.fillStyle='#ff8a4a';
+      ctx.beginPath(); ctx.arc(0,0,s*2.6,0,TAU); ctx.fill();
+      ctx.globalAlpha=1;
+    }
+    let col='#ffb44d', edge='#7a4a12';
+    if(b.type==='pod'){ col='#7fe0ff'; edge='#134a63'; }
+    else if(b.type==='waste'){ col='#9aa6b8'; edge='#3a4454'; }
+    else if(b.type==='shell'){ col='#5a6a80'; edge='#28303c'; }
+    else if(b.type==='heavy'){ col='#ffd98a'; edge='#7a5a12'; }
+    ctx.fillStyle=col; ctx.strokeStyle=edge; ctx.lineWidth=1;
+    rrect(-s*0.7,-s,s*1.4,s*2,s*0.45); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.fillRect(-s*0.4,-s*0.55,s*0.8,s*0.22);
+    ctx.restore();
+    if(sc*24<0.5){
+      ctx.strokeStyle=col; ctx.lineWidth=1; ctx.globalAlpha=0.7;
+      ctx.beginPath(); ctx.arc(x,y,9,0,TAU); ctx.stroke(); ctx.globalAlpha=1;
+    }
+  }
+}
+function edgeArrow(x,y,col){
+  const a=Math.atan2(y-H/2,x-W/2);
+  const rx=W/2+Math.cos(a)*(Math.min(W,H)*0.40), ry=H/2+Math.sin(a)*(Math.min(W,H)*0.40);
+  ctx.save(); ctx.translate(rx,ry); ctx.rotate(a);
+  ctx.fillStyle=col; ctx.globalAlpha=0.8;
+  ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(-6,5); ctx.lineTo(-6,-5); ctx.closePath(); ctx.fill();
+  ctx.restore(); ctx.globalAlpha=1;
+}
+
+function drawStation(sc){
+  if(G.state===State.OVER && G.dead) return;
+  const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+  const armT=tipArm(), armC=CW_ARM-ST.bxCom;
+  const tx=ST.x+armT*ux, ty=ST.y+armT*uy;
+  const cx2=ST.x+armC*ux, cy2=ST.y+armC*uy;
+  const Sx=wx2sx(ST.x,ST.y), Sy=wy2sy(ST.x,ST.y);
+  const Tx=wx2sx(tx,ty), Ty=wy2sy(tx,ty);
+  const Cx=wx2sx(cx2,cy2), Cy=wy2sy(cx2,cy2);
+  const span=Math.hypot(Tx-Cx,Ty-Cy);
+
+  // tip sweep circle
+  if(span>26){
+    ctx.strokeStyle='rgba(95,240,216,0.16)'; ctx.lineWidth=1; ctx.setLineDash([3,7]);
+    ctx.beginPath(); ctx.arc(Sx,Sy,armT*sc,0,TAU); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(span<7){
+    // far away: a legible reticle
+    ctx.strokeStyle='#5ff0d8'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.arc(Sx,Sy,7,0,TAU); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(Sx-11,Sy); ctx.lineTo(Sx-8,Sy); ctx.moveTo(Sx+8,Sy); ctx.lineTo(Sx+11,Sy);
+    ctx.moveTo(Sx,Sy-11); ctx.lineTo(Sx,Sy-8); ctx.moveTo(Sx,Sy+8); ctx.lineTo(Sx,Sy+11); ctx.stroke();
+    drawPlume(sc,Sx,Sy,4);
+    return;
+  }
+  // rod: soft glow + core
+  ctx.lineCap='round';
+  ctx.strokeStyle='rgba(95,240,216,0.16)'; ctx.lineWidth=Math.max(3,span*0.035);
+  ctx.beginPath(); ctx.moveTo(Cx,Cy); ctx.lineTo(Tx,Ty); ctx.stroke();
+  ctx.strokeStyle='rgba(160,255,238,0.92)'; ctx.lineWidth=Math.max(1.2,span*0.010);
+  ctx.beginPath(); ctx.moveTo(Cx,Cy); ctx.lineTo(Tx,Ty); ctx.stroke();
+  ctx.lineCap='butt';
+
+  const scaleU=clamp(span/560,0.10,2.4);
+  // counterweight
+  const cwR=Math.max(3.5, 26*scaleU);
+  ctx.save(); ctx.translate(Cx,Cy); ctx.rotate(-ST.phi);
+  ctx.fillStyle='#1a2c46'; ctx.strokeStyle='#5ff0d8'; ctx.lineWidth=Math.max(1,1.3*scaleU);
+  rrect(-cwR*0.75,-cwR,cwR*1.5,cwR*2,cwR*0.28); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='rgba(95,240,216,0.28)';
+  ctx.fillRect(-cwR*0.45,-cwR*0.5,cwR*0.9,cwR*0.22);
+  ctx.fillRect(-cwR*0.45,cwR*0.25,cwR*0.9,cwR*0.22);
+  // propellant tank fill hint
+  ctx.fillStyle='rgba(255,217,138,0.75)';
+  ctx.fillRect(-cwR*0.28,-cwR*0.15+cwR*0.30*(1-ST.prop/PROP_MAX), cwR*0.56, cwR*0.30*(ST.prop/PROP_MAX));
+  ctx.restore();
+
+  // hub marker at the centre of mass
+  ctx.strokeStyle='rgba(223,244,255,0.75)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(Sx,Sy,Math.max(2.5,5*scaleU),0,TAU); ctx.stroke();
+
+  // grapple tip
+  const tipR=Math.max(3, 15*scaleU);
+  ctx.save(); ctx.translate(Tx,Ty); ctx.rotate(-ST.phi);
+  const armed=G.armed;
+  ctx.strokeStyle=armed?'#c8ffe8':'#5ff0d8'; ctx.lineWidth=Math.max(1.2,2*scaleU);
+  ctx.beginPath(); ctx.arc(0,0,tipR,-1.05,1.05); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(Math.cos(1.05)*tipR,Math.sin(1.05)*tipR); ctx.lineTo(tipR*0.35,tipR*1.5);
+  ctx.moveTo(Math.cos(-1.05)*tipR,Math.sin(-1.05)*tipR); ctx.lineTo(tipR*0.35,-tipR*1.5); ctx.stroke();
+  ctx.fillStyle=armed?'#eafcff':'#123a44';
+  ctx.beginPath(); ctx.arc(0,0,tipR*0.4,0,TAU); ctx.fill();
+  ctx.restore();
+
+  // payload riding the tip
+  const p=payloadPart();
+  if(p){
+    const s=Math.max(3,11*scaleU);
+    ctx.save(); ctx.translate(Tx,Ty); ctx.rotate(-ST.phi);
+    ctx.fillStyle=(p.meta&&p.meta.kind==='pod')?'#7fe0ff':((p.meta&&p.meta.kind==='waste')?'#9aa6b8':'#ffb44d');
+    ctx.strokeStyle='#20303f'; ctx.lineWidth=1;
+    rrect(tipR*0.6,-s,s*1.8,s*2,s*0.4); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    if(p.meta&&p.meta.kind==='pod'&&G.absorbT>0){
+      ctx.strokeStyle='#7fe0ff'; ctx.lineWidth=2.4;
+      ctx.beginPath(); ctx.arc(Tx,Ty,tipR+9,-Math.PI/2,-Math.PI/2+TAU*clamp(G.absorbT/POD_HOLD,0,1)); ctx.stroke();
+    }
+  }
+  // capture envelope while armed
+  if(G.armed){
+    const pulse=0.45+0.35*Math.sin(G.runTime*7);
+    ctx.strokeStyle='rgba(200,255,232,'+(0.30+0.25*pulse)+')'; ctx.lineWidth=1.3;
+    ctx.beginPath(); ctx.arc(Tx,Ty,CAP_R*sc,0,TAU); ctx.stroke();
+    ctx.strokeStyle='rgba(95,240,216,0.16)'; ctx.setLineDash([4,6]);
+    ctx.beginPath(); ctx.arc(Tx,Ty,ASSIST_R*sc,0,TAU); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // grapple-net beam
+  if(assBody){
+    const bx=wx2sx(assBody.x,assBody.y), by=wy2sy(assBody.x,assBody.y);
+    ctx.strokeStyle='rgba(200,255,232,0.55)'; ctx.lineWidth=1.4; ctx.setLineDash([3,4]);
+    ctx.beginPath(); ctx.moveTo(Tx,Ty); ctx.lineTo(bx,by); ctx.stroke(); ctx.setLineDash([]);
+  }
+  drawPlume(sc,Sx,Sy,Math.max(6,20*scaleU));
+  // reentry plasma on the parts
+  for(let i=0;i<ST.parts.length;i++){
+    const q=ST.parts[i].q||0;
+    if(q<25) continue;
+    const d=ST.parts[i].bx-ST.bxCom;
+    const px=wx2sx(ST.x+d*ux,ST.y+d*uy), py=wy2sy(ST.x+d*ux,ST.y+d*uy);
+    const k=clamp((q-25)/240,0,1);
+    ctx.globalAlpha=0.30+0.5*k;
+    ctx.fillStyle= k>0.6?'#fff0c0':'#ff8a4a';
+    ctx.beginPath(); ctx.arc(px,py,Math.max(6,26*scaleU)*(0.6+k),0,TAU); ctx.fill();
+    ctx.globalAlpha=1;
+    if(Math.random()<k*0.9){
+      const vv=Math.hypot(ST.vx,ST.vy);
+      spawnParticle(ST.x+d*ux, ST.y+d*uy, -ST.vx*rndRange(0.25,0.6)+rndRange(-30,30), -ST.vy*rndRange(0.25,0.6)+rndRange(-30,30),
+        rndRange(0.3,0.9), k>0.6?'#fff2cc':'#ff9a4a', rndRange(6,16));
+    }
+  }
+}
+function drawPlume(sc,Sx,Sy,size){
+  const th=Math.abs(ST.throttle);
+  if(th<0.02||ST.prop<=0) return;
+  const sp=Math.hypot(ST.vx,ST.vy); if(sp<1) return;
+  const dirx=(ST.vx/sp)*sgn(ST.throttle), diry=(ST.vy/sp)*sgn(ST.throttle);
+  const ex=-dirx, ey=-diry;
+  const sxx=ex, syy=-ey; // screen
+  const L=size*(1.4+2.4*th)*(G.burning?1.5:1);
+  ctx.save(); ctx.globalAlpha=0.55+0.35*th;
+  ctx.fillStyle=G.burning?'#ffd2a0':'#9fe8ff';
+  ctx.beginPath();
+  ctx.moveTo(Sx+sxx*size*0.3+ -syy*size*0.28, Sy+syy*size*0.3 + sxx*size*0.28);
+  ctx.lineTo(Sx+sxx*L, Sy+syy*L);
+  ctx.moveTo(Sx+sxx*size*0.3 - -syy*size*0.28, Sy+syy*size*0.3 - sxx*size*0.28);
+  ctx.lineTo(Sx+sxx*L, Sy+syy*L);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  if(Math.random()<th*0.9){
+    spawnParticle(ST.x+ex*40, ST.y+ey*40, ST.vx+ex*rndRange(120,320)+rndRange(-40,40),
+      ST.vy+ey*rndRange(120,320)+rndRange(-40,40), rndRange(0.25,0.6), '#bfe8ff', rndRange(5,13));
+  }
+}
+
+function drawFX(sc){
+  for(let i=0;i<particles.length;i++){
+    const p=particles[i];
+    const x=wx2sx(p.x,p.y), y=wy2sy(p.x,p.y);
+    if(x<-30||x>W+30||y<-30||y>H+30) continue;
+    const a=p.life/p.max;
+    ctx.globalAlpha=a*0.85;
+    ctx.fillStyle=p.c;
+    const sz=Math.max(1.2,p.s*sc*(0.5+a));
+    if(sz<2.6) ctx.fillRect(x-sz,y-sz,sz*2,sz*2);
+    else { ctx.beginPath(); ctx.arc(x,y,sz,0,TAU); ctx.fill(); }
+  }
+  ctx.globalAlpha=1;
+  ctx.strokeStyle='#eafcff'; ctx.lineWidth=1.2;
+  ctx.beginPath();
+  for(let i=0;i<sparks.length;i++){
+    const s=sparks[i];
+    const x=wx2sx(s.x,s.y), y=wy2sy(s.x,s.y);
+    if(x<-30||x>W+30||y<-30||y>H+30) continue;
+    ctx.moveTo(x,y); ctx.lineTo(x-s.vx*sc*0.03, y+s.vy*sc*0.03);
+  }
+  ctx.globalAlpha=0.8; ctx.stroke(); ctx.globalAlpha=1;
+}
+
+// A rotovator zoomed in on its own tip loses the planet off the bottom of the
+// frame, so the local vertical / local horizontal frame is drawn explicitly.
+function drawOrientation(sc){
+  if(cam.mode!=='focus') return;
+  const r=Math.hypot(ST.x,ST.y); if(r<1) return;
+  const rx=ST.x/r, ry=ST.y/r;              // local up, world
+  const Sx=wx2sx(ST.x,ST.y), Sy=wy2sy(ST.x,ST.y);
+  const ux=rx, uy=-ry;                     // local up, screen
+  const px=-uy, py=ux;                     // local horizontal (prograde side)
+  const L=Math.max(W,H);
+  ctx.save();
+  ctx.strokeStyle='rgba(95,240,216,0.15)'; ctx.lineWidth=1;
+  ctx.setLineDash([9,11]);
+  ctx.beginPath(); ctx.moveTo(Sx-px*L,Sy-py*L); ctx.lineTo(Sx+px*L,Sy+py*L); ctx.stroke();
+  ctx.setLineDash([]);
+  // planet direction + altitude
+  const d=Math.min(W,H)*0.40;
+  const ax=Sx-ux*d, ay=Sy-uy*d;
+  ctx.strokeStyle='rgba(150,200,240,0.42)'; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(ax-px*13,ay-py*13); ctx.lineTo(ax,ay); ctx.lineTo(ax+px*13,ay+py*13); ctx.stroke();
+  ctx.restore();
+  txt('▼ SURFACE  '+fmtInt(r-R_P)+' m', ax, ay+(uy<0?-9:17), 9.5, 'rgba(150,200,240,0.6)','center');
+  // prograde marker
+  const spd=Math.hypot(ST.vx,ST.vy);
+  if(spd>1){
+    const vx=ST.vx/spd, vy=-ST.vy/spd;
+    const mx=Sx+vx*Math.min(W,H)*0.30, my=Sy+vy*Math.min(W,H)*0.30;
+    ctx.strokeStyle='rgba(255,217,138,0.45)'; ctx.lineWidth=1.3;
+    ctx.beginPath(); ctx.arc(mx,my,6,0,TAU); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(mx-10,my); ctx.lineTo(mx-6,my); ctx.moveTo(mx+6,my); ctx.lineTo(mx+10,my);
+    ctx.moveTo(mx,my-10); ctx.lineTo(mx,my-6); ctx.stroke();
+    txt('PROGRADE', mx, my+18, 9, 'rgba(255,217,138,0.5)','center');
+  }
+}
+// world-space instruments: which way is down, and the closing solution
+function drawWorldInstruments(sc){
+  drawOrientation(sc);
+  const cap=firstCapsule();
+  if(!cap||!G.liveValid) return;
+  computeTip();
+  const d=Math.hypot(cap.x-_tx,cap.y-_ty);
+  const bx=wx2sx(cap.x,cap.y), by=wy2sy(cap.x,cap.y);
+  const tx=wx2sx(_tx,_ty), ty=wy2sy(_tx,_ty);
+  if(d<3200 && cam.mode==='focus'){
+    ctx.strokeStyle='rgba(223,244,255,0.28)'; ctx.lineWidth=1; ctx.setLineDash([2,5]);
+    ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(bx,by); ctx.stroke(); ctx.setLineDash([]);
+    const mx=clamp((tx+bx)/2, 76, W-76), my=clamp((ty+by)/2, 20, H-20);
+    const rel=Math.hypot(cap.vx-_tvx,cap.vy-_tvy);
+    const ok=(d<CAP_R&&rel<CAP_V);
+    txt(fmtInt(d)+' m   Δv '+fmt(rel,0), mx, my-8, 11, ok?'#8ffbe6':'rgba(223,244,255,0.8)','center');
+  }
+  // predicted closest approach ring
+  if(G.liveMiss<900){
+    ctx.strokeStyle= G.liveMiss<CAP_R? 'rgba(120,255,190,0.55)':'rgba(255,180,110,0.45)';
+    ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.arc(bx,by,Math.max(6,G.liveMiss*sc),0,TAU); ctx.stroke();
+  }
+}
+// ============================================================================
+//  HUD
+// ============================================================================
+// how far the tether phase can be off before the projected miss exceeds the
+// pad's commit gate — inverted numerically from the same geometry the pad uses
+function phaseTolSec(){
+  const arm=tipArm(), w=Math.abs(ST.w);
+  const rt=Math.max(R_P+50, Math.hypot(ST.x,ST.y)-arm);
+  let lo=0, hi=Math.PI/w;
+  for(let i=0;i<22;i++){
+    const m=(lo+hi)/2;
+    if(missFromPhase(m,arm,rt)<COMMIT_MISS) lo=m; else hi=m;
+  }
+  return lo;
+}
+function drawHUD(){
+  hudRects.length=0;
+  if(G.state===State.START) return;
+  const P=HL.pad, X=HL.colX, CW=HL.colW;
+  let y=HL.colY;
+
+  // ---------------- contract card --------------------------------------
+  const c=G.contract;
+  const cH=68;
+  panelBox(X,y,CW,cH,'rgba(95,240,216,0.45)');
+  const total = G.endless? '∞' : LADDER.length;
+  const idx = G.endless? (G.ci-LADDER.length+1) : (Math.min(G.ci,LADDER.length-1)+1);
+  txt((G.endless?'FREE FLIGHT ':'CONTRACT ')+idx+' / '+total+(c?('   TIER '+c.tier):''), X+9, y+15, 9.5, '#7d95b8');
+  txt(c? c.name : 'STAND BY', X+9, y+32, 13.5, '#5ff0d8', 'left', '700');
+  let tgt='preparing the next consignment';
+  if(c){
+    if(c.kind==='lift'||c.kind==='pod') tgt='APOAPSIS '+c.band[0]+'–'+c.band[1]+' m';
+    else if(c.kind==='return') tgt='DROP → '+ZONES[c.zone].name+'  ±'+fmt(c.tol,0)+'°';
+    else if(c.kind==='dispose') tgt='THROW DOWN → REENTRY';
+    else if(c.kind==='moon') tgt='TRANSFER → MOON';
+  }
+  txt(tgt, X+9, y+47, 10, '#a9c2dc');
+  if(c) txt(c.mass+' kg   ·   '+fmtInt(c.reward)+' pts', X+9, y+61, 10, '#ffd98a');
+  y+=cH+6;
+
+  // ---------------- ops / intercept panel --------------------------------
+  const oH=88;
+  const pay=payloadPart();
+  const cap=firstCapsule();
+  let accent='rgba(58,96,144,0.75)';
+  if(pay) accent = predGood()? 'rgba(120,255,190,0.8)':'rgba(255,180,110,0.6)';
+  else if(cap) accent='rgba(255,180,77,0.7)';
+  panelBox(X,y,CW,oH,accent);
+  if(pay){
+    txt('RELEASE SOLUTION', X+9, y+15, 9.5, '#7d95b8');
+    const good=predGood();
+    if(c && (c.kind==='lift'||c.kind==='pod')){
+      txt('APO '+(pred.ok?fmtInt(pred.apo-R_P)+' m':'ESCAPE'), X+9, y+33, 12, good?'#8ffbe6':'#ffb44d','left','700');
+      const pa=pred.peri-R_P;
+      txt(pa>0?('PER '+fmtInt(pa)+' m'):'PERIAPSIS BELOW SURFACE', X+9, y+48, 10.5, pa>430?'#a9c2dc':'#ff7a5a');
+    } else if(c && c.kind==='return'){
+      if(pred.impact){
+        const zt=ZONES[c.zone].th0+OM_P*(simTime+pred.impactT);
+        const err=wrapPi(pred.impactTh-zt)*180/Math.PI;
+        txt('LANDS '+(err>0?'+':'')+fmt(err,1)+'°', X+9, y+33, 12, good?'#8ffbe6':'#ffb44d','left','700');
+        txt('DOWN IN '+fmt(pred.impactT,0)+' s', X+9, y+48, 10.5, '#a9c2dc');
+      } else { txt('NO REENTRY', X+9, y+33, 12, '#ff7a5a','left','700');
+               txt('PER '+fmtInt(Math.max(0,pred.peri-R_P))+' m', X+9, y+48, 10.5, '#a9c2dc'); }
+    } else if(c && c.kind==='dispose'){
+      txt(pred.impact?('REENTRY IN '+fmt(pred.impactT,0)+' s'):'STILL IN ORBIT', X+9, y+33, 12, good?'#8ffbe6':'#ff7a5a','left','700');
+      txt('PER '+fmtInt(Math.max(0,pred.peri-R_P))+' m', X+9, y+48, 10.5, '#a9c2dc');
+    } else if(c && c.kind==='moon'){
+      txt('MOON MISS '+(pred.moonMin<1e8?fmtInt(pred.moonMin)+' m':'—'), X+9, y+33, 12, good?'#8ffbe6':'#ffb44d','left','700');
+      txt('APO '+(pred.ok?fmtInt(pred.apo-R_P)+' m':'ESCAPE'), X+9, y+48, 10.5, '#a9c2dc');
+    }
+    txt(good?(TOUCH?'THROW NOW':'SPACE — RELEASE NOW')
+             :(guideAny?'wait for the lit arc':'NO SOLUTION THIS SPIN — RAISE THE ORBIT (D)'),
+        X+9, y+65, 9.5, good?'#8ffbe6':(guideAny?'#7d95b8':'#ffb44d'));
+    if(pay.meta&&pay.meta.kind==='pod'){
+      const full=ST.prop>=PROP_MAX-0.5;
+      bar(X+CW-56, y+58, 48, 5, full?0:G.absorbT/POD_HOLD, '#7fe0ff');
+      txt(full?'TANK FULL':'ABSORB', X+CW-56, y+53, 8.5, '#7fe0ff');
+    }
+  } else if(cap){
+    txt('INTERCEPT', X+9, y+15, 9.5, '#7d95b8');
+    const good=G.liveValid && G.liveMiss<CAP_R;
+    txt('MISS '+(G.liveValid?fmtInt(G.liveMiss)+' m':'—'), X+9, y+33, 12.5, good?'#8ffbe6':'#ffb44d','left','700');
+    txt('Δv '+(G.liveValid?fmt(G.liveRelV,0):'—')+' m/s   T−'+(G.liveValid?fmt(Math.max(0,G.liveT),1):'—')+' s', X+9, y+48, 10, '#a9c2dc');
+    bar(X+9, y+56, CW-18, 5, 1-clamp(G.liveMiss/900,0,1), good?'#5ff0d8':'#ffb44d');
+    txt(G.armed?'GRAPPLE ARMED':(TOUCH?'HOLD GRAB TO ARM THE TIP':'HOLD SPACE TO ARM THE GRAPPLE'),
+        X+9, y+70, 9.5, G.armed?'#8ffbe6':'#ffd98a');
+  } else {
+    txt('PAD '+(G.pad?G.pad.name:'—'), X+9, y+15, 9.5, '#7d95b8');
+    if(c && c.kind==='dispose'){
+      txt('CONSIGNMENT ON THE TIP', X+9, y+33, 11, '#ffd98a','left','700');
+      txt('throw at the bottom of the swing', X+9, y+48, 9.5, '#a9c2dc');
+    } else if(G.padState==='go'){
+      txt('LAUNCH  T−'+fmt(Math.max(0,G.tLaunch),1)+' s', X+9, y+33, 12.5, '#8ffbe6','left','700');
+      txt('projected miss '+fmtInt(G.missEst)+' m', X+9, y+48, 10, '#a9c2dc');
+    } else {
+      txt(isFinite(G.missEst)? ('PADS HOLDING  ·  T−'+fmt(Math.max(0,G.tLaunch),0)+' s') : 'NO LAUNCH SOLUTION',
+          X+9, y+33, 11.5, '#ffb44d','left','700');
+      txt(G.padMsg || ('projected miss '+(isFinite(G.missEst)?fmtInt(G.missEst):'—')+' m  —  need under '+COMMIT_MISS), X+9, y+48, 9.5, '#a9c2dc');
+    }
+    // phase needle
+    const nx=X+9, nw=CW-18, ny=y+64;
+    const tol=phaseTolSec();
+    bar(nx,ny,nw,6, 1, 'rgba(255,255,255,0.06)','rgba(255,255,255,0.06)');
+    const half=Math.PI/Math.abs(ST.w); // half a tether revolution, seconds
+    const f=clamp(0.5+(G.phaseErr/(2*half)), 0, 1);
+    ctx.fillStyle='rgba(95,240,216,0.30)';
+    const gw=nw*clamp(tol/half,0.04,1);
+    ctx.fillRect(nx+nw*0.5-gw/2, ny, gw, 6);
+    const inTol=Math.abs(G.phaseErr)<tol;
+    ctx.fillStyle=inTol?'#5ff0d8':'#ffb44d';
+    ctx.fillRect(nx+f*nw-1.5, ny-2, 3, 10);
+    txt('TETHER '+(G.phaseErr>0?'EARLY +':'LATE ')+fmt(G.phaseErr,1)+' s', nx, ny+18, 9.5,
+        inTol?'#5ff0d8':'#7d95b8');
+    // a prograde burn lengthens the period, so the pass arrives later and the
+    // tether has more time to come round — that is what nulls a positive error
+    txt(inTol?'IN TOLERANCE':(G.phaseErr>0?'BURN D ▶':'◀ BURN A'), nx+nw, ny+18, 9.5,
+        inTol?'#5ff0d8':'#ffd98a','right');
+  }
+  y+=oH+6;
+
+  // ---------------- orbit panel -----------------------------------------
+  const oc=conic(ST.x,ST.y,ST.vx,ST.vy);
+  const r=Math.hypot(ST.x,ST.y);
+  const alt=r-R_P, per=oc.rp-R_P, apo=oc.ra-R_P;
+  const oH2=64;
+  const danger=per<WARN_ALT;
+  panelBox(X,y,CW,oH2, danger?'rgba(255,95,82,0.8)':'rgba(58,96,144,0.75)');
+  txt('ALT', X+9, y+16, 9, '#7d95b8');
+  txt(fmtInt(alt)+' m', X+40, y+16, 11, '#eafcff','left','700');
+  txt('PER', X+9, y+31, 9, '#7d95b8');
+  txt(fmtInt(per)+' m', X+40, y+31, 11, danger?'#ff7a5a':'#8ffbe6','left','700');
+  txt('APO', X+9, y+46, 9, '#7d95b8');
+  txt(isFinite(apo)?fmtInt(apo)+' m':'ESCAPE', X+40, y+46, 11, '#bfe8ff','left','700');
+  txt('T '+(isFinite(oc.period)?fmt(oc.period,0)+' s':'—'), X+CW-9, y+16, 9.5, '#7d95b8','right');
+  txt('V '+fmtInt(Math.hypot(ST.vx,ST.vy))+' m/s', X+CW-9, y+31, 9.5, '#7d95b8','right');
+  txt('SPIN '+fmt(TAU/Math.abs(ST.w),1)+' s', X+CW-9, y+46, 9.5, '#7d95b8','right');
+  // perigee-vs-atmosphere strip
+  bar(X+9, y+53, CW-18, 4, clamp((per-ATM_TOP)/2600,0,1), danger?'#ff7a5a':'#5ff0d8');
+  y+=oH2+6;
+
+  // ---------------- propellant ------------------------------------------
+  const pH=30;
+  panelBox(X,y,CW,pH,'rgba(58,96,144,0.75)');
+  txt('PROP', X+9, y+19, 9.5, '#7d95b8');
+  bar(X+46, y+11, CW-104, 8, ST.prop/PROP_MAX, ST.prop>22?'#ffd98a':'#ff7a5a');
+  const dvLeft=V_EX*Math.log(ST.M/Math.max(1,ST.M-ST.prop));
+  txt(fmt(dvLeft,1)+' m/s', X+CW-9, y+19, 10, ST.prop>22?'#ffd98a':'#ff7a5a','right');
+  y+=pH;
+
+  // throttle indicator
+  if(Math.abs(ST.throttle)>0.01){
+    const tw=CW-18;
+    ctx.fillStyle='rgba(159,232,255,0.9)';
+    const cxm=X+9+tw/2;
+    ctx.fillRect(cxm, y+5, ST.throttle*tw/2, 3);
+    ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.fillRect(cxm-0.5, y+3, 1, 7);
+    txt(ST.throttle>0?'PROGRADE':'RETROGRADE', X+9, y+20, 9, '#9fe8ff');
+  }
+
+  // ---------------- right stats -----------------------------------------
+  const RX=HL.rightX, RW=HL.rightW; let ry=HL.rightY;
+  const rH=(ST.heat>0.01)?76:60;
+  panelBox(RX,ry,RW,rH,ST.heat>0.3?'rgba(255,95,82,0.85)':'rgba(58,96,144,0.75)');
+  txt('SCORE', RX+RW-9, ry+15, 9, '#7d95b8','right');
+  txt(fmtInt(G.score), RX+RW-9, ry+34, 17, '#eafcff','right','800');
+  const warping=G.warp>1.05;
+  txt((G.streak>0?('STREAK ×'+G.streak):'')+(warping?('   WARP ×'+fmt(G.warp,G.warp<10?1:0)):''),
+      RX+RW-9, ry+49, 9.5, warping?'#8ffbe6':'#7d95b8','right');
+  if(ST.heat>0.01){
+    txt('HEAT', RX+9, ry+66, 9, '#ff7a5a');
+    bar(RX+42, ry+60, RW-51, 7, ST.heat, ST.heat>0.5?'#ff5f52':'#ffb44d');
+  }
+  ry+=rH+6;
+  if(G.muted){ txt('MUTED', RX+RW-9, ry+10, 9.5, '#7d95b8','right'); ry+=16; }
+  // toasts
+  for(let i=0;i<toasts.length;i++){
+    const t=toasts[i];
+    ctx.globalAlpha=clamp(t.life/0.7,0,1);
+    txt(t.t, RX+RW-9, ry+12, 10, '#ffd98a','right');
+    ctx.globalAlpha=1; ry+=15;
+  }
+
+  // ---------------- warnings + banner -----------------------------------
+  if(G.warned && G.state===State.PLAY){
+    const pulse=0.5+0.5*Math.sin(G.runTime*6);
+    ctx.globalAlpha=0.35+0.45*pulse;
+    txt(ST.heat>0.3?'!! DRAG HEATING — BURN PROGRADE (D) !!':'ATMOSPHERE WARNING — PERIGEE LOW',
+        W/2, HL.colY+18, Math.min(15,W*0.030), '#ff7a5a','center','800');
+    ctx.globalAlpha=1;
+    if(G.burning && ST.prop>0){
+      txt('EMERGENCY BURN AVAILABLE — HOLD D', W/2, HL.colY+36, Math.min(12,W*0.024), '#ffd98a','center','700');
+    }
+  }
+  if(G.bannerT>0){
+    const a=clamp(G.bannerT/0.8,0,1);
+    ctx.globalAlpha=a;
+    const by=H-(TOUCH?196:74);
+    txt(G.banner, W/2, by, Math.min(26,W*0.048), '#eafcff','center','800');
+    if(G.bannerSub) txt(G.bannerSub, W/2, by+19, Math.min(12.5,W*0.026), '#a9c2dc','center');
+    ctx.globalAlpha=1;
+  }
+  if(G.paused){
+    ctx.fillStyle='rgba(4,7,19,0.35)'; ctx.fillRect(0,0,W,H);
+  }
+}
+
+// ============================================================================
+//  PANELS
+// ============================================================================
+function badgeHTML(){
+  const names={'first-catch':'FIRST CATCH','downmass-dividend':'DOWNMASS DIVIDEND','clean-hands':'CLEAN HANDS',
+               'skimmer':'SKIMMER','grand-tour':'GRAND TOUR','hail-mary':'HAIL MARY'};
+  let s='';
+  for(const k in G.ach) if(G.ach[k]) s+='<span class="bdg">'+(names[k]||k)+'</span>';
+  return s? '<div class="badges">'+s+'</div>' : '';
+}
+function statsHTML(){
+  const avg=G.accN? (G.totalAcc/G.accN*100):0;
+  const per=conic(ST.x,ST.y,ST.vx,ST.vy).rp-R_P;
+  return '<div class="stat"><span>Contracts completed</span><b>'+Math.min(G.ci,LADDER.length+G.endlessN)+'</b></div>'+
+         '<div class="stat"><span>Payloads caught</span><b>'+G.caught+'</b></div>'+
+         '<div class="stat"><span>Payloads lost</span><b>'+G.lost+'</b></div>'+
+         '<div class="stat"><span>Best accuracy</span><b>'+fmt(G.bestAcc*100,0)+'%</b></div>'+
+         '<div class="stat"><span>Mean accuracy</span><b>'+fmt(avg,0)+'%</b></div>'+
+         '<div class="stat"><span>Propellant burned</span><b>'+fmt(ST.propBurned,1)+' kg</b></div>'+
+         '<div class="stat"><span>Final perigee</span><b>'+fmtInt(per)+' m</b></div>'+
+         '<div class="stat"><span>Run time</span><b>'+fmt(G.runTime,0)+' s</b></div>';
+}
+function showMsg(html){
+  document.getElementById('msgCard').innerHTML=html;
+  document.getElementById('msgPanel').classList.remove('hidden');
+  G.msgOpen=true;
+}
+function showOver(win, reason){
+  const html =
+    '<div class="title" style="font-size:clamp(22px,5.6vw,34px);letter-spacing:3px">'+(win?'RUN COMPLETE':'STATION LOST')+'</div>'+
+    '<div class="verdict '+(win?'win':'lose')+'">'+(reason||'')+'</div>'+
+    '<div class="sub">Final score</div>'+
+    '<div class="scorebig">'+fmtInt(G.score)+'</div>'+
+    statsHTML()+badgeHTML()+
+    '<button class="btn pane" id="primaryOverBtn">FLY AGAIN</button>';
+  showMsg(html);
+  document.getElementById('primaryOverBtn').addEventListener('click',doRestart);
+}
+function showCampaignWin(){
+  if(G.state!==State.PLAY) return;
+  G.state=State.OVER;
+  const per=conic(ST.x,ST.y,ST.vx,ST.vy).rp-R_P;
+  const bonus=5000+Math.round(clamp(per,0,6000))+Math.round(ST.prop*22);
+  G.score+=bonus;
+  Snd.chime(true);
+  submitScore(true);
+  const html =
+    '<div class="title" style="font-size:clamp(22px,5.6vw,34px);letter-spacing:3px">CAMPAIGN COMPLETE</div>'+
+    '<div class="verdict win">ALL '+LADDER.length+' CONTRACTS FLOWN</div>'+
+    '<div class="sub">Completion bonus +'+fmtInt(bonus)+'</div>'+
+    '<div class="scorebig">'+fmtInt(G.score)+'</div>'+
+    statsHTML()+badgeHTML()+
+    '<div class="note">Open contracts keep coming in free flight. Your orbit, your propellant and your nerve are all that stop you.</div>'+
+    '<button class="btn pane" id="primaryOverBtn">CONTINUE — FREE FLIGHT</button>'+
+    '<span class="btn alt pane" id="againBtn">NEW RUN</span>';
+  showMsg(html);
+  document.getElementById('primaryOverBtn').addEventListener('click',()=>{
+    hideMsg(); G.endless=true; G.submitted=false; G.state=State.PLAY;
+    lastTS=performance.now(); acc=0;
+    beginContract(LADDER.length);
+  });
+  document.getElementById('againBtn').addEventListener('click',doRestart);
+}
+function endRunManual(){
+  if(G.state!==State.PLAY) return;
+  G.state=State.OVER;
+  togglePause(false);
+  Snd.stopAll();
+  submitScore(false);
+  showOver(true,'RUN ENDED — SCORE SUBMITTED');
+}
+document.getElementById('endRunBtn').addEventListener('click',endRunManual);
+
+// ============================================================================
+//  CAPSULE ARC (drawn once at launch — the arc is deterministic)
+// ============================================================================
+function computeArc(b){
+  const out=[];
+  let x=b.x,y=b.y,vx=b.vx,vy=b.vy,mt=simTime;
+  const dt=0.4;
+  for(let i=0;i<400;i++){
+    moonAt(mt,_mScratch);
+    grav(x,y,_mScratch.x,_mScratch.y);
+    let ax=_gx, ay=_gy;
+    const r=Math.sqrt(x*x+y*y), rh=density(r-R_P);
+    if(rh>0){
+      const avx=-OM_P*y, avy=OM_P*x;
+      const rvx=vx-avx, rvy=vy-avy, sp=Math.sqrt(rvx*rvx+rvy*rvy);
+      if(sp>1e-6){ const k=-0.5*rh*sp*b.cda/b.m; ax+=k*rvx; ay+=k*rvy; }
+    }
+    vx+=ax*dt; vy+=ay*dt; x+=vx*dt; y+=vy*dt; mt+=dt;
+    if(i%2===0){ out.push(x,y); }
+    if(x*x+y*y<=R_P*R_P) break;
+  }
+  b.arc=out;
+}
+
+// ============================================================================
+//  MAIN LOOP
+// ============================================================================
+let lastTS=performance.now();
+let frameAvg=16.7, govT=0;
+function frame(now){
+  let dt=(now-lastTS)/1000; lastTS=now;
+  if(dt>0.1) dt=0.1; if(dt<0) dt=0;
+  if(!G.paused) update(dt);
+  render();
+  // safety net for weak GPUs: drop internal resolution before dropping frames
+  frameAvg += ((dt*1000)-frameAvg)*0.05;
+  govT += dt;
+  if(govT>1.6){
+    govT=0;
+    if(frameAvg>25.5 && resScale>0.55){ resScale=Math.max(0.55,resScale-0.18); resize(); frameAvg=17.0; }
+    else if(frameAvg<17.6 && resScale<1){ resScale=Math.min(1,resScale+0.12); resize(); frameAvg=17.0; }
+  }
+  requestAnimationFrame(frame);
+}
+
+// ============================================================================
+//  TEST HOOK (guarded, no UI)
+// ============================================================================
+function simAdvance(seconds){
+  const chunk=1/60;
+  let left=Math.min(Math.max(0,seconds), 6000);
+  while(left>0 && G.state===State.PLAY){
+    const d=Math.min(chunk,left); left-=d;
+    acc+=d*G.warp*G.slow;
+    let steps=0;
+    while(acc>=PHYS_DT && steps<MAX_STEP && G.state===State.PLAY){ worldStep(PHYS_DT); acc-=PHYS_DT; steps++; }
+    if(steps>=MAX_STEP) acc=0;
+    if(G.state!==State.PLAY) break;
+    if(G.lockPlan){ if(simTime>=G.lockPlan.t) fireCapsule(); }
+    else { replanT-=d; if(replanT<=0){ replanT=0.33; replan(); } }
+    const cap=firstCapsule();
+    if(cap){ const f=forecastMiss(cap,70); G.liveMiss=f.miss; G.liveRelV=f.relV; G.liveT=f.t; G.liveValid=true; }
+    if(payloadPart()){
+      computeTip();
+      const c=G.contract;
+      const mode=(c&&c.kind==='moon')?'moon':((c&&(c.kind==='return'||c.kind==='dispose'))?'down':'up');
+      const p=payloadPart();
+      predictThrow(_tx,_ty,_tvx,_tvy,p.cda,p.m,mode); buildGuide(); predValid=true;
+    }
+    G.runTime+=d;
+  }
+}
+window.__test = {
+  start(){ startGame(); },
+  state(){
+    const oc=conic(ST.x,ST.y,ST.vx,ST.vy);
+    return {
+      mode: G.state===State.START?'start':(G.state===State.OVER?'over':(G.paused?'paused':'play')),
+      score: Math.round(G.score),
+      alt: Math.hypot(ST.x,ST.y)-R_P,
+      peri: oc.rp-R_P, apo: isFinite(oc.ra)?oc.ra-R_P:Infinity,
+      period: oc.period, sma: oc.a, energy: oc.energy,
+      contracts: Math.min(G.ci, LADDER.length+G.endlessN),
+      contractIndex: G.ci,
+      contractKind: G.contract? G.contract.kind : null,
+      padState: G.padState, phaseErr: G.phaseErr, missEst: G.missEst,
+      tLaunch: G.tLaunch, tPass: G.tPass, lock: !!G.lockPlan,
+      liveMiss: G.liveValid? G.liveMiss : null,
+      propellant: ST.prop, heat: ST.heat, warp: G.warp,
+      attached: !!payloadPart(), capsules: bodies.filter(b=>b.kind==='capsule').length,
+      caught: G.caught, thrown: G.thrown, lost: G.lost,
+      spin: ST.w, mass: ST.M, simTime: simTime, dead: G.dead,
+      ach: Object.keys(G.ach), submitted: G.submitted,
+      good: (predValid && !!payloadPart())? predGood() : false,
+      predApo: pred.apo-R_P, predPeri: pred.peri-R_P, predImpact: pred.impact,
+      predMoon: pred.moonMin, armed: G.armed
+    };
+  },
+  arm(on){ G.spaceHeld=!!on; if(on) G.armT=ARM_TIME; },
+  autoThrow(maxSec){
+    if(!payloadPart()) return false;
+    let t=0, acc2=0;
+    const c=G.contract;
+    const mode=(c&&c.kind==='moon')?'moon':((c&&(c.kind==='return'||c.kind==='dispose'))?'down':'up');
+    while(t<(maxSec||60) && G.state===State.PLAY){
+      worldStep(PHYS_DT); t+=PHYS_DT; acc2+=PHYS_DT;
+      if(acc2>=0.04){
+        acc2=0;
+        if(!payloadPart()) return false;
+        computeTip();
+        const p=payloadPart();
+        predictThrow(_tx,_ty,_tvx,_tvy,p.cda,p.m,mode); predValid=true;
+        if(predGood()){ doRelease(); return true; }
+      }
+    }
+    return false;
+  },
+  warpTo(seconds){ simAdvance(seconds); },
+  forceGameOver(win){
+    if(G.state!==State.PLAY) return;
+    if(win){ G.ci=LADDER.length; showCampaignWin(); }
+    else endRun(false,'TEST TERMINATION');
+  },
+  // ---- extras used only by the automated verifier -----------------------
+  setMoon(on){ moon.on=!!on; },
+  setSpinTrim(on){ spinTrimOn=!!on; },
+  press(k,down){
+    const ev=new KeyboardEvent(down?'keydown':'keyup',{key:k,bubbles:true});
+    window.dispatchEvent(ev);
+  },
+  station(){ return {x:ST.x,y:ST.y,vx:ST.vx,vy:ST.vy,phi:ST.phi,w:ST.w,M:ST.M,I:ST.I}; },
+  angMom(){
+    // total angular momentum of the whole assembly about the planet centre —
+    // exactly conserved under central gravity, so a stiff integrator check
+    const ux=Math.cos(ST.phi), uy=Math.sin(ST.phi);
+    let L=0;
+    for(let i=0;i<ST.parts.length;i++){
+      const q=ST.parts[i], d=q.bx-ST.bxCom;
+      const x=ST.x+d*ux, y=ST.y+d*uy;
+      const vx=ST.vx-ST.w*uy*d, vy=ST.vy+ST.w*ux*d;
+      L+=q.m*(x*vy-y*vx);
+    }
+    return L;
+  },
+  probeOrbit(nPeriods){
+    // a free point mass on a circular orbit stepped by the shipped integrator
+    const wasMoon=moon.on; moon.on=false;
+    const r=5000, v=Math.sqrt(MU/r);
+    const bp=addBody({kind:'probe',x:r,y:0,vx:0,vy:v,m:100,cda:0,type:'shell',spin:0,rot:0});
+    const T=TAU*Math.sqrt(r*r*r/MU);
+    const out=[];
+    for(let k=0;k<nPeriods;k++){
+      let t=0;
+      while(t<T){ stepBodies(PHYS_DT); t+=PHYS_DT; }
+      const o=conic(bp.x,bp.y,bp.vx,bp.vy);
+      out.push({peri:o.rp-R_P, apo:o.ra-R_P, a:o.a, e:o.e});
+    }
+    bp.alive=false; moon.on=wasMoon;
+    return out;
+  },
+  spinToBottom(){
+    const want=Math.atan2(ST.y,ST.x)+Math.PI;
+    let g=0;
+    while(Math.abs(wrapPi(ST.phi-want))>0.01 && g<400000){
+      worldStep(PHYS_DT); g++;
+      if(G.state!==State.PLAY) break;
+    }
+  },
+  giveCatch(){
+    // teleport a capsule onto the tip with matched velocity (verification only)
+    computeTip();
+    const c=G.contract||{mass:80};
+    const b=addBody({kind:'capsule',x:_tx+5,y:_ty+5,vx:_tvx,vy:_tvy,m:c.mass,
+                     cda:c.mass*BALLISTIC,type:'cap',spin:0,rot:0});
+    computeArc(b);
+    G.spaceHeld=true; G.armT=ARM_TIME; G.armed=true;
+    tryCapture();
+    G.spaceHeld=false;
+    return !!payloadPart();
+  },
+  releaseAt(kind){
+    // rotate the tether to the requested phase, then throw (verification only)
+    const th=Math.atan2(ST.y,ST.x);
+    const want = kind==='down'? th+Math.PI : th;
+    let guard=0;
+    while(Math.abs(wrapPi(ST.phi-want))>0.02 && guard<200000){ worldStep(PHYS_DT); guard++; }
+    doRelease();
+  },
+  contracts(){ return LADDER.length; },
+  maxApo(){
+    // best apoapsis a throw could reach right now (verification only)
+    if(!payloadPart()) return null;
+    let x=ST.x,y=ST.y,vx=ST.vx,vy=ST.vy,phi=ST.phi;
+    const w=ST.w, arm=tipArm(), T=TAU/Math.abs(w), dt=T/120;
+    let best=0;
+    for(let i=0;i<120;i++){
+      const ux=Math.cos(phi), uy=Math.sin(phi);
+      const o=conic(x+arm*ux, y+arm*uy, vx-w*uy*arm, vy+w*ux*arm);
+      if(o.ok && o.ra>best) best=o.ra;
+      moonAt(simTime,_mScratch); grav(x,y,_mScratch.x,_mScratch.y);
+      vx+=_gx*dt; vy+=_gy*dt; x+=vx*dt; y+=vy*dt; phi+=w*dt;
+    }
+    return best;
+  },
+  moonSweep(seconds){
+    // sample the best achievable moon pass over a window (verification only)
+    if(!payloadPart()) return null;
+    let t=0, best=1e9, bestT=0, acc2=0;
+    const p2=payloadPart();
+    while(t<seconds && G.state===State.PLAY){
+      worldStep(PHYS_DT); t+=PHYS_DT; acc2+=PHYS_DT;
+      if(acc2>=0.08){
+        acc2=0; computeTip();
+        predictThrow(_tx,_ty,_tvx,_tvy,p2.cda,p2.m,'moon');
+        if(pred.moonMin<best){ best=pred.moonMin; bestT=t; }
+      }
+    }
+    return {best:best, at:bestT};
+  },
+  setOrbit(periAlt, apoAlt){
+    // place the station on a chosen ellipse (verification only)
+    const rp=R_P+periAlt, ra=R_P+apoAlt, a2=(rp+ra)/2;
+    const th=Math.atan2(ST.y,ST.x);
+    ST.x=ra*Math.cos(th); ST.y=ra*Math.sin(th);
+    const v=Math.sqrt(MU*(2/ra-1/a2));
+    ST.vx=-v*Math.sin(th); ST.vy=v*Math.cos(th);
+  },
+  hudRects(){ return hudRects.map(r=>({x:r.x,y:r.y,w:r.w,h:r.h})); },
+  guideScan(){
+    // raw release sweep over one tether revolution — used only for tuning
+    if(!payloadPart()) return null;
+    let x=ST.x,y=ST.y,vx=ST.vx,vy=ST.vy,phi=ST.phi;
+    const w=ST.w, arm=tipArm(), T=TAU/Math.abs(w), dt=T*1.02/72;
+    let mt=simTime; const out=[];
+    for(let i=0;i<72;i++){
+      const ux=Math.cos(phi), uy=Math.sin(phi);
+      const tx=x+arm*ux, ty=y+arm*uy;
+      const tvx=vx-w*uy*arm, tvy=vy+w*ux*arm;
+      const o=conic(tx,ty,tvx,tvy);
+      const th=Math.atan2(y,x);
+      out.push({deg:Math.round(wrapPi(phi-(th+Math.PI))*180/Math.PI),
+                apo:Math.round(o.ok?o.ra-R_P:-1), per:Math.round(o.rp-R_P),
+                err:+releaseErr(tx,ty,tvx,tvy,mt-simTime).toFixed(2)});
+      moonAt(mt,_mScratch); grav(x,y,_mScratch.x,_mScratch.y);
+      vx+=_gx*dt; vy+=_gy*dt; x+=vx*dt; y+=vy*dt; phi+=w*dt; mt+=dt;
+    }
+    return out;
+  },
+  skipTo(i){ if(G.state===State.PLAY){ beginContract(Math.max(0,Math.min(LADDER.length-1,i))); } }
+};
+
+// ============================================================================
+//  BOOT
+// ============================================================================
+applyInputMode();
+resize();
+newRun();          // populate the world so the start screen has a live backdrop
+try{
+  Arcade.ready().then(function(a){
+    if(a&&a.player&&!a.player.isGuest){
+      const g=document.getElementById('greet');
+      g.textContent='OPERATOR: '+(a.player.displayName||'ANON');
+    }
+  }).catch(function(){});
+}catch(e){}
+requestAnimationFrame(frame);
+})();
+</script>
