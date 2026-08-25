@@ -499,7 +499,7 @@ var POLE_M   = 2.50;
 var POLE_OVER= 0.22;            // how much stick lives above the top hand
 var SEG_L    = POLE_LEN/(NP-1);
 
-var GRIP_MIN = 3.80, GRIP_MAX = 4.45, GRIP_STEP = 0.05;
+var GRIP_MIN = 3.20, GRIP_MAX = 4.45, GRIP_STEP = 0.05;
 var HAND_SEP = 0.44;            // arc distance between the two hands
 
 var BAR_R    = 0.015;
@@ -800,8 +800,11 @@ function mkWorld(seed){
 /* Where the standards go.  A real vaulter sets them for their own
    trajectory; a bigger hold rotates the pole less and lands the apex
    closer to the box, so the uprights come in with it.               */
-var STAND_TAB = [[3.80,2.05],[3.90,1.90],[4.05,1.62],[4.20,1.02],[4.35,0.66],[4.45,0.52]];
+var STAND_TAB = [[3.20,2.60],[3.50,2.35],[3.80,2.05],[3.90,1.90],[4.05,1.62],[4.20,1.02],[4.35,0.66],[4.45,0.52]];
 function standX(grip){
+  return standXRaw(grip)+TUNE.standOff;
+}
+function standXRaw(grip){
   var g=clamp(grip,STAND_TAB[0][0],STAND_TAB[STAND_TAB.length-1][0]),i;
   for(i=0;i<STAND_TAB.length-1;i++){
     if(g<=STAND_TAB[i+1][0]){
@@ -824,7 +827,7 @@ function startAttempt(W, barH, grip, wind){
   W.carryAng=-3.00; W.carryOn=true; W.carryT=0; W.plantU=0; W.plantDur=0.40; W.plantQual=1; W.tipY0=1.62;
   W.runOn=false; W.ranThrough=false;
   W.peakY=0; W.apexX=0; W.apexVX=0; W.peakClr=-9; W.crossed=false; W.crossX=0; W.crossY=0;
-  W.landed=false; W.landT=0; W.rest=0;
+  W.landed=false; W.landT=0; W.rest=0; W.toH=0; W.pinU=0; W.pinPelX=0;
   W.poleAngMax=-9; W.backSide=false; W.clrMin=99; W.chordMin=9; W.crossLow=99; W.poleLow=99; W.crossDone=false;
   W.result=null; W.resolved=false; W.barHitBy=null; W.turn=0; W.latePush=false;
   W.wooshed=false; W.swungOnce=false; W.runT=0;
@@ -1029,13 +1032,35 @@ function legIK(V,hipJ,thI,shI,tx,ty){
 function runController(W,dt){
   var V=W.V,b=V.b,Pv=b[PELVIS];
   var cv=comV(V), cp=com(V);
-  var vmax = RUN_VMAX + (W.wind>0? W.wind*0.06 : W.wind*0.08);
+  var vmax = RUN_VMAX*TUNE.vmaxK + (W.wind>0? W.wind*0.06 : W.wind*0.08);
   if(W.runOn) V.vT += RUN_ACC*(1-V.vT/Math.max(2.2,vmax))*dt*2.4;
   else V.vT -= 2.6*dt;
   V.vT=clamp(V.vT,0,vmax);
   var v=clamp(cv.x,0,11);
 
-  var cad = 2.35 + 0.255*v;                       /* steps per second     */
+  var cadN = 2.35 + 0.255*v;                      /* nominal steps per second */
+
+  /* ---- checking the steps -------------------------------------------------
+     Over the last stride or two a vaulter stretches or shortens the stride so
+     a foot lands ON the take-off mark.  Without it the take-off point is
+     quantised by whatever the gait clock happened to be doing: measured in
+     the browser as a 0.35 m bimodal jump between -3.44 and -3.77 at identical
+     settings, and 0.1 m of take-off distance decides the whole vault.  Every
+     downstream gait quantity is derived from the adjusted cadence so the
+     support model stays self-consistent.                                  */
+  var cad = cadN;
+  V.strideLock = 0;
+  if(TUNE.strideLock && W.phase==='plant' && !W.P.planted && v>4.5){
+    var idl = Math.sqrt(Math.max(0.36, W.grip*W.grip - TUNE.toHand*TUNE.toHand));
+    var tta = ((BOX_BACK - idl) - Pv.x)/Math.max(4, v);
+    if(tta > 0.05 && tta < 0.95){
+      var ph0 = V.gait % Math.PI;
+      var nstep = Math.max(1, Math.round(tta*cadN));
+      var req = ((Math.PI-ph0) + (nstep-1)*Math.PI)/(Math.PI*tta);
+      cad = clamp(req, cadN*0.86, cadN*1.18);
+      V.strideLock = 1;
+    }
+  }
   var duty = clamp(0.30*cad/Math.max(v,2.2), 0.135, 0.34);  /* share of stride */
   var Tst  = duty*TAU2/(cad*Math.PI);
   V.gait += cad*Math.PI*dt; if(V.gait>TAU2) V.gait-=TAU2;
@@ -1120,9 +1145,13 @@ function runController(W,dt){
 }
 
 /* takeoff leg drive: a real impulse through whichever foot is down */
+/* Dev knobs, browser-sweepable.  Defaults are the shipped values; the
+   catch numbers below are the measured fix for the ~50% plant failure. */
+var TUNE={ letGo:1.00, vmaxK:1.0, toFK:1.0, swingK:1.0, strideLock:0,
+           catchY:0.34, catchU:0.45, catchX:0.25, toWin:0.34, toHand:2.05, standOff:0 };
 var TO_DUR=0.165, TO_F=2600;
 var SWING_MUL=3.0;
-var POLE_LETGO=1.00;           // 80 deg: past this the top hand comes off
+var POLE_LETGO=1.00;//tuned           // 80 deg: past this the top hand comes off
 var TURN_RATE=1/0.20, TURN_MAX=1.20;
 function takeoffDrive(W,dt){
   if(!W.tookOff) return;
@@ -1130,7 +1159,7 @@ function takeoffDrive(W,dt){
   var V=W.V,b=V.b, F=b[W.toFoot], Pv=b[PELVIS];
   if(F.y-F.W-surfY(F.x) > 0.11) return;
   var env=Math.sin(Math.PI*clamp(e/TO_DUR,0,1));
-  var fy=TO_F*env, fx=140*env;
+  var fy=TO_F*TUNE.toFK*env, fx=140*env;
   Pv.fx+=fx; Pv.fy+=fy; F.fx-=fx; F.fy-=fy;
 }
 
@@ -1626,15 +1655,15 @@ function step(W, IN){
     /* the box mouth is a funnel: a tip crossing at ankle height is caught by the
        back wall even if it has not yet dropped into the recess — but only once
        the plant drop is mostly executed, so a late press still misses honestly */
-    var boxCatch = W.phase==='plant' && W.plantU>0.45 && tip.y<0.17 &&
-                   tip.x>BOX_FRONT+0.02 && tip.x<BOX_BACK+0.12;
+    var boxCatch = W.phase==='plant' && W.plantU>TUNE.catchU && tip.y<TUNE.catchY &&
+                   tip.vy<1.2 && tip.x>BOX_FRONT-TUNE.catchX && tip.x<BOX_BACK+0.14;
     if((tip.x>BOX_FRONT-0.06 && tip.x<BOX_BACK+0.12 && tip.y<surfY(tip.x)+0.035) || boxCatch){
       P.planted=true; P.pinned=true; W.plantFlag=1;
       W.pinX=clamp(tip.x,BOX_FRONT+0.04,BOX_BACK-0.006);
       W.pinY=clamp(tip.y,-BOX_DEPTH+0.016,0.02);
       tip.x=W.pinX; tip.y=W.pinY; tip.vx=0; tip.vy=0; tip.invM=0;
       W.toSpeed=cvv.x; W.keTO=0.5*M_TOT*(cvv.x*cvv.x+cvv.y*cvv.y);
-      W.plantT=W.t;
+      W.plantT=W.t; W.pinU=W.plantU; W.pinPelX=b[PELVIS].x;
     }
   }
   /* takeoff: the leg drive fires off whichever foot is actually down */
@@ -1645,7 +1674,7 @@ function step(W, IN){
     var ideal=Math.sqrt(Math.max(0.36, W.grip*W.grip-hh*hh));
     var dxb=BOX_BACK-b[PELVIS].x;
     var K=(W.toK||1.0)*ideal;
-    if((down && dxb<=K+0.34) || dxb<=K+0.02 || W.t-W.plantT>0.30){
+    if((down && dxb<=K+TUNE.toWin) || dxb<=K+0.02 || W.t-W.plantT>0.30){
       W.tookOff=true; W.toT=W.t; W.toX=b[PELVIS].x; W.toH=endPt(b[FAT],0.5).y;
       W.toFoot=(cL<=cR)?FTL:FTR;
       W.carryOn=false; V.armMul=1;
@@ -1665,7 +1694,7 @@ function step(W, IN){
   if(W.phase==='fly'){
     var e=W.t-W.toT;
     if(W.swingHeld){
-      V.legMul=SWING_MUL; V.trkMul=SWING_MUL*0.8;
+      V.legMul=SWING_MUL*TUNE.swingK; V.trkMul=SWING_MUL*TUNE.swingK*0.8;
       V.goal=blend(V.goal, (e>0.30?POSE.tuckin:POSE.swing), dt, 0.070);
     } else {
       V.legMul=1.5; V.trkMul=1.6;
@@ -1675,7 +1704,7 @@ function step(W, IN){
     if(IN.push && e>0.16 && !W.pushed){
       W.pushed=true; W.pushT=W.t; W.botGrip=false;
       V.goal=POSE.push.slice();
-    } else if(!W.pushed && e>0.30 && chordNow<POLE_LETGO){
+    } else if(!W.pushed && e>0.30 && chordNow<TUNE.letGo){
       /* you cannot hold a pole past vertical: it lets go of you */
       W.pushed=true; W.pushT=W.t; W.botGrip=false; W.latePush=true;
       V.goal=POSE.push.slice();
@@ -1863,7 +1892,7 @@ return {
   standX:standX, getStandX:function(){return STAND_X;}, MAT_F1:MAT_F1, MAT_TOP:MAT_TOP, MAT_X1:MAT_X1, MAT_BACK:MAT_BACK,
   POLE_LEN:POLE_LEN, SEG_L:SEG_L, GRIP_MIN:GRIP_MIN, GRIP_MAX:GRIP_MAX, GRIP_STEP:GRIP_STEP,
   HAND_SEP:HAND_SEP, BAR_R:BAR_R, CUP_HW:CUP_HW, M_TOT:M_TOT, RUN_VMAX:RUN_VMAX,
-  totE:totE, mkWorld:mkWorld, startAttempt:startAttempt, step:step, resolve:resolve,
+  TUNE:TUNE, totE:totE, mkWorld:mkWorld, startAttempt:startAttempt, step:step, resolve:resolve,
   com:com, comV:comV, endPt:endPt, surfY:surfY, surfSlope:surfSlope, surfSoft:surfSoft,
   turnedX:turnedX, TURN_MAX:TURN_MAX, polePoint:polePoint, poleAngle:poleAngle, poleChordAngle:poleChordAngle,
   poleBendEnergy:poleBendEnergy, wrapPi:wrapPi, clamp:clamp, rng:rng
