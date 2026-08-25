@@ -518,7 +518,8 @@ var EI_EXP     = 2.00;          // longer grip -> longer, stiffer stick
 var POLE_KB    = POLE_EI0/SEG_L;
 var POLE_TH0   = -0.030;         // manufactured pre-bend per node (rad)
 var POLE_CB    = 2.5;          // bending damping (N m s / rad)
-var POLE_ITERS = 3;             // extra sweeps for the axial chain
+var POLE_ITERS = 3;
+var PROJ_ITERS = 10;            // position-projection sweeps after each step
 
 /* --------------------------------------------------------------- bodies */
 var SEG = [
@@ -800,7 +801,10 @@ function mkWorld(seed){
 /* Where the standards go.  A real vaulter sets them for their own
    trajectory; a bigger hold rotates the pole less and lands the apex
    closer to the box, so the uprights come in with it.               */
-var STAND_TAB = [[3.20,2.60],[3.50,2.35],[3.80,2.05],[3.90,1.90],[4.05,1.62],[4.20,1.02],[4.35,0.66],[4.45,0.52]];
+/* Where the standards get planted for a given grip.  Fitted to the apex the
+   vault actually reaches at that grip -- the bar has to be where the
+   vaulter tops out, not where a taller vault would have topped out.   */
+var STAND_TAB = [[3.20,1.20],[3.50,0.95],[3.80,0.65],[3.90,0.50],[4.05,0.30],[4.20,0.10],[4.35,0.00],[4.45,0.00]];
 function standX(grip){
   return standXRaw(grip)+TUNE.standOff;
 }
@@ -814,7 +818,7 @@ function standXRaw(grip){
   }
   return STAND_TAB[STAND_TAB.length-1][1];
 }
-function poleEI(grip){ return POLE_EI0*Math.pow(clamp(grip,GRIP_MIN,GRIP_MAX)/GRIP_REF, EI_EXP); }
+function poleEI(grip){ return TUNE.eiK*POLE_EI0*Math.pow(clamp(grip,GRIP_MIN,GRIP_MAX)/GRIP_REF, EI_EXP); }
 function startAttempt(W, barH, grip, wind){
   var V=W.V, P=W.P, C=W.C;
   W.t=0; W.pt=0; W.phase='set';
@@ -830,7 +834,7 @@ function startAttempt(W, barH, grip, wind){
   W.landed=false; W.landT=0; W.rest=0; W.toH=0; W.pinU=0; W.pinPelX=0;
   W.poleAngMax=-9; W.backSide=false; W.clrMin=99; W.chordMin=9; W.crossLow=99; W.poleLow=99; W.crossDone=false;
   W.result=null; W.resolved=false; W.barHitBy=null; W.turn=0; W.latePush=false;
-  W.wooshed=false; W.swungOnce=false; W.runT=0;
+  W.wooshed=false; W.swungOnce=false; W.runT=0; W.unpinT=0;
   W.ke0=0; W.keTO=0;
   W.sfx.length=0;
 
@@ -838,7 +842,8 @@ function startAttempt(W, barH, grip, wind){
   groundPose(V);
   V.pose=POSE.carry.slice(); V.goal=POSE.carry.slice();
   V.gait=0; V.vT=0; V.lean=0; V.tmul=1; V.armMul=1; V.legMul=1; V.trkMul=1;
-  var i; for(i=0;i<NJ;i++) V.mimp[i]=0;
+  var i; for(i=0;i<NJ;i++){ V.mimp[i]=0; V.limp[i]=0; }
+  for(i=0;i<NP;i++) P.bi[i]=0;
 
   /* the carry: top hand at the hip, pole tip forward and a little high */
   var CH=V.b[CHEST];
@@ -911,7 +916,7 @@ function gravityDrag(W){
     var rvx=B.vx-wind, rvy=B.vy;
     var sp=Math.sqrt(rvx*rvx+rvy*rvy);
     if(sp>0.05){
-      var cd=0.70*B.A*0.5*RHO*sp;
+      var cd=0.70*TUNE.airK*B.A*0.5*RHO*sp;
       B.fx -= cd*rvx; B.fy -= cd*rvy;
     }
   }
@@ -920,7 +925,7 @@ function gravityDrag(W){
     var n=P.n[i]; n.fy -= n.m*G;
     var vx=n.vx-wind*0.7, vy=n.vy;
     var s2=Math.sqrt(vx*vx+vy*vy);
-    if(s2>0.05){ var c2=0.020*s2; n.fx-=c2*vx; n.fy-=c2*vy; }
+    if(s2>0.05){ var c2=0.020*TUNE.airK*s2; n.fx-=c2*vx; n.fy-=c2*vy; }
   }
   var C=W.C;
   C.N.fy=-C.N.m*G; C.M.fy=-C.M.m*G; C.F.fy=-C.F.m*G;
@@ -933,8 +938,9 @@ function gravityDrag(W){
    the way an explicit spring this stiff does.                          */
 function bendSolve(P,dt){
   var i;
-  var gm=1/(dt*(dt*POLE_KB+POLE_CB));
-  var bt=dt*POLE_KB/(dt*POLE_KB+POLE_CB)/dt;
+  var _cb=POLE_CB*TUNE.poleCB;
+  var gm=1/(dt*(dt*POLE_KB+_cb));
+  var bt=dt*POLE_KB/(dt*POLE_KB+_cb)/dt;
   for(i=1;i<NP-1;i++){
     var A=P.n[i-1],B=P.n[i],C=P.n[i+1];
     var d1x=B.x-A.x,d1y=B.y-A.y,d2x=C.x-B.x,d2y=C.y-B.y;
@@ -1147,11 +1153,12 @@ function runController(W,dt){
 /* takeoff leg drive: a real impulse through whichever foot is down */
 /* Dev knobs, browser-sweepable.  Defaults are the shipped values; the
    catch numbers below are the measured fix for the ~50% plant failure. */
-var TUNE={ letGo:1.00, vmaxK:1.0, toFK:1.0, swingK:1.0, strideLock:0,
-           catchY:0.34, catchU:0.45, catchX:0.25, toWin:0.34, toHand:2.05, standOff:0 };
-var TO_DUR=0.165, TO_F=2600;
-var SWING_MUL=3.0;
-var POLE_LETGO=1.00;//tuned           // 80 deg: past this the top hand comes off
+var TUNE={ letGo:1.85, vmaxK:1.0, toFK:1.0, swingK:1.0, strideLock:1,
+           catchY:0.34, catchU:0.45, catchX:0.25, toWin:0.34, toHand:2.05, standOff:0,
+           limZ:1.0, poleCB:1.0, airK:1.0, motZ:1.0, iterK:1.0, eiK:1.0, relT:0.18, shove:70.0, unpin:0.50 };
+var TO_DUR=0.165, TO_F=3900;
+var SWING_MUL=4.2;
+var POLE_LETGO=1.85;//tuned           // 80 deg: past this the top hand comes off
 var TURN_RATE=1/0.20, TURN_MAX=1.20;
 function takeoffDrive(W,dt){
   if(!W.tookOff) return;
@@ -1217,12 +1224,17 @@ function solveAll(W,dt,iters){
   for(i=0;i<NP;i++) P.bi[i]=0;
   V.trace=W.trace;
   var contacts=W.noMat?[]:hardContacts(W);
+  if(W.aud && W.tookOff && !W.landed){
+    W.aud.nHard=(W.aud.nHard||0)+contacts.length;
+    W.aud.nSteps=(W.aud.nSteps||0)+1;
+  }
   var barCts=barBodyContacts(W);
   var cups=barCupContacts(W);
   for(it=0;it<iters;it++){
     /* ---- ragdoll joints + motors ---- */
     for(j=0;j<NJ;j++){
       var J=JNT[j], A=b[J.a], Bb=b[J.b];
+      var _a0 = W.aud?kinE(W):0;
       var mrel=Bb.a-A.a;
       var mul=1;
       if(j>=J_SHT&&j<=J_ELB) mul=V.armMul||1;
@@ -1230,7 +1242,7 @@ function solveAll(W,dt,iters){
       else mul=V.trkMul||1;
       var iem=1/(A.invI+Bb.invI);
       var kp=J.tm*MOTOR_KP*mul;
-      var kd=2*MOTOR_Z*Math.sqrt(kp*iem);
+      var kd=2*MOTOR_Z*TUNE.motZ*Math.sqrt(kp*iem);
       var gm=1/(dt*(dt*kp+kd));
       var bs=dt*kp/(dt*kp+kd)/dt;
       var mem=1/(A.invI+Bb.invI+gm);
@@ -1239,14 +1251,18 @@ function solveAll(W,dt,iters){
       var old=V.mimp[j], nw=clamp(old+mimp,-cap,cap);
       mimp=nw-old; V.mimp[j]=nw;
       A.w-=mimp*A.invI; Bb.w+=mimp*Bb.invI;
+      if(W.aud){ var _a1=kinE(W); audAdd(W,'motor',_a1-_a0); _a0=_a1; }
       /* ball joint */
       var ca=Math.cos(A.a),sa=Math.sin(A.a),cb=Math.cos(Bb.a),sb=Math.sin(Bb.a);
       var r1x=ca*J.ua*A.L, r1y=sa*J.ua*A.L;
       var r2x=cb*J.ub*Bb.L, r2y=sb*J.ub*Bb.L;
-      var Cx=(Bb.x+r2x)-(A.x+r1x), Cy=(Bb.y+r2y)-(A.y+r1y);
       var v1x=A.vx-A.w*r1y, v1y=A.vy+A.w*r1x;
       var v2x=Bb.vx-Bb.w*r2y, v2y=Bb.vy+Bb.w*r2x;
-      var dvx=v2x-v1x+beta*Cx, dvy=v2y-v1y+beta*Cy;
+      /* No Baumgarte here.  Feeding position error back as a velocity bias
+         was measured injecting/removing ~6 kJ a vault through these joints
+         alone; the drift is taken out geometrically after the step instead,
+         which makes this solve exactly workless.                        */
+      var dvx=v2x-v1x, dvy=v2y-v1y;
       var iA=A.invI,iB=Bb.invI;
       var k11=A.invM+Bb.invM+r1y*r1y*iA+r2y*r2y*iB;
       var k12=-r1x*r1y*iA-r2x*r2y*iB;
@@ -1258,13 +1274,14 @@ function solveAll(W,dt,iters){
         A.vx-=lx*A.invM; A.vy-=ly*A.invM; A.w-=(r1x*ly-r1y*lx)*iA;
         Bb.vx+=lx*Bb.invM; Bb.vy+=ly*Bb.invM; Bb.w+=(r2x*ly-r2y*lx)*iB;
       }
+      if(W.aud){ var _a2=kinE(W); audAdd(W,'ball',_a2-_a0); _a0=_a2; }
       /* angular limit -- an elastic end-stop, not a dead one.  A rigid
          inelastic limit was quietly eating ~1500 J a vault (measured);
          ligaments store and give back, and so does this.            */
       var rel=Bb.a-A.a, Cl=0;
       if(rel<J.lo) Cl=rel-J.lo; else if(rel>J.hi) Cl=rel-J.hi;
       if(Cl!==0){
-        var lkd=2*LIM_Z*Math.sqrt(LIM_KP*iem);
+        var lkd=2*LIM_Z*TUNE.limZ*Math.sqrt(LIM_KP*iem);
         var lgm=1/(dt*(dt*LIM_KP+lkd));
         var lbs=dt*LIM_KP/(dt*LIM_KP+lkd)/dt;
         var lem=1/(A.invI+Bb.invI+lgm);
@@ -1275,24 +1292,31 @@ function solveAll(W,dt,iters){
         raw=nacc-lacc; V.limp[j]=nacc;
         A.w-=raw*A.invI; Bb.w+=raw*Bb.invI;
       }
+      if(W.aud){ audAdd(W,'limit',kinE(W)-_a0); }
     }
     /* ---- pole axial chain (symmetric sweeps, warm started) ---- */
     var sw;
+    var _b0 = W.aud?kinE(W):0;
     bendSolve(P,dt);
+    if(W.aud){ var _b1=kinE(W); audAdd(W,'bend',_b1-_b0); _b0=_b1; }
     for(sw=0; sw<POLE_ITERS; sw++){
       for(i=0;i<NP-1;i++) axialVel(P,i,dt,beta);
       for(i=NP-2;i>=0;i--) axialVel(P,i,dt,beta);
     }
+    if(W.aud){ var _b2=kinE(W); audAdd(W,'axial',_b2-_b0); _b0=_b2; }
     /* ---- hands ---- */
     if(W.topGrip&&!W.noPole) gripSolve(W,b[FAT],W.grip,dt,beta);
     if(W.botGrip&&!W.noPole) gripSlide(W,b[FAB],dt,beta);
+    if(W.aud){ var _b3=kinE(W); audAdd(W,'grip',_b3-_b0); _b0=_b3; }
     /* ---- hard contacts ---- */
     for(i=0;i<contacts.length;i++) solveContact(contacts[i],dt);
+    if(W.aud){ var _b4=kinE(W); audAdd(W,'contact',_b4-_b0); _b0=_b4; }
     /* ---- crossbar cups ---- */
     for(i=0;i<cups.length;i++) solveContact(cups[i],dt);
     /* ---- crossbar vs body / pole ---- */
     for(i=0;i<barCts.length;i++){ solveBarContact(barCts[i],dt);
       if(barCts[i].acc>1e-4 && !W.barHitBy) W.barHitBy=(barCts[i].B?barCts[i].B.n:'pole')+'@'+W.t.toFixed(2); }
+    if(W.aud){ audAdd(W,'bar',kinE(W)-_b0); }
   }
 }
 function axialVel(P,i,dt,beta){
@@ -1300,10 +1324,9 @@ function axialVel(P,i,dt,beta){
   var dx=B.x-A.x, dy=B.y-A.y, d=Math.sqrt(dx*dx+dy*dy);
   if(d<1e-9) return;
   var nx=dx/d, ny=dy/d;
-  var Cc=d-SEG_L;
   var rv=(B.vx-A.vx)*nx+(B.vy-A.vy)*ny;
   var em=1/(A.invM+B.invM);
-  var imp=-(rv+beta*Cc*0.55)*em;
+  var imp=-rv*em;
   A.vx-=imp*nx*A.invM; A.vy-=imp*ny*A.invM;
   B.vx+=imp*nx*B.invM; B.vy+=imp*ny*B.invM;
 }
@@ -1320,7 +1343,7 @@ function gripSolve(W,H,s,dt,beta){
   var hx=H.x+rx, hy=H.y+ry;
   var hvx=H.vx-H.w*ry, hvy=H.vy+H.w*rx;
   var Cx=gx-hx, Cy=gy-hy;
-  var dvx=gvx-hvx+beta*Cx, dvy=gvy-hvy+beta*Cy;
+  var dvx=gvx-hvx, dvy=gvy-hvy;
   var im=w0*w0*A.invM + w1*w1*B.invM;
   var iH=H.invI;
   var k11=H.invM+im+ry*ry*iH;
@@ -1354,7 +1377,7 @@ function gripSlide(W,H,dt,beta){
   var Cx=gx-hx, Cy=gy-hy;
   W.botS=clamp(s-(Cx*tx+Cy*ty),0.12,W.grip-0.08);
   var Cn=Cx*nx+Cy*ny;
-  var dv=(gvx-hvx)*nx+(gvy-hvy)*ny + beta*0.7*Cn;
+  var dv=(gvx-hvx)*nx+(gvy-hvy)*ny;
   var rn=rx*ny-ry*nx;
   var im=w0*w0*A.invM+w1*w1*B.invM;
   var km=H.invM+im+rn*rn*H.invI; if(km<1e-12) return;
@@ -1542,6 +1565,15 @@ function applyBar(c,M,px,py,rx,ry){
 /* ==================================================================== */
 /*                            INTEGRATION                               */
 /* ==================================================================== */
+function kinE(W){
+  var e=0,i;
+  for(i=0;i<NB;i++){var B=W.V.b[i]; e+=0.5*B.m*(B.vx*B.vx+B.vy*B.vy)+0.5*B.I*B.w*B.w;}
+  for(i=0;i<NP;i++){var n=W.P.n[i]; if(n.invM>0) e+=0.5*n.m*(n.vx*n.vx+n.vy*n.vy);}
+  var C=W.C; e+=0.5*C.N.m*(C.N.vx*C.N.vx+C.N.vy*C.N.vy)+0.5*C.M.m*(C.M.vx*C.M.vx+C.M.vy*C.M.vy)
+             +0.5*C.F.m*(C.F.vx*C.F.vx+C.F.vy*C.F.vy);
+  return e;
+}
+function audAdd(W,k,d){ if(W.aud) W.aud[k]=(W.aud[k]||0)+d; }
 function totE(W){
   var e=0,i;
   for(i=0;i<NB;i++){var B=W.V.b[i];e+=0.5*B.m*(B.vx*B.vx+B.vy*B.vy)+0.5*B.I*B.w*B.w+B.m*G*B.y;}
@@ -1570,6 +1602,63 @@ function advance(W,dt){
   C.N.x+=C.N.vx*dt; C.N.y+=C.N.vy*dt;
   C.M.x+=C.M.vx*dt; C.M.y+=C.M.vy*dt;
   C.F.x+=C.F.vx*dt; C.F.y+=C.F.vy*dt;
+}
+/* Geometric drift removal.  Runs on POSITIONS after the integration step, so
+   it never adds or removes kinetic energy -- the velocity solve above stays
+   workless and this puts the linkage back where it belongs.            */
+function projJoint(A,B,J){
+  var ca=Math.cos(A.a),sa=Math.sin(A.a),cb=Math.cos(B.a),sb=Math.sin(B.a);
+  var r1x=ca*J.ua*A.L, r1y=sa*J.ua*A.L;
+  var r2x=cb*J.ub*B.L, r2y=sb*J.ub*B.L;
+  var Cx=(B.x+r2x)-(A.x+r1x), Cy=(B.y+r2y)-(A.y+r1y);
+  if(Cx*Cx+Cy*Cy < 1e-12) return;
+  var iA=A.invI,iB=B.invI;
+  var k11=A.invM+B.invM+r1y*r1y*iA+r2y*r2y*iB;
+  var k12=-r1x*r1y*iA-r2x*r2y*iB;
+  var k22=A.invM+B.invM+r1x*r1x*iA+r2x*r2x*iB;
+  var det=k11*k22-k12*k12; if(det>-1e-12 && det<1e-12) return;
+  var inv=1/det;
+  var lx=-(k22*Cx-k12*Cy)*inv, ly=-(-k12*Cx+k11*Cy)*inv;
+  lx*=PROJ; ly*=PROJ;
+  A.x-=lx*A.invM; A.y-=ly*A.invM; A.a-=(r1x*ly-r1y*lx)*iA;
+  B.x+=lx*B.invM; B.y+=ly*B.invM; B.a+=(r2x*ly-r2y*lx)*iB;
+}
+function projGrip(W,H,s,slide){
+  var P=W.P;
+  if(s<0.08) s=0.08;
+  var t=s/SEG_L, j=clamp(Math.floor(t),0,NP-2), f=clamp(t-j,0,1);
+  var A=P.n[j],B=P.n[j+1], w0=1-f, w1=f;
+  var gx=A.x*w0+B.x*w1, gy=A.y*w0+B.y*w1;
+  var ca=Math.cos(H.a), sa=Math.sin(H.a);
+  var rx=ca*0.5*H.L, ry=sa*0.5*H.L;
+  var Cx=gx-(H.x+rx), Cy=gy-(H.y+ry);
+  if(slide){
+    var dx=B.x-A.x, dy=B.y-A.y, dl=Math.sqrt(dx*dx+dy*dy); if(dl<1e-6) return;
+    var nx=-dy/dl, ny=dx/dl;
+    var cn=Cx*nx+Cy*ny; Cx=cn*nx; Cy=cn*ny;
+  }
+  var im=w0*w0*A.invM+w1*w1*B.invM;
+  var iH=H.invI;
+  var k11=H.invM+im+ry*ry*iH, k12=-rx*ry*iH, k22=H.invM+im+rx*rx*iH;
+  var det=k11*k22-k12*k12; if(det>-1e-12 && det<1e-12) return;
+  var inv=1/det;
+  var lx=-(k22*Cx-k12*Cy)*inv, ly=-(-k12*Cx+k11*Cy)*inv;
+  lx*=PROJ; ly*=PROJ;
+  A.x+=lx*w0*A.invM; A.y+=ly*w0*A.invM;
+  B.x+=lx*w1*B.invM; B.y+=ly*w1*B.invM;
+  H.x-=lx*H.invM; H.y-=ly*H.invM; H.a-=(rx*ly-ry*lx)*iH;
+}
+var PROJ=1.0;
+function positionSolve(W,iters){
+  var V=W.V,P=W.P,b=V.b,it,j,i;
+  for(it=0;it<iters;it++){
+    for(j=0;j<NJ;j++) projJoint(b[JNT[j].a], b[JNT[j].b], JNT[j]);
+    for(i=0;i<NP-1;i++) axialPos(P,i);
+    for(i=NP-2;i>=0;i--) axialPos(P,i);
+    if(W.topGrip&&!W.noPole) projGrip(W,b[FAT],W.grip,false);
+    if(W.botGrip&&!W.noPole) projGrip(W,b[FAB],clamp(W.botS,0.12,W.grip-0.08),true);
+    if(P.pinned){ P.n[0].x=W.pinX; P.n[0].y=W.pinY; }
+  }
 }
 function sanitize(W){
   var b=W.V.b,i,bad=false;
@@ -1635,8 +1724,7 @@ function step(W, IN){
     if(IN.plant){
       W.phase='plant'; W.carryT=0; W.plantX=b[PELVIS].x; W.plantA0=W.carryAng;
       /* aim: stretch the drop so the tip arrives as the take-off foot does */
-      var hh0=endPt(b[FAT],0.5).y;
-      var ideal0=Math.sqrt(Math.max(0.36, W.grip*W.grip-hh0*hh0));
+      var ideal0=Math.sqrt(Math.max(0.36, W.grip*W.grip-TUNE.toHand*TUNE.toHand));
       var dist0=(BOX_BACK-ideal0)-b[PELVIS].x;
       var vx0=Math.max(3.0, cvv.x);
       W.plantDur=clamp(dist0/vx0*0.88, 0.40, 0.95);
@@ -1670,7 +1758,12 @@ function step(W, IN){
   if(P.planted && !W.tookOff){
     var cL=b[FTL].y-b[FTL].W-surfY(b[FTL].x), cR=b[FTR].y-b[FTR].W-surfY(b[FTR].x);
     var down=(cL<0.050||cR<0.050);
-    var hh=endPt(b[FAT],0.5).y;
+    /* The take-off mark is a fixed distance for a given grip.  Deriving it
+       from the LIVE hand height makes it a moving target -- the hands are
+       climbing hard through the plant, so the mark runs away from the
+       vaulter and the trigger lands wherever the two curves happen to
+       cross.  Use the hand height a plant actually reaches.            */
+    var hh=TUNE.toHand;
     var ideal=Math.sqrt(Math.max(0.36, W.grip*W.grip-hh*hh));
     var dxb=BOX_BACK-b[PELVIS].x;
     var K=(W.toK||1.0)*ideal;
@@ -1714,14 +1807,17 @@ function step(W, IN){
     var pe=W.t-W.pushT;
     var elT=V.b[FAT].a-V.b[UAT].a;
     var shT=V.b[UAT].a-V.b[CHEST].a;
-    if(pe>0.34 || (elT<0.22 && shT>-0.34 && pe>0.10)){
-      W.topGrip=false; P.pinned=false; P.free=true; W.releaseFlag=1;
-      P.n[0].invM=1/P.n[0].m;
+    if(pe>TUNE.relT || (elT<0.22 && shT>-0.34 && pe>TUNE.relT*0.30)){
+      /* The hands come off, but the tip stays in the box for another beat.
+         That matters: a vaulter's push-off reacts against the ground THROUGH
+         the pole, not against the pole's own 2.5 kg.  Unpinning at the same
+         instant threw the stick away and gave the vaulter almost nothing. */
+      W.topGrip=false; W.releaseFlag=1; W.unpinT=W.t+TUNE.unpin;
       /* the release shove: the top hand pushes the stick back toward the
          runway as it lets go.  Equal and opposite, so the vaulter gets a
          little extra of their own.                                     */
       var gpt=W.grip/SEG_L, gj=clamp(Math.floor(gpt),0,NP-2), gf=clamp(gpt-gj,0,1);
-      var JX=-9.5, JY=-2.0;
+      var JX=-TUNE.shove, JY=-2.0;
       P.n[gj].vx += JX*(1-gf)*P.n[gj].invM;   P.n[gj].vy += JY*(1-gf)*P.n[gj].invM;
       P.n[gj+1].vx += JX*gf*P.n[gj+1].invM;   P.n[gj+1].vy += JY*gf*P.n[gj+1].invM;
       var HB=V.b[FAT];
@@ -1734,9 +1830,13 @@ function step(W, IN){
 
   /* over the bar: arch into it, go compact across it, then let go */
   if(W.phase==='over' && !W.landed){
-    var dxb2=Math.abs(cp.x-STAND_X);
-    if(dxb2<1.15) V.goal=blend(V.goal,POSE.flyaway,dt,0.075);
-    else if(cp.x<STAND_X) V.goal=blend(V.goal,POSE.arch,dt,0.13);
+    /* Arch on the way to the bar, flyaway once past it.  Keying this off an
+       absolute distance tied the clearance to where the standards happened
+       to be -- with them close in, the vaulter went straight to the flyaway
+       and crossed flat, dragging a leg through the bar every time.      */
+    var pastBar = cp.x > STAND_X;
+    if(!pastBar) V.goal=blend(V.goal,POSE.arch,dt,0.11);
+    else if(cp.x < STAND_X+0.85) V.goal=blend(V.goal,POSE.flyaway,dt,0.085);
     else { V.goal=blend(V.goal,POSE.limp,dt,0.28); V.tmul=Math.max(0.25,V.tmul-dt*1.6); }
   }
 
@@ -1752,15 +1852,18 @@ function step(W, IN){
   /* pose blend toward goal */
   blendInto(V,dt,0.05);
 
-  if(W.trace){W.eA=totE(W);}
+  if(W.aud){ W._kf=kinE(W); }
   integrate(W,dt);
+  if(W.aud){ audAdd(W,'forces',kinE(W)-W._kf); }
   if(W.trace){W.eB=totE(W);}
-  solveAll(W,dt,16);
-  if(W.trace){W.eC=totE(W);}
+  solveAll(W,dt,Math.max(4,Math.round(16*TUNE.iterK)));
   advance(W,dt);
   if(P.pinned) pinTip(W,dt);
+  if(W.unpinT && W.t>=W.unpinT && P.pinned){
+    P.pinned=false; P.free=true; W.unpinT=0; P.n[0].invM=1/P.n[0].m;
+  }
   P.bendE=poleBendEnergy(P); if(P.bendE>P.bendMax) P.bendMax=P.bendE;
-  poleAxial(P,1);
+  positionSolve(W,PROJ_ITERS);
   sanitize(W);
 
   /* ---------------- bookkeeping ---------------- */
@@ -2563,6 +2666,10 @@ function newAttempt(){
   var rnd = RB.rng((game.seed ^ (game.attempts*2654435761)) >>> 0);
   game.wind = Math.round((rnd()*2-1)*130)/100;      /* -1.3 .. +1.3 m/s */
   if(!RBW) RBW = RB.mkWorld(game.seed);
+  /* Start every attempt on a whole physics tick.  A leftover fraction of a
+     step carries a sub-tick phase shift into the run-up, and the gait
+     oscillator amplifies that into a whole different take-off stride.   */
+  acc = 0;
   RB.startAttempt(RBW, game.barH, game.grip, game.wind);
   RBW.dustCB = function(x,y,v){
     if(Math.random()<0.35) spawn(x, y, (Math.random()-0.5)*v*0.4, Math.random()*v*0.3,
