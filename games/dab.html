@@ -1,0 +1,2739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="DAB - observed motorcycle trials in the Scottish Highlands, 1962. Five scored sections, lowest marks wins. A real two-wheel rigid-body simulation: wheelies, endos and wheelspin emerge from engine torque, weight transfer and tyre slip.">
+<link rel="icon" href="data:,">
+<title>DAB</title>
+<style>
+:root{
+  --ink:#eef1ef;
+  --ink2:#c3cbc6;
+  --dim:#8e9a94;
+  --faint:#5d6a66;
+  --panel:rgba(16,22,21,.92);
+  --panel2:rgba(16,22,21,.66);
+  --line:rgba(195,203,198,.15);
+  --brass:#cfa855;
+  --heather:#9a86a4;
+  --good:#8fc47a;
+  --bad:#d9563f;
+  --warn:#e0a34a;
+  --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{
+  margin:0;padding:0;width:100%;height:100%;
+  background:#0b100f;color:var(--ink);
+  font-family:var(--sans);
+  overflow:hidden;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;
+  touch-action:none;
+}
+button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0;touch-action:none;}
+#app{position:fixed;inset:0;overflow:hidden;background:#0b100f;}
+/* --- RETINA/DPR RULE 1: the canvas is pinned to the viewport in CSS, always,
+   whatever the backing store gets sized to. --- */
+#gl{position:fixed;left:0;top:0;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+
+kbd{
+  font-family:var(--mono);font-size:.86em;color:#fff;
+  background:rgba(207,168,85,.15);border:1px solid rgba(207,168,85,.33);
+  border-radius:3px;padding:0 4px;white-space:nowrap;
+}
+
+/* ========================================================= HUD */
+#hud{position:absolute;inset:0;z-index:6;pointer-events:none;opacity:0;transition:opacity .3s;}
+#hud.on{opacity:1;}
+.card{
+  background:var(--panel2);border:1px solid var(--line);border-radius:3px;
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+}
+
+/* top-left: section identity, section chips, tach */
+#leftCol{position:absolute;left:max(10px,env(safe-area-inset-left));top:max(9px,env(safe-area-inset-top));
+  display:flex;flex-direction:column;gap:5px;align-items:flex-start;max-width:min(58vw,340px);}
+#secBox{padding:6px 11px 8px;line-height:1;}
+#secL{font-family:var(--mono);font-size:8px;letter-spacing:.30em;color:var(--dim);}
+#secName{font-family:var(--mono);font-weight:700;font-size:clamp(13px,2.7vw,20px);color:#fff;
+  letter-spacing:.05em;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+#secSub{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;color:var(--dim);margin-top:5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+#chips{display:flex;gap:3px;margin-top:8px;}
+.chip{font-family:var(--mono);font-size:10px;line-height:1;width:17px;height:17px;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(195,203,198,.20);border-radius:2px;color:var(--faint);
+  font-variant-numeric:tabular-nums;}
+.chip.now{border-color:rgba(207,168,85,.75);color:var(--brass);}
+.chip.done{color:var(--ink2);border-color:rgba(195,203,198,.34);background:rgba(195,203,198,.07);}
+.chip.clean{color:#0b100f;background:var(--good);border-color:var(--good);}
+.chip.five{color:#fff;background:var(--bad);border-color:var(--bad);}
+
+#tach{padding:6px 10px 7px;line-height:1;min-width:132px;}
+#tachTop{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+#tachL{font-family:var(--mono);font-size:8px;letter-spacing:.26em;color:var(--dim);}
+#spd{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink2);font-variant-numeric:tabular-nums;}
+#bar{position:relative;height:5px;margin-top:6px;background:rgba(195,203,198,.13);border-radius:1px;overflow:hidden;}
+#barF{position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#7f8f7a,#cfa855 66%,#d9563f);}
+#barTicks{position:absolute;inset:0;}
+#barTicks i{position:absolute;top:0;bottom:0;width:1px;background:rgba(11,16,15,.55);}
+#gripRow{display:flex;align-items:center;gap:6px;margin-top:7px;}
+#gripDot{width:7px;height:7px;border-radius:50%;background:var(--good);flex:0 0 auto;}
+#gripL{font-family:var(--mono);font-size:8px;letter-spacing:.18em;color:var(--dim);white-space:nowrap;}
+
+/* top-right: marks + clock */
+#rightBox{position:absolute;right:max(10px,env(safe-area-inset-right));top:max(9px,env(safe-area-inset-top));
+  padding:6px 11px 8px;text-align:right;line-height:1;min-width:96px;}
+#markL{font-family:var(--mono);font-size:8px;letter-spacing:.28em;color:var(--dim);}
+#markN{font-family:var(--mono);font-weight:700;font-size:clamp(21px,4.2vw,34px);color:#fff;
+  line-height:1;margin-top:4px;font-variant-numeric:tabular-nums;}
+#clock{font-family:var(--mono);font-size:clamp(9px,1.7vw,12px);letter-spacing:.10em;color:var(--ink2);
+  margin-top:7px;font-variant-numeric:tabular-nums;}
+#retryL{font-family:var(--mono);font-size:8px;letter-spacing:.14em;color:var(--faint);margin-top:6px;
+  white-space:nowrap;opacity:0;transition:opacity .25s;}
+#retryL.on{opacity:1;}
+
+/* centre call-outs */
+#call{position:absolute;left:50%;top:23%;transform:translate(-50%,-50%);
+  font-family:var(--mono);font-weight:700;font-size:clamp(16px,3.8vw,30px);letter-spacing:.20em;
+  color:#fff;text-shadow:0 2px 16px rgba(5,9,8,.9);opacity:0;transition:opacity .2s;
+  white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis;text-align:center;}
+#call.on{opacity:1;}
+#call.good{color:var(--good);} #call.bad{color:var(--bad);} #call.gold{color:var(--brass);}
+#sub{position:absolute;left:50%;top:calc(23% + 26px);transform:translateX(-50%);
+  font-family:var(--mono);font-size:clamp(9px,1.7vw,12px);letter-spacing:.14em;color:var(--ink2);
+  text-shadow:0 2px 10px rgba(5,9,8,.9);opacity:0;transition:opacity .2s;
+  width:min(90vw,600px);text-align:center;line-height:1.65;}
+#sub.on{opacity:1;}
+
+/* no-stop meter */
+#stopBox{position:absolute;left:50%;top:38%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:5px;opacity:0;transition:opacity .16s;}
+#stopBox.on{opacity:1;}
+#stopL{font-family:var(--mono);font-weight:700;font-size:clamp(13px,2.8vw,20px);letter-spacing:.34em;
+  color:var(--warn);text-shadow:0 2px 12px rgba(5,9,8,.9);}
+#stopBar{width:min(30vw,150px);height:4px;background:rgba(11,16,15,.6);
+  border:1px solid rgba(224,163,74,.45);border-radius:1px;overflow:hidden;}
+#stopF{height:100%;width:0%;background:var(--warn);}
+
+/* always-on hint strip (keyboard mode only) */
+#hintStrip{
+  position:absolute;left:50%;transform:translateX(-50%);
+  bottom:max(4px,env(safe-area-inset-bottom));
+  z-index:7;pointer-events:none;opacity:.60;
+  display:flex;align-items:center;gap:8px;white-space:nowrap;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:#dfe6e2;
+  text-shadow:0 1px 4px rgba(5,9,8,.9);
+}
+#hintStrip .hk{font-family:var(--mono);font-size:9.5px;color:#fff;
+  background:rgba(20,28,26,.72);border:1px solid rgba(195,203,198,.28);
+  border-radius:3px;padding:1px 4px;}
+#hintStrip .hs{color:var(--faint);}
+#hintStrip .sm{display:none;}
+@media (max-width:600px){
+  #hintStrip{gap:5px;font-size:9.5px;}
+  #hintStrip .hk{font-size:9px;padding:1px 3px;}
+  #hintStrip .lg{display:none;}
+  #hintStrip .sm{display:inline;}
+}
+@media (max-width:340px){ #hintStrip{gap:4px;font-size:9px;} }
+body.touch #hintStrip{display:none;}
+body.ovon #hintStrip{opacity:0;}
+
+/* ========================================================= touch */
+#touch{position:absolute;inset:0;z-index:8;display:none;}
+body.touch #touch{display:block;}
+.tb{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:#e8ede9;
+  background:rgba(16,22,21,.46);border:1px solid rgba(195,203,198,.26);border-radius:9px;
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);user-select:none;}
+.tb.down{background:rgba(207,168,85,.30);border-color:rgba(207,168,85,.7);color:#fff;}
+#tLB{left:max(11px,env(safe-area-inset-left));bottom:calc(max(12px,env(safe-area-inset-bottom)) + 6px);
+  width:76px;height:62px;}
+#tLF{left:calc(max(11px,env(safe-area-inset-left)) + 82px);bottom:calc(max(12px,env(safe-area-inset-bottom)) + 6px);
+  width:76px;height:62px;}
+#tBR{right:calc(max(11px,env(safe-area-inset-right)) + 82px);bottom:calc(max(12px,env(safe-area-inset-bottom)) + 6px);
+  width:76px;height:62px;}
+#tTH{right:max(11px,env(safe-area-inset-right));bottom:calc(max(12px,env(safe-area-inset-bottom)) + 6px);
+  width:76px;height:78px;}
+#tHELP{position:absolute;display:none;z-index:14;pointer-events:auto;
+  left:50%;transform:translateX(-50%);bottom:calc(max(12px,env(safe-area-inset-bottom)) + 8px);
+  width:38px;height:38px;border-radius:50%;font-size:14px;letter-spacing:0;}
+body.touch #tHELP{display:flex;}
+
+/* ========================================================= overlays */
+#ov{position:absolute;inset:0;z-index:12;display:flex;align-items:center;justify-content:center;
+  padding:16px;background:rgba(7,11,10,.72);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);}
+#ov.off{display:none;}
+.pane{display:none;width:min(560px,94vw);max-height:calc(100vh - 26px);overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:5px;
+  padding:clamp(15px,3.4vw,26px);box-shadow:0 22px 60px rgba(0,0,0,.6);}
+.pane.on{display:block;}
+.ttl{font-family:var(--mono);font-weight:700;letter-spacing:.36em;color:#fff;
+  font-size:clamp(30px,8vw,58px);line-height:1;}
+.strap{font-family:var(--mono);font-size:clamp(10px,2.1vw,13px);letter-spacing:.2em;color:var(--brass);margin-top:10px;}
+.fict{font-family:var(--mono);font-size:clamp(9px,1.8vw,11px);letter-spacing:.16em;color:var(--dim);margin-top:7px;}
+.blurb{font-size:clamp(11.5px,2.2vw,13.5px);line-height:1.75;color:var(--ink2);margin-top:15px;}
+.blurb b{color:#fff;font-weight:600;}
+.rule{height:1px;background:var(--line);margin:16px 0 13px;}
+.ctlH{font-family:var(--mono);font-size:9px;letter-spacing:.3em;color:var(--brass);margin-bottom:9px;}
+.ctlH.sec{color:var(--dim);margin-top:17px;}
+.ctl{display:flex;align-items:baseline;gap:10px;margin:0 0 7px;font-size:clamp(11px,2.1vw,13px);color:var(--ink2);line-height:1.5;}
+.ctl .k{flex:0 0 auto;min-width:104px;font-family:var(--mono);font-size:10.5px;color:#fff;}
+.ctl .d{color:var(--ink2);}
+.ctl .d em{color:var(--dim);font-style:normal;}
+.note{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--dim);margin-top:16px;line-height:1.7;}
+.go{margin-top:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.btn{font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;color:#0b100f;background:var(--brass);
+  padding:11px 22px;border-radius:3px;pointer-events:auto;}
+.btn.ghost{background:none;color:var(--ink2);border:1px solid var(--line);}
+.rider{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--good);margin-top:12px;}
+
+/* results scorecard */
+.cardHd{font-family:var(--mono);font-size:9px;letter-spacing:.32em;color:var(--dim);}
+.awrd{font-family:var(--mono);font-weight:700;font-size:clamp(22px,5.4vw,40px);letter-spacing:.16em;color:var(--brass);
+  margin-top:9px;line-height:1.1;}
+.awrd.perfect{color:var(--good);}
+.sheet{width:100%;border-collapse:collapse;margin-top:16px;font-family:var(--mono);}
+.sheet th{font-size:8.5px;letter-spacing:.22em;color:var(--dim);text-align:left;font-weight:400;
+  padding:0 0 7px;border-bottom:1px solid var(--line);}
+.sheet th.r,.sheet td.r{text-align:right;}
+.sheet td{font-size:clamp(10.5px,2.1vw,12.5px);color:var(--ink2);padding:8px 0;border-bottom:1px solid rgba(195,203,198,.08);}
+.sheet td.nm{color:#fff;letter-spacing:.08em;}
+.sheet td.mk{font-variant-numeric:tabular-nums;font-weight:700;color:#fff;}
+.sheet td.mk.c0{color:var(--good);} .sheet td.mk.c5{color:var(--bad);}
+.sheet tr.tot td{border-bottom:0;padding-top:11px;font-size:clamp(12px,2.4vw,15px);color:#fff;}
+.stats{display:flex;gap:20px;flex-wrap:wrap;margin-top:15px;}
+.st{font-family:var(--mono);}
+.st .l{font-size:8px;letter-spacing:.24em;color:var(--dim);}
+.st .v{font-size:clamp(13px,2.6vw,17px);color:#fff;margin-top:5px;font-variant-numeric:tabular-nums;}
+#pauseHd{font-family:var(--mono);font-weight:700;font-size:clamp(13px,3vw,19px);letter-spacing:.24em;color:#fff;}
+.pboot{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--faint);margin-top:18px;line-height:1.8;}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="gl"></canvas>
+
+  <div id="hud">
+    <div id="leftCol">
+      <div id="secBox" class="card">
+        <div id="secL">LIAISON</div>
+        <div id="secName">TO SECTION 1</div>
+        <div id="secSub">the moor road</div>
+        <div id="chips"></div>
+      </div>
+      <div id="tach" class="card">
+        <div id="tachTop"><span id="tachL">REVS</span><span id="spd">0.0 m/s</span></div>
+        <div id="bar"><div id="barF"></div><div id="barTicks"></div></div>
+        <div id="gripRow"><span id="gripDot"></span><span id="gripL">HEATHER</span></div>
+      </div>
+    </div>
+
+    <div id="rightBox" class="card">
+      <div id="markL">MARKS</div>
+      <div id="markN">0</div>
+      <div id="clock">0:00.0</div>
+      <div id="retryL">R RETRY SECTION</div>
+    </div>
+
+    <div id="call"></div>
+    <div id="sub"></div>
+
+    <div id="stopBox">
+      <div id="stopL">MOVE!</div>
+      <div id="stopBar"><div id="stopF"></div></div>
+    </div>
+  </div>
+
+  <div id="hintStrip">
+    <span class="hk">W</span><span class="lg">throttle</span><span class="sm">thr</span><span class="hs">·</span>
+    <span class="hk">S</span><span class="lg">brake</span><span class="sm">brk</span><span class="hs">·</span>
+    <span class="hk">A</span><span class="lg">lean back</span><span class="sm">back</span><span class="hs">·</span>
+    <span class="hk">D</span><span class="lg">lean fwd</span><span class="sm">fwd</span><span class="hs">·</span>
+    <span class="hk">H</span><span class="lg">controls</span><span class="sm">help</span>
+  </div>
+
+  <div id="touch">
+    <div class="tb" id="tLB">LEAN &#9664;</div>
+    <div class="tb" id="tLF">LEAN &#9654;</div>
+    <div class="tb" id="tBR">BRAKE</div>
+    <div class="tb" id="tTH">THROTTLE</div>
+  </div>
+  <div class="tb" id="tHELP">?</div>
+
+  <div id="ov">
+    <!-- ============ start ============ -->
+    <div class="pane on" id="pStart">
+      <div class="ttl">DAB</div>
+      <div class="strap">OBSERVED TRIALS &middot; LOWEST MARKS WINS</div>
+      <div class="fict">The Strathfinnan Trial &middot; Wester Ross &middot; April 1962</div>
+      <div class="blurb">
+        One loop, <b>five observed sections</b>, a 250cc two-stroke and a man in tweed with a clipboard.
+        This is not a race. Every time your boot touches the ground to save yourself you are marked
+        <b>one dab</b>; three or more is <b>3, footing</b>. Stop for two seconds, roll backwards, or fall off,
+        and it is <b>a five</b>. Ride the liaison trail between sections for free. <b>Lower is better. Nought is perfect.</b>
+      </div>
+      <div id="riderGreet" class="rider" style="display:none"></div>
+      <div class="rule"></div>
+      <div class="ctlH">RIDE &mdash; FOUR KEYS</div>
+      <div class="ctl"><span class="k">W &nbsp;/ &nbsp;&uarr;</span><span class="d">Throttle</span></div>
+      <div class="ctl"><span class="k">S &nbsp;/ &nbsp;&darr;</span><span class="d">Brake &nbsp;<em>(front and rear)</em></span></div>
+      <div class="ctl"><span class="k">A &nbsp;/ &nbsp;&larr;</span><span class="d">Lean back &nbsp;<em>(loft the front wheel)</em></span></div>
+      <div class="ctl"><span class="k">D &nbsp;/ &nbsp;&rarr;</span><span class="d">Lean forward &nbsp;<em>(keep her down on a climb)</em></span></div>
+      <div class="ctlH sec">EVERYTHING ELSE</div>
+      <div class="ctl"><span class="k">R</span><span class="d">Retry the section you are in</span></div>
+      <div class="ctl"><span class="k">P &nbsp;/ &nbsp;ESC</span><span class="d">Pause</span></div>
+      <div class="ctl"><span class="k">H &nbsp;/ &nbsp;?</span><span class="d">Controls</span></div>
+      <div class="ctl"><span class="k">M</span><span class="d">Mute</span></div>
+      <div class="ctl"><span class="k">F</span><span class="d">Restart the whole loop</span></div>
+      <div class="note">Press <kbd>H</kbd> or <kbd>?</kbd> any time to see these controls.</div>
+      <div class="go"><button class="btn" id="bStart">START THE LOOP</button></div>
+    </div>
+
+    <!-- ============ pause / controls ============ -->
+    <div class="pane" id="pPause">
+      <div id="pauseHd">PAUSED &mdash; CONTROLS</div>
+      <div class="rule"></div>
+      <div class="ctlH">RIDE &mdash; FOUR KEYS</div>
+      <div class="ctl"><span class="k">W &nbsp;/ &nbsp;&uarr;</span><span class="d">Throttle</span></div>
+      <div class="ctl"><span class="k">S &nbsp;/ &nbsp;&darr;</span><span class="d">Brake &nbsp;<em>(front and rear)</em></span></div>
+      <div class="ctl"><span class="k">A &nbsp;/ &nbsp;&larr;</span><span class="d">Lean back &nbsp;<em>(loft the front wheel)</em></span></div>
+      <div class="ctl"><span class="k">D &nbsp;/ &nbsp;&rarr;</span><span class="d">Lean forward &nbsp;<em>(keep her down on a climb)</em></span></div>
+      <div class="ctlH sec">EVERYTHING ELSE</div>
+      <div class="ctl"><span class="k">R</span><span class="d">Retry &mdash; the section you are in, or the one that just fived you &nbsp;<em>(a written card stands)</em></span></div>
+      <div class="ctl"><span class="k">P &nbsp;/ &nbsp;ESC</span><span class="d">Pause &nbsp;<em>(this panel)</em></span></div>
+      <div class="ctl"><span class="k">H &nbsp;/ &nbsp;?</span><span class="d">Controls &nbsp;<em>(this panel, mid-ride)</em></span></div>
+      <div class="ctl"><span class="k">M</span><span class="d">Mute sound</span></div>
+      <div class="ctl"><span class="k">F</span><span class="d">Restart the whole loop</span></div>
+      <div class="ctlH sec">TOUCH</div>
+      <div class="ctl"><span class="k">LEAN &#9664; &#9654;</span><span class="d">Left of screen &mdash; lean back / forward</span></div>
+      <div class="ctl"><span class="k">BRAKE / THROTTLE</span><span class="d">Right of screen &mdash; multi-touch, use both at once</span></div>
+      <div class="ctl"><span class="k">?</span><span class="d">Bottom centre &mdash; opens this panel</span></div>
+      <div class="pboot">MARKS &mdash; one per dab, three or more scores 3.<br>
+        A FIVE &mdash; a fall, two seconds stopped, half a metre backwards, or over the tape.</div>
+      <div class="go">
+        <button class="btn" id="bResume">RESUME</button>
+        <button class="btn ghost" id="bRestart2">RESTART LOOP</button>
+      </div>
+    </div>
+
+    <!-- ============ results ============ -->
+    <div class="pane" id="pEnd">
+      <div class="cardHd">THE STRATHFINNAN TRIAL &middot; OBSERVER'S CARD</div>
+      <div class="awrd" id="awrd">FINISHER</div>
+      <table class="sheet" id="sheet"></table>
+      <div class="stats">
+        <div class="st"><div class="l">TIME</div><div class="v" id="rTime">0:00</div></div>
+        <div class="st"><div class="l">CLEANS</div><div class="v" id="rClean">0</div></div>
+        <div class="st"><div class="l">RETRIES</div><div class="v" id="rRetry">0</div></div>
+      </div>
+      <div class="note" id="rNote"></div>
+      <div class="go"><button class="btn" id="bAgain">RIDE IT AGAIN</button>
+        <button class="btn ghost" id="bCtl2">CONTROLS</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- aimade.games Arcade SDK -->
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+  window.__arcade = null;
+  (function(){ try { Arcade.ready().then(function(a){ window.__arcade = a; }); } catch(e){} })();
+  function arcadeSubmit(score, meta){ try { if (typeof score==='number' && isFinite(score)) Arcade.ready().then(function(a){ a.scores.submit(score, meta||{}); }).catch(function(){}); } catch(e){} }
+  function arcadeUnlock(slug){ try { Arcade.ready().then(function(a){ a.achievements.unlock(slug); }).catch(function(){}); } catch(e){} }
+</script>
+<script>
+'use strict';
+/* =====================================================================
+   DAB — observed motorcycle trials, Wester Ross, April 1962.
+   Single file. Canvas 2D. Fixed-step rigid-body simulation at 1/240 s.
+   ===================================================================== */
+
+/* ------------------------------------------------------------------ util */
+var PI = Math.PI, TAU = PI * 2;
+function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+function lerp(a, b, t){ return a + (b - a) * t; }
+function smoothstep(t){ t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+function sgn(v){ return v < 0 ? -1 : (v > 0 ? 1 : 0); }
+function approach(v, t, rate, dt){ var d = t - v; var m = rate * dt; if (d > m) return v + m; if (d < -m) return v - m; return t; }
+/* deterministic PRNG so harness runs repeat exactly */
+function mulberry(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+var RNG = mulberry(20419);        /* physics-side noise (reset on loop restart) */
+var VRNG = mulberry(881207);      /* visual-only noise, built once */
+function rnd(a, b){ return a + (b - a) * RNG(); }
+function vrnd(a, b){ return a + (b - a) * VRNG(); }
+
+/* ------------------------------------------------------------------ dom */
+var D = function(id){ return document.getElementById(id); };
+var cv = D('gl'), ctx = cv.getContext('2d', { alpha: false });
+var elHud = D('hud'), elOv = D('ov');
+var pStart = D('pStart'), pPause = D('pPause'), pEnd = D('pEnd');
+var elSecL = D('secL'), elSecName = D('secName'), elSecSub = D('secSub'), elChips = D('chips');
+var elMarkN = D('markN'), elClock = D('clock'), elRetryL = D('retryL');
+var elBarF = D('barF'), elSpd = D('spd'), elGripDot = D('gripDot'), elGripL = D('gripL');
+var elCall = D('call'), elSub = D('sub');
+var elStopBox = D('stopBox'), elStopF = D('stopF');
+
+var VW = 1, VH = 1, DPR = 1;
+
+/* ================================================================== WORLD
+   Terrain is a uniform-dx polyline heightfield with a per-point surface id.
+   Steps are near-vertical segments inside the same field, so wheel/segment
+   contact handles ledges without special cases.
+   ------------------------------------------------------------------ */
+var SURF = { MOOR:0, GRAVEL:1, GRANITE:2, POLISH:3, WETROCK:4, MOSS:5, MUD:6, BARK:7 };
+var MU   = [0.86, 0.85, 0.92, 0.40, 0.55, 0.50, 0.60, 0.56];
+var CRR  = [0.034, 0.019, 0.012, 0.010, 0.016, 0.022, 0.058, 0.015];
+var RUF  = [0.40, 0.30, 0.26, 0.14, 1.72, 0.86, 0.92, 0.58];   /* balance-disturbance scale */
+var SNAME= ['HEATHER','GRAVEL','DRY GRANITE','POLISHED SLAB','WET ROCK','MOSS','PEAT MUD','WET BARK'];
+var SCOL = ['#5d5c3f','#6d6a60','#6d7379','#7d848a','#535c5e','#4d5a44','#3c332a','#4a4034'];
+var SCOL2= ['#43442f','#4e4c44','#4e545a','#5c6268','#3a4244','#374030','#2a231d','#332c23'];
+
+var TDX = 0.03;
+var TX0 = -14, TX1 = 300;
+var TN = Math.round((TX1 - TX0) / TDX) + 1;
+var TY = new Float64Array(TN);
+var TS = new Uint8Array(TN);
+var COURSE_END = 288;   /* finish banner */
+
+var SECTIONS = [
+  { n:'THE BURN',          sub:'a stream bed of wet boulders', x0: 46, x1: 70,  obs: 51.5, gate:null },
+  { n:"GREY MARE'S SLAB",  sub:'polished granite, thirty-odd degrees', x0:100, x1:124, obs:104.0, gate:null },
+  { n:'THE STEPS',         sub:'three drystone ledges', x0:150, x1:168, obs:153.0, gate:{ x:160.6, h:2.35 } },
+  { n:'PINEFALL',          sub:'fallen pines across the trail', x0:196, x1:216, obs:199.5, gate:{ x:207.6, h:2.35 } },
+  { n:"DEIL'S ELBOW",      sub:'a mud chute and the dip', x0:244, x1:272, obs:247.5, gate:null }
+];
+var WATER = [];      /* {x0,x1,level} */
+var SPECK = null;    /* Float32Array x,y,r + Uint8 colour idx */
+var SPECKC = null;
+var TUFT = null;     /* heather tufts / stones: x,y,kind,scale */
+var SUBST = null;    /* buried stones: x, depth, r */
+var LOGS = [];       /* rolling rigid logs */
+
+/* piecewise spine with smoothstep interpolation */
+/* Linear between control points, then smoothed — so a stated gradient is the
+   gradient you actually ride, with rounded transitions at every joint. An
+   eased interpolation quietly makes the middle of a slab half again as steep,
+   which is the difference between a 30-degree climb and a 41-degree one. */
+function spineAt(kf, x){
+  if (x <= kf[0][0]) return kf[0][1];
+  for (var i = 1; i < kf.length; i++){
+    if (x <= kf[i][0]){
+      var t = (x - kf[i-1][0]) / (kf[i][0] - kf[i-1][0]);
+      return lerp(kf[i-1][1], kf[i][1], t);
+    }
+  }
+  return kf[kf.length-1][1];
+}
+var KF = [
+  [-14, 6.20], [-9, 3.10], [-5.5, 0.55], [-3, 0.14], [6, 0.05], [16, 0.42], [24, 0.10], [30, -0.18], [33, -0.05],
+  [40, 0.05], [44, -0.35], [46, -0.95],
+  /* THE BURN 46..70 : stream bed */
+  [50, -1.25], [56, -1.15], [62, -0.85], [68, -0.35], [70, -0.10],
+  [76, 0.55], [84, 1.15], [92, 1.55], [100, 1.70],
+  /* GREY MARE'S SLAB 100..124 */
+  [106.2, 1.72], [107.4, 2.02], [113.2, 5.42], [115.4, 6.72], [117.0, 7.30], [118.6, 7.52], [124, 7.56],
+  [130, 7.30], [138, 6.60], [146, 6.05], [150, 5.95],
+  /* THE STEPS 150..168 (ledges are added as features) */
+  [156, 5.95], [164, 6.02], [168, 6.05],
+  [174, 5.86], [182, 5.30], [190, 5.86], [196, 5.62],
+  /* PINEFALL 196..216 (logs are features) */
+  [204, 5.50], [212, 5.44], [216, 5.35],
+  [224, 4.90], [232, 4.35], [240, 4.20], [244, 4.22],
+  /* DEIL'S ELBOW 244..272 */
+  [246.4, 4.20], [247.5, 3.70], [252.3, 0.72], [253.7, 0.20], [255.0, -0.16],
+  [256.2, 0.36], [258.4, 1.48], [261.2, 2.40], [263.5, 2.74], [272, 2.80],
+  [280, 2.55], [292, 2.30], [300, 2.10]
+];
+function noiseAt(x){
+  return 0.34*Math.sin(x*0.41+1.7) + 0.130*Math.sin(x*0.97+0.31) + 0.030*Math.sin(x*2.10+2.2)
+       + 0.009*Math.sin(x*4.60+0.9);
+}
+/* how much moor-noise survives at x (0 inside dressed sections) */
+function noiseTaper(x){
+  var t = 1;
+  var zones = [[45,71],[99,125],[149,169],[195,217],[243,273]];
+  for (var i = 0; i < zones.length; i++){
+    var a = zones[i][0], b = zones[i][1];
+    if (x > a - 3 && x < b + 3){
+      var e = Math.min((x - (a - 3)) / 3, ((b + 3) - x) / 3);
+      t = Math.min(t, clamp(1 - e, 0, 1));
+    }
+  }
+  return t;
+}
+function stepUp(x, x0, h, w){ return h * smoothstep((x - x0) / w); }
+function hump(x, cx, hw, h){ var d = (x - cx) / hw; if (d < -1 || d > 1) return 0; return h * Math.pow(Math.cos(d * PI * 0.5), 1.35); }
+
+function featureAt(x){
+  var f = 0, i;
+  /* --- liaison: a shallow burn splash at 30 m --- */
+  f -= hump(x, 30.2, 1.5, 0.42);
+  /* --- 1 THE BURN: rounded boulders in the bed --- */
+  if (x > 45.5 && x < 70.5){
+    f += hump(x, 48.4, 1.35, 0.31) + hump(x, 51.5, 1.10, 0.24) + hump(x, 54.7, 1.45, 0.37)
+       + hump(x, 57.9, 1.05, 0.22) + hump(x, 60.9, 1.40, 0.35) + hump(x, 64.1, 1.18, 0.27)
+       + hump(x, 67.2, 1.30, 0.32);
+    f += 0.030 * Math.sin(x * 3.6 + 1.1) + 0.016 * Math.sin(x * 6.7 + 2.6);
+  }
+  /* --- 2 SLAB: a lip at the base and a small ledge mid-slab --- */
+  if (x > 105 && x < 120){
+    f += hump(x, 110.6, 0.70, 0.055);
+  }
+  /* --- 3 THE STEPS: three drystone ledges --- */
+  if (x > 149 && x < 169){
+    f += stepUp(x, 155.85, 0.40, 0.30) + stepUp(x, 158.65, 0.44, 0.31) + stepUp(x, 161.65, 0.48, 0.32);
+  }
+  /* --- moor humps on the liaisons --- */
+  f += hump(x, 180.0, 2.6, 0.85) + hump(x, 186.6, 1.5, 0.42);
+  f += hump(x, 88.0, 2.2, 0.36);
+  f += hump(x, 232.0, 2.4, 0.50);
+  /* --- 4 PINEFALL: fallen logs (two fixed, the middle one is a body) --- */
+  if (x > 195 && x < 217){
+    f += hump(x, 200.6, 0.56, 0.32);
+    f += hump(x, 211.4, 0.58, 0.35);
+    f -= hump(x, 203.4, 1.6, 0.22);   /* wallow between them */
+    f -= hump(x, 208.4, 1.2, 0.16);
+  }
+  /* --- 5 DEIL'S ELBOW: greasy ruts down the chute --- */
+  if (x > 246 && x < 262){
+    f -= hump(x, 249.4, 0.55, 0.10) + hump(x, 251.2, 0.50, 0.08) + hump(x, 259.0, 0.60, 0.09);
+  }
+  return f;
+}
+function surfAt(x, slope){
+  if (x >= 45.4 && x <= 70.6) return SURF.WETROCK;
+  if (x >= 99.6 && x <= 124.4){
+    if (x > 112.8 && x < 115.8) return SURF.POLISH;
+    if (x > 106.2) return SURF.GRANITE;
+    return SURF.GRAVEL;
+  }
+  if (x >= 149.6 && x <= 168.4){
+    if ((x > 155.9 && x < 156.6) || (x > 158.4 && x < 159.1) || (x > 161.3 && x < 162.0)) return SURF.MOSS;
+    return SURF.GRANITE;
+  }
+  if (x >= 195.6 && x <= 216.4){
+    if (Math.abs(x - 200.6) < 0.44 || Math.abs(x - 205.9) < 0.46 || Math.abs(x - 211.4) < 0.46) return SURF.BARK;
+    return SURF.MUD;
+  }
+  if (x >= 243.6 && x <= 272.4){
+    if (x > 258.9 && x < 261.8) return SURF.MOSS;
+    if (x > 246.2 && x < 262.5) return SURF.MUD;
+    return SURF.MOSS;
+  }
+  if (x > 27.5 && x < 33.0) return SURF.WETROCK;
+  if (x > 272.4) return SURF.GRAVEL;
+  if (Math.abs(slope) > 0.42) return SURF.GRAVEL;
+  return SURF.MOOR;
+}
+
+function buildWorld(){
+  var i, x, y, j;
+  var raw = new Float64Array(TN);
+  for (i = 0; i < TN; i++) raw[i] = spineAt(KF, TX0 + i * TDX);
+  /* round the joints: a cosine-weighted moving average over +/-0.45 m */
+  var HW = 15, wsum = 0, kern = new Float64Array(HW * 2 + 1);
+  for (j = -HW; j <= HW; j++){ kern[j + HW] = 0.5 + 0.5 * Math.cos(PI * j / (HW + 1)); wsum += kern[j + HW]; }
+  for (j = 0; j <= HW * 2; j++) kern[j] /= wsum;
+  for (i = 0; i < TN; i++){
+    y = 0;
+    for (j = -HW; j <= HW; j++) y += raw[clamp(i + j, 0, TN - 1)] * kern[j + HW];
+    x = TX0 + i * TDX;
+    TY[i] = y + noiseTaper(x) * noiseAt(x) + featureAt(x);
+  }
+  /* surfaces need slope, so a second pass */
+  for (i = 0; i < TN; i++){
+    x = TX0 + i * TDX;
+    var a = TY[Math.max(0, i - 6)], b = TY[Math.min(TN - 1, i + 6)];
+    var sl = (b - a) / (12 * TDX);
+    TS[i] = surfAt(x, sl);
+  }
+  WATER.length = 0;
+  WATER.push({ x0: 28.3, x1: 32.2, depth: 0.22 });
+  WATER.push({ x0: 45.7, x1: 70.3, depth: 0.23 });
+  WATER.push({ x0: 253.4, x1: 256.3, depth: 0.21 });
+  buildWaterLevels();
+
+  /* ---- rolling log (PINEFALL, middle) ---- */
+  LOGS.length = 0;
+  LOGS.push(makeLog(205.9, 0.34));
+
+  /* ---- static decoration ---- */
+  var sp = [], spc = [];
+  for (x = TX0; x < TX1; x += 0.16){
+    var n = (VRNG() < 0.55) ? 1 : 0;
+    if (!n) continue;
+    var gy = heightAt(x), s = surfAt2(x);
+    var off = vrnd(-0.02, 0.20);
+    sp.push(x + vrnd(-0.06, 0.06), gy - off, vrnd(0.012, 0.045));
+    spc.push(s);
+  }
+  SPECK = new Float32Array(sp); SPECKC = new Uint8Array(spc);
+  var tf = [];
+  for (x = TX0; x < TX1; x += 0.5){
+    if (VRNG() < 0.62){
+      var s2 = surfAt2(x);
+      var kind = 0;
+      if (s2 === SURF.MOOR) kind = (VRNG() < 0.42) ? 1 : 0;         /* heather / grass */
+      else if (s2 === SURF.WETROCK) kind = 2;                        /* pebble */
+      else if (s2 === SURF.MOSS || s2 === SURF.MUD) kind = (VRNG()<0.5)?3:2;
+      else kind = 2;
+      var xx = x + vrnd(-0.2, 0.2);
+      tf.push(xx, heightAt(xx), kind, vrnd(0.7, 1.5));
+    }
+  }
+  TUFT = new Float32Array(tf);
+  var sb = [];
+  for (x = TX0; x < TX1; x += 1.1){
+    if (VRNG() < 0.72) sb.push(x + vrnd(-0.4, 0.4), vrnd(0.45, 2.6), vrnd(0.05, 0.20));
+  }
+  SUBST = new Float32Array(sb);
+}
+function surfAt2(x){
+  var i = clamp(Math.round((x - TX0) / TDX), 0, TN - 1);
+  return TS[i];
+}
+function heightAt(x){
+  var f = (x - TX0) / TDX;
+  if (f <= 0) return TY[0];
+  if (f >= TN - 1) return TY[TN - 1];
+  var i = f | 0, t = f - i;
+  return TY[i] + (TY[i + 1] - TY[i]) * t;
+}
+function slopeAt(x, span){
+  span = span || 0.65;
+  return Math.atan2(heightAt(x + span) - heightAt(x - span), span * 2);
+}
+/* Water sits in the hollows: the level follows the lowest bed within a metre
+   and a half, so a burn is ankle deep round the boulders instead of a slab of
+   green laid over the whole section. */
+var WDX = 0.20;
+function buildWaterLevels(){
+  for (var i = 0; i < WATER.length; i++){
+    var w = WATER[i];
+    var n = Math.ceil((w.x1 - w.x0) / WDX) + 1;
+    var raw = new Float64Array(n), lv = new Float64Array(n), j, k;
+    for (j = 0; j < n; j++){
+      var x = w.x0 + j * WDX, m = 1e9;
+      for (k = -1.5; k <= 1.5; k += 0.15) m = Math.min(m, heightAt(x + k));
+      raw[j] = m + w.depth;
+    }
+    for (j = 0; j < n; j++){          /* smooth so the surface reads as water */
+      var a = 0, c = 0;
+      for (k = -4; k <= 4; k++){ var q = clamp(j + k, 0, n - 1); a += raw[q]; c++; }
+      lv[j] = a / c;
+    }
+    w.lv = lv; w.n = n;
+  }
+}
+function waterLevelAt(x){
+  for (var i = 0; i < WATER.length; i++){
+    var w = WATER[i];
+    if (x >= w.x0 && x <= w.x1 && w.lv){
+      var f = (x - w.x0) / WDX;
+      var j = clamp(f | 0, 0, w.n - 2), t = f - j;
+      return w.lv[j] + (w.lv[j + 1] - w.lv[j]) * t;
+    }
+  }
+  return -1e9;
+}
+
+/* =============================================================== the log */
+function makeLog(x, r){
+  var y = heightAt(x) + r * 0.86;
+  return { x:x, y:y, r:r, a:0, vx:0, vy:0, w:0, m:78, I:0.5 * 78 * r * r,
+           home:x, lo:x - 1.6, hi:x + 2.6, rest:0 };
+}
+
+/* ============================================================ THE MACHINE
+   Chassis rigid body + rider point mass on a stiff spring + two strut wheels.
+   ------------------------------------------------------------------ */
+var P = {
+  g: 9.81,
+  mC: 78, IC: 12.0,                 /* chassis (bike less unsprung) */
+  mR: 70, kR: 42000, cR: 3050,      /* rider point mass on a stiff spring-damper */
+  riderY: 0.625, leanBack: -0.47, leanFwd: 0.45,
+  leanRate: 2.6, leanK: 122, leanC: 22.0,
+  mW: 8.0,                          /* unsprung mass per wheel (axial DOF) */
+  rF: 0.34, rR: 0.325,
+  IwF: 0.46, IwR: 0.62,
+  fMountX: 0.39, fMountY: 0.415, fRake: 0.442,     /* fork axis from vertical */
+  rMountX: -0.62, rMountY: 0.315, rRake: -0.055,
+  fFree: 0.655, rFree: 0.500,
+  fTravel: 0.175, rTravel: 0.165,
+  kSF: 22000, cSFc: 1250, cSFr: 1850,
+  kSR: 26500, cSRc: 1500, cSRr: 2150,
+  kStop: 260000, cStop: 2600,
+  kN: 132000, cN: 2050,             /* tyre radial spring-damper */
+  Bt: 7.6, Ct: 1.55,                /* tyre slip-curve shape */
+  vRef: 1.25,
+  G: 40.5, Ie: 0.0165,              /* overall gearing, engine inertia (crank) */
+  idle: 157,                        /* rad/s ~1500 rpm */
+  revLim: 1026,                     /* ~9800 rpm */
+  clutchK: 1.25, clutchCap: 25,
+  clutchLo: 128, clutchHi: 252,     /* engagement ramp, rad/s */
+  brkF: 620, brkR: 470,
+  dragK: 0.42,
+  balH: 0.92, balKp: 36.5, balKd: 9.4,
+  balAuth0: 0.175, balAuthV: 2.55,
+  dabAng: 0.196, crashAng: 0.405
+};
+/* engine torque curve, crank Nm vs rad/s */
+var TQ_R = [0, 125, 250, 375, 500, 607, 712, 817, 921, 1026, 1100];
+var TQ_T = [5.0, 8.2, 12.3, 15.8, 18.6, 19.8, 18.2, 14.0, 8.4, 1.9, 0];
+function engTorque(w){
+  if (w <= 0) return TQ_T[0];
+  for (var i = 1; i < TQ_R.length; i++){
+    if (w <= TQ_R[i]) return lerp(TQ_T[i-1], TQ_T[i], (w - TQ_R[i-1]) / (TQ_R[i] - TQ_R[i-1]));
+  }
+  return 0;
+}
+
+var BK = {
+  x:0, y:0, a:0, vx:0, vy:0, w:0,
+  rx:0, ry:0, rvx:0, rvy:0,            /* rider point mass */
+  leanX:0, leanY:P.riderY, leanVX:0, leanVY:0,
+  we:157,                              /* engine rad/s */
+  wh:[ {s:0, sd:0, spin:0, N:0, grounded:false, slip:0, cx:0, cy:0, px:0, py:0, nx:0, ny:1,
+        surf:0, sub:false, hit:0, rr:0, Tw:0} ,
+       {s:0, sd:0, spin:0, N:0, grounded:false, slip:0, cx:0, cy:0, px:0, py:0, nx:0, ny:1,
+        surf:0, sub:false, hit:0, rr:0, Tw:0} ],
+  bal:0, balv:0, balNoise:0, balNoise2:0,
+  footT:0, footSide:1, footX:0, footY:0,
+  airT:0, groundT:0,
+  crashed:false, crashT:0,
+  skidHit:0, bottom:0,
+  scrape:0, impact:0, loopT:0, endoT:0
+};
+var WF = 0, WR = 1;   /* wheel indices: 0 = front, 1 = rear */
+
+var CMD = { th:0, br:0, lean:0 };            /* raw targets from keys/touch/harness */
+var SM  = { th:0, br:0 };                    /* smoothed */
+
+function l2wx(lx, ly){ return BK.x + Math.cos(BK.a) * lx - Math.sin(BK.a) * ly; }
+function l2wy(lx, ly){ return BK.y + Math.sin(BK.a) * lx + Math.cos(BK.a) * ly; }
+
+function wheelGeom(i){
+  var mx = i === WF ? P.fMountX : P.rMountX, my = i === WF ? P.fMountY : P.rMountY;
+  var rk = i === WF ? P.fRake : P.rRake;
+  var ca = Math.cos(BK.a), sa = Math.sin(BK.a);
+  /* strut axis in chassis frame points down and (front) forward */
+  var alx = Math.sin(rk), aly = -Math.cos(rk);
+  G_ax = ca * alx - sa * aly; G_ay = sa * alx + ca * aly;
+  G_mx = BK.x + ca * mx - sa * my; G_my = BK.y + sa * mx + ca * my;
+}
+var G_ax = 0, G_ay = -1, G_mx = 0, G_my = 0;
+
+function placeBike(x, opts){
+  var gy = heightAt(x), sl = slopeAt(x, 0.66);
+  BK.a = sl; BK.x = x - Math.sin(sl) * 0.0; BK.y = gy + 0.485 * Math.cos(sl) + 0.02;
+  BK.vx = 0; BK.vy = 0; BK.w = 0;
+  BK.wh[WF].s = P.fFree - 0.033; BK.wh[WR].s = P.rFree - 0.035;
+  BK.wh[WF].sd = 0; BK.wh[WR].sd = 0;
+  BK.wh[WF].spin = 0; BK.wh[WR].spin = 0;
+  BK.wh[WF].hit = 0; BK.wh[WR].hit = 0;
+  BK.we = P.idle;
+  BK.leanX = 0; BK.leanY = P.riderY; BK.leanVX = 0; BK.leanVY = 0;
+  BK.rx = l2wx(0, P.riderY); BK.ry = l2wy(0, P.riderY);
+  BK.rvx = 0; BK.rvy = 0;
+  BK.bal = 0; BK.balv = 0; BK.balNoise = 0; BK.balNoise2 = 0;
+  BK.footT = 0; BK.airT = 0; BK.groundT = 1; BK.crashed = false; BK.crashT = 0;
+  BK.skidHit = 0; BK.bottom = 0; BK.scrape = 0; BK.impact = 0; BK.loopT = 0; BK.endoT = 0;
+  SM.th = 0; SM.br = 0;
+  if (opts && opts.settle){
+    var sv = CMD.th, sb = CMD.br, sl2 = CMD.lean;
+    CMD.th = 0; CMD.br = 1; CMD.lean = 0;
+    for (var k = 0; k < 240; k++) physStep(DT, true);
+    CMD.th = sv; CMD.br = sb; CMD.lean = sl2;
+    BK.bal = 0; BK.balv = 0; BK.impact = 0; BK.scrape = 0;
+    BK.loopT = 0; BK.endoT = 0;
+    EV.bottomOut = 0; EV.splash = 0; EV.thud = 0; EV.spin = 0; EV.logHit = 0;
+  }
+}
+
+/* --------------------------------------------------- terrain contact test
+   Returns deepest penetration of a circle against the polyline.           */
+var CT = { pen:0, nx:0, ny:1, px:0, py:0, si:0 };
+function circleTerrain(cx, cy, r){
+  CT.pen = -1;
+  var i0 = Math.floor((cx - r - TX0) / TDX) - 1, i1 = Math.ceil((cx + r - TX0) / TDX) + 1;
+  if (i0 < 0) i0 = 0; if (i1 > TN - 2) i1 = TN - 2;
+  for (var i = i0; i <= i1; i++){
+    var ax = TX0 + i * TDX, ay = TY[i], bx = ax + TDX, by = TY[i + 1];
+    var ex = bx - ax, ey = by - ay;
+    var t = ((cx - ax) * ex + (cy - ay) * ey) / (ex * ex + ey * ey);
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    var px = ax + ex * t, py = ay + ey * t;
+    var dx = cx - px, dy = cy - py;
+    var d2 = dx * dx + dy * dy;
+    if (d2 >= r * r) continue;
+    var d = Math.sqrt(d2);
+    var nx, ny;
+    if (d > 1e-6){ nx = dx / d; ny = dy / d; }
+    else { var L = Math.hypot(ex, ey); nx = -ey / L; ny = ex / L; }
+    if (ny < 0){ nx = -nx; ny = -ny; }     /* heightfield: normals point up */
+    var pen = r - d;
+    if (pen > CT.pen){
+      CT.pen = pen; CT.nx = nx; CT.ny = ny; CT.px = px; CT.py = py;
+      CT.si = TS[i];
+    }
+  }
+  return CT.pen > 0;
+}
+
+/* ------------------------------------------------------------- force accum */
+var FX = 0, FY = 0, TQ = 0;                /* chassis */
+function addForce(fx, fy, px, py){
+  FX += fx; FY += fy;
+  TQ += (px - BK.x) * fy - (py - BK.y) * fx;
+}
+var EV = { bottomOut:0, splash:0, splashX:0, splashY:0, thud:0, thudX:0, thudY:0,
+           spin:0, spinX:0, spinY:0, spinSurf:0, scrape:0, logHit:0 };
+
+var DT = 1 / 240;
+
+/* The attitude a trials rider actually feels: the chassis angle measured
+   against whatever is holding the bike up. Both wheels down and you cannot
+   endo; on one wheel the reference is the ground under that wheel. */
+function groundRef(){
+  var f = BK.wh[WF], r = BK.wh[WR];
+  if (f.grounded && r.grounded) return Math.atan2(f.cy - r.cy, f.cx - r.cx);
+  if (f.grounded) return slopeAt(f.cx, 0.45);
+  if (r.grounded) return slopeAt(r.cx, 0.45);
+  return slopeAt(BK.x, 0.66);
+}
+function pitchRel(){ return BK.a - groundRef(); }
+
+/* Where the combined centre of mass sits relative to each contact patch.
+   These two angles ARE the loop-out and endo margins: when the c.o.m. passes
+   behind the rear contact the bike goes over backwards, and when it passes
+   over the front contact it goes over the bars. Works on any gradient with no
+   special cases, which is why the slab and the chute feel different. */
+var TIP = { rear:1, front:1, comX:0, comY:0 };
+function tipState(){
+  var wf = BK.wh[WF], wr = BK.wh[WR];
+  var M = P.mC + P.mR + 2 * P.mW;
+  var cx = (P.mC * BK.x + P.mR * BK.rx + P.mW * (wf.cx + wr.cx)) / M;
+  var cy = (P.mC * BK.y + P.mR * BK.ry + P.mW * (wf.cy + wr.cy)) / M;
+  TIP.comX = cx; TIP.comY = cy;
+  var hr = Math.max(0.25, cy - wr.py), hf = Math.max(0.25, cy - wf.py);
+  TIP.rear = Math.atan2(cx - wr.px, hr);
+  TIP.front = Math.atan2(wf.px - cx, hf);
+}
+
+/* ================================================================ physics */
+function physStep(dt, settling){
+  var i, w, gy;
+  var crashed = BK.crashed;
+
+  /* ---------------- input smoothing (analog feel, no instant changes) --- */
+  var thT = crashed ? 0 : CMD.th, brT = crashed ? 0 : CMD.br;
+  SM.th = approach(SM.th, thT, thT > SM.th ? 5.0 : 9.0, dt);
+  SM.br = approach(SM.br, brT, brT > SM.br ? 9.0 : 14.0, dt);
+  var leanTgt = crashed ? 0 : clamp(CMD.lean, -1, 1);
+  /* lean -1 -> leanBack (negative x, behind the pegs), +1 -> leanFwd */
+  var lxT = leanTgt < 0 ? (-leanTgt) * P.leanBack : leanTgt * P.leanFwd;
+  var lyT = P.riderY - 0.155 * Math.abs(leanTgt);
+  /* The rider's body follows the command through a critically damped follower,
+     so the attachment point has a continuous velocity — a weight shift, not a
+     hammer blow. (A plain rate limiter steps the velocity and the rider damper
+     answers with several kN, which lofts the front all by itself.) */
+  var laX = P.leanK * (lxT - BK.leanX) - P.leanC * BK.leanVX;
+  var laY = P.leanK * 0.7 * (lyT - BK.leanY) - P.leanC * 0.85 * BK.leanVY;
+  BK.leanVX = clamp(BK.leanVX + laX * dt, -P.leanRate, P.leanRate);
+  BK.leanVY = clamp(BK.leanVY + laY * dt, -P.leanRate, P.leanRate);
+  BK.leanX += BK.leanVX * dt;
+  BK.leanY += BK.leanVY * dt;
+
+  FX = 0; FY = 0; TQ = 0;
+  var ca = Math.cos(BK.a), sa = Math.sin(BK.a);
+
+  /* ---------------- gravity ------------------------------------------- */
+  FY += -P.mC * P.g;
+
+  /* ---------------- rider point mass ---------------------------------- */
+  var tx = BK.x + ca * BK.leanX - sa * BK.leanY;
+  var ty = BK.y + sa * BK.leanX + ca * BK.leanY;
+  /* velocity of the attachment point on the chassis */
+  var arx = tx - BK.x, ary = ty - BK.y;
+  /* velocity of the moving attachment point: rigid-body term + the rider's own
+     shift rate expressed in world axes */
+  var tvx = BK.vx - BK.w * ary + ca * BK.leanVX - sa * BK.leanVY;
+  var tvy = BK.vy + BK.w * arx + sa * BK.leanVX + ca * BK.leanVY;
+  var kR = crashed ? P.kR * 0.10 : P.kR, cRd = crashed ? P.cR * 0.35 : P.cR;
+  var rfx = kR * (tx - BK.rx) + cRd * (tvx - BK.rvx);
+  var rfy = kR * (ty - BK.ry) + cRd * (tvy - BK.rvy);
+  /* soft cap so a bad frame can't explode the rider */
+  var rfm = Math.hypot(rfx, rfy), rcap = 26000;
+  if (rfm > rcap){ rfx *= rcap / rfm; rfy *= rcap / rfm; }
+  BK.rvx += (rfx / P.mR) * dt;
+  BK.rvy += (rfy / P.mR - P.g) * dt;
+  addForce(-rfx, -rfy, tx, ty);
+
+  /* rider contacting the ground = a fall */
+  if (!crashed && !settling){
+    if (BK.ry < heightAt(BK.rx) + 0.10) crashEvent('down');
+  }
+
+  /* engine torque is worked out here; the clutch is solved after the wheels,
+     because a locked clutch is a constraint and needs to know what the rear
+     tyre is doing before it can say how much torque it carries. */
+  var Te = SM.th * engTorque(BK.we) - (1 - SM.th) * (0.35 + BK.we * 0.0022);
+  Te += clamp((P.idle - BK.we) * 0.075, 0, 5.5);      /* idle stop */
+  if (BK.we > P.revLim) Te = Math.min(Te, 0) - (BK.we - P.revLim) * 0.05;
+
+  /* ---------------- wheels -------------------------------------------- */
+  var totalN = 0, anyGround = false, roughIn = 0, slipIn = 0;
+  for (i = 0; i < 2; i++){
+    w = BK.wh[i];
+    var r = i === WF ? P.rF : P.rR;
+    var Iw = i === WF ? P.IwF : P.IwR;
+    wheelGeom(i);
+    var cx = G_mx + G_ax * w.s, cy = G_my + G_ay * w.s;
+    w.cx = cx; w.cy = cy;
+    /* wheel-centre velocity */
+    var lx = cx - BK.x, ly = cy - BK.y;
+    var vwx = BK.vx - BK.w * ly + G_ax * w.sd;
+    var vwy = BK.vy + BK.w * lx + G_ay * w.sd;
+
+    /* ---- suspension ---- */
+    var free = i === WF ? P.fFree : P.rFree;
+    var trav = i === WF ? P.fTravel : P.rTravel;
+    var kS = i === WF ? P.kSF : P.kSR;
+    var cS = w.sd > 0 ? (i === WF ? P.cSFc : P.cSRc) : (i === WF ? P.cSFr : P.cSRr);
+    var comp = free - w.s;                                /* >0 = compressed */
+    var Fs = kS * comp - cS * w.sd;
+    var sMin = free - trav;
+    if (w.s < sMin){
+      var pen = sMin - w.s;
+      Fs += P.kStop * pen - P.cStop * w.sd;
+      if (pen > 0.004 && w.sd < -0.9 && EV.bottomOut < 1){ EV.bottomOut = Math.min(1, -w.sd / 4); BK.bottom = 1; }
+    }
+    if (w.s > free + 0.05) Fs += (free + 0.05 - w.s) * 90000 - w.sd * 900;
+
+    /* ---- tyre contact ---- */
+    var Fn = 0, Ftan = 0, nx = 0, ny = 1, tgx = 1, tgy = 0;
+    w.grounded = false; w.slip = 0;
+    if (circleTerrain(cx, cy, r)){
+      nx = CT.nx; ny = CT.ny;
+      w.nx = nx; w.ny = ny; w.surf = CT.si;
+      tgx = ny; tgy = -nx;                              /* tangent, +x-ish */
+      var vn = vwx * nx + vwy * ny;
+      Fn = P.kN * CT.pen - P.cN * vn;
+      if (Fn < 0) Fn = 0;
+      if (Fn > 26000) Fn = 26000;
+      w.grounded = true; anyGround = true; totalN += Fn;
+      w.px = CT.px; w.py = CT.py;
+      if (vn < -1.6 && w.hit <= 0){
+        var imp = Math.min(1, -vn / 6);
+        EV.thud = Math.max(EV.thud, imp); EV.thudX = cx; EV.thudY = cy; w.hit = 0.12;
+        BK.impact = Math.max(BK.impact, imp);
+        if (!settling) BK.balv += (RNG() - 0.5) * imp * imp * 4.4;  /* a hard landing kicks the balance */
+      }
+      /* longitudinal slip */
+      var vt = vwx * tgx + vwy * tgy;
+      var slipV = w.spin * r - vt;
+      var k = slipV / Math.max(P.vRef, Math.abs(vt));
+      var mu = MU[CT.si];
+      /* wet-surface loss when submerged */
+      var wl = waterLevelAt(cx);
+      w.sub = (cy - r * 0.55 < wl);
+      if (w.sub) mu *= 0.90;
+      var Fmax = mu * Fn;
+      var Fl = Fmax * Math.sin(P.Ct * Math.atan(P.Bt * k));
+      /* anti-jitter: never overshoot the slip null in one step */
+      var mEff = 1 / (r * r / Iw + 1 / 96);
+      var Fstop = Math.abs(slipV) * mEff / dt;
+      if (Math.abs(Fl) > Fstop) Fl = sgn(Fl) * Fstop;
+      Ftan = Fl;
+      w.slip = clamp(Math.abs(k), 0, 3) * (Fn > 60 ? 1 : 0);
+      slipIn += Math.max(0, Math.abs(k) - 0.22) * (i === WR ? 1 : 0.6);
+      roughIn += Math.abs(w.sd) * RUF[CT.si];
+      if (Math.abs(k) > 0.30 && Math.abs(slipV) > 1.1 && Fn > 200){
+        EV.spin = Math.max(EV.spin, Math.min(1, Math.abs(slipV) / 7));
+        EV.spinX = CT.px; EV.spinY = CT.py; EV.spinSurf = CT.si;
+      }
+      /* rolling resistance */
+      var Trr = -sgn(w.spin) * CRR[CT.si] * Fn * r;
+      if (Math.abs(w.spin) < 0.4) Trr *= Math.abs(w.spin) / 0.4;
+      w.rr = Trr;
+      /* water drag */
+      if (w.sub){
+        var dep = clamp((wl - (cy - r)) / (2 * r), 0, 1);
+        var vmag = Math.hypot(vwx, vwy);
+        /* ploughing a wheel through the burn costs real speed, and the wall of
+           water it throws up is not a steady force */
+        var kW = 38 * dep;
+        addForce(-kW * vmag * vwx, -kW * vmag * vwy, cx, cy);
+        if (vmag > 1.4){
+          if (EV.splash < 1){ EV.splash = Math.min(1, vmag / 5); EV.splashX = cx; EV.splashY = wl; }
+          if (!settling) BK.balv += (RNG() - 0.5) * dep * clamp(vmag / 4, 0, 1.6) * 1.5 * dt * 12;
+        }
+      }
+    } else {
+      w.surf = surfAt2(cx);
+      w.rr = 0;
+      w.px = cx; w.py = cy - r;
+    }
+    if (w.hit > 0) w.hit -= dt;
+    w.N = Fn;
+
+    /* ---- wheel torques (drive is added after the clutch solve) ---- */
+    var Tw = -Ftan * r;
+    /* brakes: one input, front-biased, clamped so they never reverse spin */
+    var bT = SM.br * (i === WF ? P.brkF : P.brkR);
+    if (bT > 0){
+      var maxStop = Math.abs(w.spin) * Iw / dt + Math.abs(Tw);
+      var bApp = Math.min(bT, maxStop);
+      Tw -= sgn(w.spin) * bApp;
+      TQ -= sgn(w.spin) * bApp;                       /* brake torque reaction: nose down */
+      if (Math.abs(w.spin) < 0.02) w.spin *= 0.5;
+    }
+    w.Tw = Tw;
+    if (i === WF) w.spin += (Tw / Iw) * dt;
+
+    /* ---- transmit to chassis ---- */
+    /* strut force acts along the axis, its line passes through the mount */
+    addForce(-Fs * G_ax, -Fs * G_ay, cx, cy);
+    /* contact force: axial part goes through the strut, the rest is rigid */
+    var Fcx = Fn * nx + Ftan * tgx, Fcy = Fn * ny + Ftan * tgy;
+    var axial = Fcx * G_ax + Fcy * G_ay;
+    addForce(Fcx - axial * G_ax, Fcy - axial * G_ay, cx, cy);
+
+    /* ---- unsprung axial DOF ---- */
+    var gAx = (-P.mW * P.g) * G_ay;
+    var sAcc = (Fs + axial + gAx) / P.mW;
+    w.sd += sAcc * dt;
+    w.sd = clamp(w.sd, -12, 12);
+    w.s += w.sd * dt;
+    w.s = clamp(w.s, free - trav - 0.03, free + 0.06);
+  }
+
+  /* ---------------- clutch: a constraint, not a spring -----------------
+     A locked clutch carries whatever torque holds crank and wheel together;
+     a slipping one carries its capacity. Solve for the torque that would null
+     the slip this step, then clamp it to the capacity — so wheelspin, bogging
+     and blip-lofting all fall out of the same equation. */
+  var rw = BK.wh[WR];
+  rw.spin += (rw.rr / P.IwR) * dt;
+  BK.wh[WF].spin += (BK.wh[WF].rr / P.IwF) * dt;
+  var slipC = BK.we - rw.spin * P.G;
+  var eng = clamp((BK.we - P.clutchLo) / (P.clutchHi - P.clutchLo), 0, 1);
+  var cap = P.clutchCap * (0.045 + 0.955 * eng * eng);
+  var Aeq = 1 / P.Ie + P.G * P.G / P.IwR;
+  var Tc = (slipC / dt + Te / P.Ie - P.G * rw.Tw / P.IwR) / Aeq;
+  if (Tc > cap) Tc = cap; else if (Tc < -cap) Tc = -cap;
+  var Twheel = Tc * P.G;
+  rw.spin += ((rw.Tw + Twheel) / P.IwR) * dt;
+  BK.we += ((Te - Tc) / P.Ie) * dt;
+  if (BK.we < 30) BK.we = 30;
+  if (BK.we > P.revLim * 1.06) BK.we = P.revLim * 1.06;
+  TQ += Twheel;                    /* chain torque reaction: drive lifts the nose */
+  BK.clutchSlip = slipC;
+
+  /* ---------------- chassis hard points (skid plate, tail, bars) ------- */
+  chassisPoint(0.02, -0.295, 1, settling);
+  chassisPoint(-0.60, -0.155, 1, settling);
+  chassisPoint(0.60, 0.545, 2, settling);
+  chassisPoint(-0.79, 0.135, 1, settling);
+
+  /* ---------------- log bodies ---------------------------------------- */
+  for (i = 0; i < LOGS.length; i++) stepLog(LOGS[i], dt);
+
+  /* ---------------- aero / misc --------------------------------------- */
+  var sp2 = BK.vx * BK.vx + BK.vy * BK.vy;
+  if (sp2 > 0.04){
+    var sp = Math.sqrt(sp2), dq = -P.dragK * sp;
+    addForce(dq * BK.vx, dq * BK.vy, BK.x, BK.y);
+  }
+
+  /* ---------------- integrate chassis --------------------------------- */
+  BK.vx += (FX / P.mC) * dt;
+  BK.vy += (FY / P.mC) * dt;
+  BK.w  += (TQ / P.IC) * dt;
+  BK.w = clamp(BK.w, -22, 22);
+  BK.vx = clamp(BK.vx, -30, 30); BK.vy = clamp(BK.vy, -40, 40);
+  BK.x += BK.vx * dt; BK.y += BK.vy * dt; BK.a += BK.w * dt;
+  BK.rx += BK.rvx * dt; BK.ry += BK.rvy * dt;
+  if (BK.a > 3.4) BK.a = 3.4; if (BK.a < -3.4) BK.a = -3.4;
+  if (!isFinite(BK.x) || !isFinite(BK.y)) { placeBike(clamp(BK.x||0, 0, COURSE_END)); }
+
+  /* ---------------- balance (lateral, hidden axis) -------------------- */
+  var vfwd = BK.vx * Math.cos(BK.a) + BK.vy * Math.sin(BK.a);
+  var gr = BK.wh[WF].grounded || BK.wh[WR].grounded;
+  BK.airT = gr ? 0 : BK.airT + dt;
+  BK.groundT = gr ? BK.groundT + dt : 0;
+  if (!settling) stepBalance(dt, vfwd, gr, roughIn, slipIn);
+
+  /* ---------------- crash tests --------------------------------------- */
+  if (!crashed && !settling){
+    tipState();
+    /* Past the tipping point is not instantly a fall. A bump throws the c.o.m.
+       across the contact for a few hundredths and the rider rides it out; stay
+       there and you are off. Time past the point is the honest test. */
+    if (TIP.rear < -0.05) BK.loopT += dt; else BK.loopT = Math.max(0, BK.loopT - dt * 2.5);
+    if (TIP.front < -0.05) BK.endoT += dt; else BK.endoT = Math.max(0, BK.endoT - dt * 2.5);
+    if (BK.loopT > 0.36 || TIP.rear < -0.58) crashEvent('loop');
+    else if (BK.endoT > 0.30 || TIP.front < -0.50) crashEvent('endo');
+    else if (Math.abs(pitchRel()) > 1.9) crashEvent('down');
+  }
+  if (BK.crashed) BK.crashT += dt;
+  if (BK.footT > 0) BK.footT -= dt;
+  if (BK.scrape > 0) BK.scrape -= dt * 3;
+  if (BK.impact > 0) BK.impact = Math.max(0, BK.impact - dt * 40);
+  return vfwd;
+}
+
+/* chassis point contact: kind 1 = skid/tail (scrapes), 2 = bars/rider (fall) */
+function chassisPoint(lx, ly, kind, settling){
+  var ca = Math.cos(BK.a), sa = Math.sin(BK.a);
+  var px = BK.x + ca * lx - sa * ly, py = BK.y + sa * lx + ca * ly;
+  var gy = heightAt(px);
+  if (py > gy) return;
+  var pen = gy - py;
+  var s0 = slopeAt(px, 0.09);
+  var nx = -Math.sin(s0), ny = Math.cos(s0);
+  var vx = BK.vx - BK.w * (py - BK.y), vy = BK.vy + BK.w * (px - BK.x);
+  var vn = vx * nx + vy * ny;
+  var Fn = 150000 * pen - 3200 * vn;
+  if (Fn < 0) Fn = 0;
+  if (Fn > 40000) Fn = 40000;
+  var tgx = ny, tgy = -nx;
+  var vt = vx * tgx + vy * tgy;
+  var Ft = -clamp(vt * 900, -0.75 * Fn, 0.75 * Fn);
+  addForce(Fn * nx + Ft * tgx, Fn * ny + Ft * tgy, px, py);
+  if (!settling && !BK.crashed){
+    if (kind === 2) crashEvent('down');
+    else {
+      BK.scrape = 1;
+      if (vn < -3.1) crashEvent('slam');
+    }
+  }
+}
+
+/* -------------------------------------------------------------- log body */
+function stepLog(L, dt){
+  var fx = 0, fy = -L.m * P.g, tq = 0;
+  /* terrain */
+  if (circleTerrain(L.x, L.y, L.r)){
+    var nx = CT.nx, ny = CT.ny;
+    var vpx = L.vx - L.w * (CT.py - L.y), vpy = L.vy + L.w * (CT.px - L.x);
+    var vn = vpx * nx + vpy * ny;
+    var Fn = 90000 * CT.pen - 2600 * vn;
+    if (Fn < 0) Fn = 0; if (Fn > 30000) Fn = 30000;
+    var tgx = ny, tgy = -nx;
+    var vt = vpx * tgx + vpy * tgy;
+    var Ft = -clamp(vt * 1400, -0.72 * Fn, 0.72 * Fn);
+    fx += Fn * nx + Ft * tgx; fy += Fn * ny + Ft * tgy;
+    tq += (CT.px - L.x) * (Fn * ny + Ft * tgy) - (CT.py - L.y) * (Fn * nx + Ft * tgx);
+  }
+  /* wheels */
+  for (var i = 0; i < 2; i++){
+    var w = BK.wh[i], r = i === WF ? P.rF : P.rR;
+    var dx = L.x - w.cx, dy = L.y - w.cy, d = Math.hypot(dx, dy), sum = L.r + r;
+    if (d < sum && d > 1e-4){
+      var nx2 = dx / d, ny2 = dy / d, pen = sum - d;
+      var cxp = w.cx + nx2 * r, cyp = w.cy + ny2 * r;
+      var lwx = w.cx - BK.x, lwy = w.cy - BK.y;
+      var vbx = BK.vx - BK.w * lwy, vby = BK.vy + BK.w * lwx;
+      var vlx = L.vx - L.w * (cyp - L.y), vly = L.vy + L.w * (cxp - L.x);
+      var rvx = vlx - vbx, rvy = vly - vby;
+      var vn2 = rvx * nx2 + rvy * ny2;
+      var Fn2 = 70000 * pen - 1500 * vn2;
+      if (Fn2 < 0) Fn2 = 0; if (Fn2 > 24000) Fn2 = 24000;
+      var tx2 = ny2, ty2 = -nx2;
+      var vt2 = rvx * tx2 + rvy * ty2 - w.spin * r;
+      var Ft2 = -clamp(vt2 * 700, -0.55 * Fn2, 0.55 * Fn2);
+      fx += Fn2 * nx2 + Ft2 * tx2; fy += Fn2 * ny2 + Ft2 * ty2;
+      tq += (cxp - L.x) * (Fn2 * ny2 + Ft2 * ty2) - (cyp - L.y) * (Fn2 * nx2 + Ft2 * tx2);
+      addForce(-(Fn2 * nx2 + Ft2 * tx2), -(Fn2 * ny2 + Ft2 * ty2), cxp, cyp);
+      var Iw = i === WF ? P.IwF : P.IwR;
+      w.spin += (Ft2 * r / Iw) * dt;
+      if (Fn2 > 900) EV.logHit = Math.max(EV.logHit, Math.min(1, Fn2 / 9000));
+    }
+  }
+  /* soft stops so the log cannot wander off into another section */
+  if (L.x < L.lo) { fx += (L.lo - L.x) * 9000 - L.vx * 500; }
+  if (L.x > L.hi) { fx += (L.hi - L.x) * 9000 - L.vx * 500; }
+  L.vx += (fx / L.m) * dt; L.vy += (fy / L.m) * dt; L.w += (tq / L.I) * dt;
+  L.vx = clamp(L.vx, -9, 9); L.vy = clamp(L.vy, -14, 14); L.w = clamp(L.w, -22, 22);
+  L.x += L.vx * dt; L.y += L.vy * dt; L.a += L.w * dt;
+  if (!isFinite(L.x) || !isFinite(L.y)){ L.x = L.home; L.y = heightAt(L.home) + L.r * 0.86; L.vx = L.vy = L.w = 0; }
+}
+
+/* ------------------------------------------------------------- balance
+   A hidden inverted-pendulum lateral axis. Control authority scales with
+   road speed (steering + gyroscopic effects), so walking pace is where the
+   dabs live. Roughness, wheelspin and impacts perturb it.               */
+function stepBalance(dt, vfwd, grounded, roughIn, slipIn){
+  var av = Math.abs(vfwd);
+  if (!grounded){
+    BK.balv *= (1 - 1.2 * dt);
+    BK.bal += BK.balv * dt;
+  } else {
+    /* steering and gyroscopic effects give authority in proportion to road
+       speed: at walking pace you have almost none, which is where dabs live. */
+    var auth = P.balAuth0 + (1 - P.balAuth0) * clamp(av / P.balAuthV, 0, 1);
+    if (BK.footT > 0) auth = Math.max(auth, 1.45);      /* a boot down is a prop */
+    /* a rear tyre that is spinning has nothing left to steady you with */
+    auth *= 1 - 0.50 * clamp(slipIn / 1.6, 0, 1);
+    var acc = (P.g / P.balH) * Math.sin(BK.bal) - (P.balKp * BK.bal + P.balKd * BK.balv) * auth;
+    /* disturbance: two Ornstein-Uhlenbeck processes scaled by surface and speed.
+       Authority saturates at 2.5 m/s but the kicking does not, so blasting a
+       boulder bed is a different kind of dangerous from crawling it. */
+    BK.balNoise += (RNG() - 0.5) * 78 * dt - BK.balNoise * 3.0 * dt;
+    BK.balNoise2 += (RNG() - 0.5) * 170 * dt - BK.balNoise2 * 9.0 * dt;
+    var surf = BK.wh[WR].grounded ? BK.wh[WR].surf : BK.wh[WF].surf;
+    var rf = RUF[surf];
+    var spdF = 0.30 + 0.70 * clamp(av / 2.2, 0, 1) + 0.55 * clamp((av - 3.0) / 3.0, 0, 2);
+    acc += (BK.balNoise * 2.2 + BK.balNoise2 * 1.3) * rf * spdF;
+    acc += roughIn * 1.15 * (RNG() - 0.5) * rf;
+    acc += slipIn * 3.6 * (RNG() - 0.5);
+    BK.balv += acc * dt;
+    BK.balv = clamp(BK.balv, -6, 6);
+    BK.bal += BK.balv * dt;
+  }
+  if (BK.crashed) return;
+  var ab = Math.abs(BK.bal);
+  if (ab > P.crashAng){ crashEvent('topple'); return; }
+  if (ab > P.dabAng && BK.bal * BK.balv > 0 && BK.footT <= 0){ doDab(); }
+  /* pitch save: about to loop or go over the bars at low speed */
+  /* a boot goes down when the machine passes the tipping point either way */
+  tipState();
+  if (BK.footT <= 0 && grounded){
+    if (TIP.rear < 0.05 && BK.w > 0.15){ doDab(); BK.w = Math.min(BK.w, -0.55); }
+    else if (TIP.front < 0.05 && BK.w < -0.15){ doDab(); BK.w = Math.max(BK.w, 0.45); }
+  }
+}
+
+/* ================================================================== GAME */
+var G = {
+  state: 'start',            /* start | play | pause | end */
+  t: 0,                      /* elapsed loop time */
+  cur: -1,                   /* index of section being ridden, -1 = liaison */
+  next: 0,                   /* next section to enter */
+  marks: [],                 /* -1 pending, 0..3, 5 */
+  total: 0,
+  stopT: 0, moveT: 0,
+  fiveT: 0, fiveReason: '', pendingFive: -1,
+  retries: 0,
+  submitted: false,
+  gotClean: false,
+  wheelieT: 0, wheelieGrace: 0, wheelieDone: false,
+  finished: false,
+  maxX: 0,
+  banner: 0, bannerY: 0,
+  shake: 0, shakeX: 0, shakeY: 0,
+  obsReact: [0,0,0,0,0], obsFing: [0,0,0,0,0],
+  muted: false
+};
+
+function fullReset(){
+  RNG = mulberry(20419);
+  G.state = 'start'; G.t = 0; G.cur = -1; G.next = 0;
+  G.marks = [-1,-1,-1,-1,-1]; G.total = 0;
+  G.stopT = 0; G.moveT = 0; G.fiveT = 0; G.pendingFive = -1; G.fiveReason = '';
+  G.retries = 0; G.submitted = false; G.gotClean = false;
+  G.wheelieT = 0; G.wheelieGrace = 0; G.wheelieDone = false; G.finished = false;
+  G.shake = 0; G.banner = 0;
+  for (var i = 0; i < 5; i++){ SECTIONS[i].maxX = SECTIONS[i].x0; SECTIONS[i].closed = false; G.obsReact[i] = 0; G.obsFing[i] = 0; }
+  for (i = 0; i < LOGS.length; i++){ var L = LOGS[i]; L.x = L.home; L.y = heightAt(L.home) + L.r * 0.86; L.a = 0; L.vx = L.vy = L.w = 0; }
+  CMD.th = 0; CMD.br = 0; CMD.lean = 0;
+  placeBike(4, { settle: true });
+  G.maxX = BK.x;
+  PART.n = 0;
+  CAM.x = BK.x; CAM.y = BK.y; CAM.ppm = CAM.tppm;
+  setCall('', '');
+  updateHUD(true);
+}
+
+function totalMarks(){
+  var t = 0;
+  for (var i = 0; i < 5; i++) if (G.marks[i] > 0) t += G.marks[i];
+  return t;
+}
+
+/* ------------------------------------------------------------------ dabs */
+function doDab(){
+  if (BK.crashed) return;
+  BK.footT = 0.62;
+  BK.footSide = (RNG() < 0.5) ? -1 : 1;
+  /* the boot props the bike up: kill the fall, keep a little of it */
+  BK.bal *= 0.42;
+  BK.balv = -sgn(BK.bal || 1) * 0.35;
+  /* it also scrubs a bit of speed and pitch rate */
+  BK.vx *= 0.955; BK.vy *= 0.97;
+  BK.w *= 0.45;
+  var ci = G.cur;
+  /* foot position: at the ground beside the pegs */
+  BK.footX = l2wx(-0.10, 0);
+  BK.footY = heightAt(BK.footX);
+  var wl = waterLevelAt(BK.footX);
+  if (wl > -1e8 && BK.footY < wl) spawnSplash(BK.footX, wl, 14, 1.1);
+  else spawnDust(BK.footX, BK.footY, 9, surfAt2(BK.footX));
+  sndDab(wl > -1e8 && BK.footY < wl);
+  if (ci >= 0 && G.marks[ci] !== 5 && G.pendingFive < 0){
+    var m = G.marks[ci];
+    if (m < 0) m = 0;
+    m = Math.min(3, m + 1);
+    /* trials scoring: 1, 2, then 3 for three or more */
+    if (G.marks[ci] >= 3) m = 3;
+    G.marks[ci] = m;
+    G.obsReact[ci] = 1.5; G.obsFing[ci] = m;
+    setCall(m >= 3 ? '3 : FOOTING' : 'DAB  ' + m, m >= 3 ? 'the observer is done counting' : 'a boot down is a mark', m >= 3 ? 'bad' : '', 1.1);
+    sndClick();
+  } else if (ci < 0){
+    setCall('DAB', 'liaison — unscored', '', 0.7);
+  }
+}
+
+function crashEvent(kind){
+  if (BK.crashed) return;
+  BK.crashed = true; BK.crashT = 0;
+  BK.footT = 0;
+  G.shake = Math.min(1, 0.5 + Math.hypot(BK.vx, BK.vy) / 9);
+  sndCrash();
+  var gy = heightAt(BK.x);
+  spawnDust(BK.x, gy, 20, surfAt2(BK.x));
+  var wl = waterLevelAt(BK.x);
+  if (wl > -1e8 && gy < wl) spawnSplash(BK.x, wl, 26, 1.9);
+  if (G.cur >= 0 && G.marks[G.cur] !== 5) giveFive(kind === 'topple' ? 'A TOPPLE' : (kind === 'loop' ? 'LOOPED OUT' : (kind === 'endo' ? 'OVER THE BARS' : 'DOWN')));
+  else {
+    setCall('OFF', 'liaison — no marks, remount', '', 1.4);
+    G.pendingFive = -2;      /* liaison remount */
+    G.fiveT = 1.5;
+  }
+}
+
+function giveFive(reason){
+  var ci = G.cur;
+  if (ci < 0 || G.marks[ci] === 5) return;
+  G.marks[ci] = 5;
+  SECTIONS[ci].closed = true;
+  G.fiveReason = reason;
+  G.pendingFive = ci;
+  G.fiveT = BK.crashed ? 1.75 : 1.15;
+  G.obsReact[ci] = 2.4; G.obsFing[ci] = 5;
+  setCall('FIVE', reason + ' — five marks', 'bad', 2.0);
+  sndWhistle();
+}
+
+/* ------------------------------------------------------------- sections */
+function sectionAt(x){
+  for (var i = 0; i < 5; i++) if (x >= SECTIONS[i].x0 && x < SECTIONS[i].x1) return i;
+  return -1;
+}
+function stepGame(dt){
+  var i;
+  G.t += dt;
+  var x = BK.x;
+  if (x > G.maxX) G.maxX = x;
+
+  /* --- section entry / exit ------------------------------------------ */
+  if (G.pendingFive === -1){
+    var si = sectionAt(x);
+    if (si !== G.cur){
+      if (si >= 0 && !SECTIONS[si].closed){
+        /* entering */
+        if (G.cur < 0){
+          G.cur = si;
+          if (G.marks[si] < 0) G.marks[si] = 0;
+          SECTIONS[si].maxX = x; G.stopT = 0; G.moveT = 0;
+          setCall('SECTION ' + (si + 1), SECTIONS[si].n + ' — ' + SECTIONS[si].sub, 'gold', 2.1);
+          sndCard();
+        }
+      } else if (si < 0 && G.cur >= 0){
+        /* leaving forwards past the ENDS card */
+        var c = G.cur;
+        if (x >= SECTIONS[c].x1){
+          finishSection(c);
+        } else if (x < SECTIONS[c].x0){
+          G.cur = -1;   /* backed out before the begins card, no harm */
+        }
+      } else if (si >= 0 && si !== G.cur && G.cur >= 0){
+        G.cur = si;
+      }
+    }
+  }
+
+  /* --- in-section rules ---------------------------------------------- */
+  var vfwd = BK.vx * Math.cos(BK.a) + BK.vy * Math.sin(BK.a);
+  var speed = Math.hypot(BK.vx, BK.vy);
+  if (G.cur >= 0 && G.pendingFive === -1 && !BK.crashed){
+    var S = SECTIONS[G.cur];
+    if (x > S.maxX) S.maxX = x;
+    /* the no-stop rule */
+    if (speed < 0.30){ G.stopT += dt; G.moveT = 0; }
+    else { G.moveT += dt; if (G.moveT > 0.10) G.stopT = Math.max(0, G.stopT - dt * 2.4); }
+    if (G.stopT > 2.0) giveFive('TWO SECONDS STOPPED');
+    /* rolling backwards */
+    else if (x < S.maxX - 0.5) giveFive('ROLLED BACKWARDS');
+    /* over the tape */
+    else if (S.gate){
+      var gy = heightAt(S.gate.x) + S.gate.h;
+      if (Math.abs(x - S.gate.x) < 0.9 && BK.y > gy) giveFive('OVER THE TAPE');
+    }
+  } else { G.stopT = Math.max(0, G.stopT - dt * 3); }
+
+  /* --- the moor wheelie (hidden badge) -------------------------------- */
+  if (!G.wheelieDone && G.cur < 0 && !BK.crashed && BK.wh[WR].grounded && speed > 1.2){
+    /* a skim of the front tyre is not putting it down: allow 0.16 s of grace */
+    if (!BK.wh[WF].grounded) G.wheelieGrace = 0.16; else G.wheelieGrace -= dt;
+    if (G.wheelieGrace > 0){
+      G.wheelieT += dt;
+      if (G.wheelieT >= 5.0){ G.wheelieDone = true; arcadeUnlock('moor-wheelie'); setCall('MOOR WHEELIE', 'five seconds on the back wheel', 'gold', 2.2); }
+    } else G.wheelieT = 0;
+  } else { G.wheelieT = 0; G.wheelieGrace = 0; }
+
+  /* --- pending five / liaison remount --------------------------------- */
+  if (G.pendingFive !== -1){
+    G.fiveT -= dt;
+    if (G.fiveT <= 0){
+      if (G.pendingFive === -2){
+        var px = clamp(BK.x, 1, COURSE_END - 2);
+        placeBike(px, { settle: true });
+        G.maxX = Math.max(G.maxX, px);
+      } else {
+        var s = SECTIONS[G.pendingFive];
+        placeBike(s.x1 + 1.4, { settle: true });
+        G.cur = -1;
+        G.maxX = Math.max(G.maxX, s.x1 + 1.4);
+      }
+      G.pendingFive = -1;
+      G.stopT = 0; G.moveT = 0;
+      setCall('', '');
+    }
+  }
+
+  /* --- finish ---------------------------------------------------------- */
+  if (!G.finished && x >= COURSE_END && G.pendingFive === -1){
+    var allDone = true;
+    for (i = 0; i < 5; i++) if (G.marks[i] < 0) allDone = false;
+    if (allDone) endLoop();
+  }
+
+  /* --- observer reactions --------------------------------------------- */
+  for (i = 0; i < 5; i++) if (G.obsReact[i] > 0) G.obsReact[i] -= dt;
+  if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 2.4);
+  if (G.banner > 0) G.banner -= dt;
+}
+
+function finishSection(c){
+  var m = G.marks[c];
+  if (m < 0) m = 0;
+  G.marks[c] = m;
+  SECTIONS[c].closed = true;
+  G.cur = -1;
+  G.stopT = 0;
+  if (m === 0){
+    setCall('CLEAN', 'section ' + (c + 1) + ' — ' + SECTIONS[c].n + ' — nought', 'good', 2.2);
+    if (!G.gotClean){ G.gotClean = true; arcadeUnlock('first-clean'); }
+  } else {
+    setCall(m + (m === 1 ? ' MARK' : ' MARKS'), 'section ' + (c + 1) + ' — ' + SECTIONS[c].n, '', 2.0);
+  }
+  sndCard();
+}
+
+function endLoop(){
+  G.finished = true;
+  G.state = 'end';
+  var tot = totalMarks(), cleans = 0, fives = 0;
+  for (var i = 0; i < 5; i++){ if (G.marks[i] === 0) cleans++; if (G.marks[i] === 5) fives++; }
+  if (!G.submitted){
+    G.submitted = true;
+    arcadeSubmit(tot, { time: Math.round(G.t * 10) / 10, cleans: cleans });
+    arcadeUnlock('finisher');
+    if (fives === 0) arcadeUnlock('no-fives');
+    if (tot === 0) arcadeUnlock('feet-up');
+  }
+  showResults(tot, cleans);
+  sndFinish();
+}
+
+/* -------------------------------------------------------------- retry R */
+/* R is a practice courtesy, and an honest one: it only reaches the section you
+   are inside, or the one you have just been fived out of — a five teleports you
+   past the ENDS card, so without this you could never have another go at it.
+   Once you ride a section out cleanly, that card is written and R moves on. */
+function retryTarget(){
+  if (G.cur >= 0) return G.cur;
+  for (var i = 4; i >= 0; i--){
+    if (G.marks[i] !== 5) continue;
+    if (BK.x < SECTIONS[i].x0 - 0.5) continue;
+    if (i < 4 && BK.x >= SECTIONS[i + 1].x0) continue;   /* next section entered */
+    if (i === 4 && BK.x >= COURSE_END) continue;
+    return i;
+  }
+  return -1;
+}
+function doRetry(){
+  if (G.state !== 'play') return;
+  var t = retryTarget();
+  if (t < 0){
+    setCall('', '');
+    return;
+  }
+  G.retries++;
+  G.marks[t] = 0;
+  G.cur = t;
+  SECTIONS[t].closed = false;
+  SECTIONS[t].maxX = SECTIONS[t].x0;
+  G.stopT = 0; G.moveT = 0; G.pendingFive = -1; G.fiveT = 0;
+  G.obsReact[t] = 0; G.obsFing[t] = 0;
+  placeBike(SECTIONS[t].x0 - 4.0, { settle: true });
+  G.maxX = BK.x;
+  PART.n = 0;
+  CAM.x = BK.x; CAM.y = BK.y;
+  setCall('SECTION ' + (t + 1), 'again — ' + SECTIONS[t].n, 'gold', 1.6);
+  updateHUD(true);
+}
+
+/* ============================================================= particles */
+var PMAX = 900;
+var PART = {
+  n: 0,
+  x: new Float32Array(PMAX), y: new Float32Array(PMAX),
+  vx: new Float32Array(PMAX), vy: new Float32Array(PMAX),
+  l: new Float32Array(PMAX), L: new Float32Array(PMAX),
+  s: new Float32Array(PMAX), k: new Uint8Array(PMAX), c: new Uint8Array(PMAX)
+};
+function emit(x, y, vx, vy, life, size, kind, col){
+  var i;
+  if (PART.n < PMAX) i = PART.n++;
+  else i = (Math.random() * PMAX) | 0;
+  PART.x[i] = x; PART.y[i] = y; PART.vx[i] = vx; PART.vy[i] = vy;
+  PART.l[i] = life; PART.L[i] = life; PART.s[i] = size; PART.k[i] = kind; PART.c[i] = col || 0;
+}
+/* kinds: 0 splash 1 mud/dirt 2 dust 3 exhaust 4 gravel */
+function spawnSplash(x, y, n, pw){
+  for (var i = 0; i < n; i++)
+    emit(x + rnd(-0.14, 0.14), y + rnd(-0.02, 0.06), rnd(-2.4, 2.4) * pw, rnd(1.2, 4.4) * pw,
+         rnd(0.35, 0.85), rnd(0.020, 0.055), 0, 0);
+}
+function spawnDust(x, y, n, surf){
+  var col = (surf === SURF.MUD) ? 1 : (surf === SURF.MOOR ? 2 : 3);
+  for (var i = 0; i < n; i++)
+    emit(x + rnd(-0.16, 0.16), y + rnd(0, 0.08), rnd(-1.5, 1.5), rnd(0.3, 2.2),
+         rnd(0.4, 1.0), rnd(0.025, 0.075), surf === SURF.MUD ? 1 : 2, col);
+}
+function stepParticles(dt){
+  var n = PART.n, i = 0;
+  while (i < n){
+    PART.l[i] -= dt;
+    if (PART.l[i] <= 0){
+      n--;
+      PART.x[i] = PART.x[n]; PART.y[i] = PART.y[n]; PART.vx[i] = PART.vx[n]; PART.vy[i] = PART.vy[n];
+      PART.l[i] = PART.l[n]; PART.L[i] = PART.L[n]; PART.s[i] = PART.s[n]; PART.k[i] = PART.k[n]; PART.c[i] = PART.c[n];
+      continue;
+    }
+    var k = PART.k[i];
+    if (k === 3){ PART.vy[i] += 0.7 * dt; PART.vx[i] *= (1 - 1.9 * dt); PART.vy[i] *= (1 - 1.5 * dt); }
+    else { PART.vy[i] -= 9.81 * dt; PART.vx[i] *= (1 - 0.9 * dt); }
+    PART.x[i] += PART.vx[i] * dt; PART.y[i] += PART.vy[i] * dt;
+    if (k !== 3 && PART.y[i] < heightAt(PART.x[i]) - 0.05) PART.l[i] = 0;
+    i++;
+  }
+  PART.n = n;
+}
+
+/* ============================================================ effects tick
+   Consumes the physics event bus once per rendered frame.               */
+var exhT = 0;
+function consumeEvents(dt){
+  var w;
+  if (EV.thud > 0.2){
+    var e = EV.thud;
+    G.shake = Math.max(G.shake, Math.min(0.8, e * 0.75));
+    sndThud(e);
+    spawnDust(EV.thudX, EV.thudY - 0.28, 3 + (e * 7) | 0, surfAt2(EV.thudX));
+  }
+  if (EV.bottomOut > 0.15){ sndThud(0.5 + EV.bottomOut * 0.5); G.shake = Math.max(G.shake, 0.35); }
+  if (EV.splash > 0.1){
+    spawnSplash(EV.splashX, EV.splashY, 3 + (EV.splash * 9) | 0, 0.8 + EV.splash);
+    sndSplash(EV.splash);
+  }
+  if (EV.spin > 0.08){
+    w = BK.wh[WR];
+    var col = EV.spinSurf === SURF.MUD ? 1 : (EV.spinSurf === SURF.MOOR ? 2 : 3);
+    for (var i = 0; i < 2; i++)
+      emit(EV.spinX + rnd(-0.08, 0.08), EV.spinY + 0.02,
+           -Math.cos(BK.a) * rnd(1.5, 5.5) * EV.spin, rnd(0.6, 3.0) * EV.spin,
+           rnd(0.3, 0.8), rnd(0.02, 0.06), EV.spinSurf === SURF.MUD ? 1 : (EV.spinSurf === SURF.WETROCK ? 0 : 2), col);
+  }
+  /* exhaust puffs synced to engine pulses at low rpm */
+  var rpm = BK.we * 9.5493;
+  exhT -= dt;
+  if (exhT <= 0 && rpm > 200){
+    exhT = clamp(60 / Math.max(600, rpm) * (rpm < 2600 ? 2 : 6), 0.02, 0.25);
+    var ex = l2wx(-0.72, 0.30), ey = l2wy(-0.72, 0.30);
+    var pw = clamp(SM.th * 0.8 + 0.22, 0, 1);
+    if (rpm < 4200 || SM.th > 0.4)
+      emit(ex, ey, -Math.cos(BK.a) * rnd(0.6, 2.0) * pw + BK.vx * 0.5, rnd(0.2, 0.9) + BK.vy * 0.4,
+           rnd(0.5, 1.2), rnd(0.05, 0.12), 3, 0);
+  }
+  EV.bottomOut = 0; EV.splash = 0; EV.thud = 0; EV.spin = 0; EV.logHit = 0;
+}
+
+/* ================================================================ camera */
+var CAM = { x: 0, y: 0, ppm: 46, tppm: 46, lead: 0, anchor: 0.60 };
+function stepCamera(dt){
+  var speed = Math.hypot(BK.vx, BK.vy);
+  var portrait = VH > VW * 1.05;
+  var wantW = portrait ? 8.8 : 13.2;
+  var base = Math.min(VW / wantW, VH / 5.4);
+  base = clamp(base, 20, 150);
+  CAM.tppm = base / (1 + 0.030 * speed);
+  CAM.anchor = portrait ? 0.700 : 0.60;
+  CAM.ppm += (CAM.tppm - CAM.ppm) * Math.min(1, dt * 2.2);
+  CAM.lead += ((BK.vx * 0.30) - CAM.lead) * Math.min(1, dt * 2.0);
+  var tx = BK.x + clamp(CAM.lead, -2.2, 2.6);
+  var ty = BK.y + (portrait ? 0.30 : 0.55) + clamp(BK.vy * 0.10, -0.9, 0.9);
+  CAM.x += (tx - CAM.x) * Math.min(1, dt * 5.2);
+  CAM.y += (ty - CAM.y) * Math.min(1, dt * 4.0);
+  if (G.shake > 0.002){
+    var s = G.shake * G.shake * 0.17;
+    G.shakeX = (Math.random() * 2 - 1) * s; G.shakeY = (Math.random() * 2 - 1) * s;
+  } else { G.shakeX = 0; G.shakeY = 0; }
+}
+function sx(wx){ return (wx - CAM.x - G.shakeX) * CAM.ppm + VW * 0.5; }
+function sy(wy){ return VH * CAM.anchor - (wy - CAM.y - G.shakeY) * CAM.ppm; }
+
+/* ================================================================= audio */
+var AU = { ctx:null, on:false, master:null, engGain:null, o1:null, o2:null, o3:null,
+           lp:null, noise:null, nGain:null, nBP:null, wind:null, windG:null,
+           spinG:null, spinBP:null, ready:false, curlewT:8 };
+function makeNoiseBuf(actx, secs){
+  var b = actx.createBuffer(1, (actx.sampleRate * secs) | 0, actx.sampleRate);
+  var d = b.getChannelData(0), last = 0;
+  for (var i = 0; i < d.length; i++){ var wn = Math.random() * 2 - 1; last = (last + 0.02 * wn) / 1.02; d[i] = last * 3.0 + wn * 0.35; }
+  return b;
+}
+function initAudio(){
+  if (AU.ready) return;
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  try {
+    var a = new AC();
+    AU.ctx = a;
+    AU.master = a.createGain(); AU.master.gain.value = G.muted ? 0 : 0.85; AU.master.connect(a.destination);
+    var comp = a.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.16;
+    comp.connect(AU.master); AU.bus = comp;
+
+    /* --- engine voice --- */
+    AU.engGain = a.createGain(); AU.engGain.gain.value = 0;
+    AU.lp = a.createBiquadFilter(); AU.lp.type = 'lowpass'; AU.lp.frequency.value = 900; AU.lp.Q.value = 0.9;
+    AU.engGain.connect(AU.lp); AU.lp.connect(comp);
+    AU.o1 = a.createOscillator(); AU.o1.type = 'sawtooth'; AU.o1.frequency.value = 40;
+    AU.o2 = a.createOscillator(); AU.o2.type = 'square'; AU.o2.frequency.value = 40.6;
+    AU.o3 = a.createOscillator(); AU.o3.type = 'sawtooth'; AU.o3.frequency.value = 80;
+    var g1 = a.createGain(); g1.gain.value = 0.55; AU.o1.connect(g1); g1.connect(AU.engGain);
+    var g2 = a.createGain(); g2.gain.value = 0.30; AU.o2.connect(g2); g2.connect(AU.engGain);
+    AU.g3 = a.createGain(); AU.g3.gain.value = 0.16; AU.o3.connect(AU.g3); AU.g3.connect(AU.engGain);
+    AU.o1.start(); AU.o2.start(); AU.o3.start();
+
+    var nb = makeNoiseBuf(a, 2.2);
+    AU.noise = a.createBufferSource(); AU.noise.buffer = nb; AU.noise.loop = true;
+    AU.nBP = a.createBiquadFilter(); AU.nBP.type = 'bandpass'; AU.nBP.frequency.value = 260; AU.nBP.Q.value = 1.1;
+    AU.nGain = a.createGain(); AU.nGain.gain.value = 0;
+    AU.noise.connect(AU.nBP); AU.nBP.connect(AU.nGain); AU.nGain.connect(comp);
+    AU.noise.start();
+
+    /* --- wheelspin / scrape --- */
+    AU.spin = a.createBufferSource(); AU.spin.buffer = nb; AU.spin.loop = true;
+    AU.spinBP = a.createBiquadFilter(); AU.spinBP.type = 'bandpass'; AU.spinBP.frequency.value = 1500; AU.spinBP.Q.value = 0.8;
+    AU.spinG = a.createGain(); AU.spinG.gain.value = 0;
+    AU.spin.connect(AU.spinBP); AU.spinBP.connect(AU.spinG); AU.spinG.connect(comp);
+    AU.spin.start();
+
+    /* --- wind / drizzle bed --- */
+    AU.wind = a.createBufferSource(); AU.wind.buffer = nb; AU.wind.loop = true;
+    var wf = a.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 420; wf.Q.value = 0.4;
+    AU.windG = a.createGain(); AU.windG.gain.value = 0.05;
+    AU.wind.connect(wf); wf.connect(AU.windG); AU.windG.connect(comp);
+    AU.wind.start();
+    AU.windF = wf;
+
+    AU.ready = true; AU.on = true;
+    if (a.state === 'suspended') a.resume();
+  } catch (e){ AU.ready = false; }
+}
+function audioTick(dt){
+  if (!AU.ready) return;
+  var a = AU.ctx, T = a.currentTime;
+  var rpm = BK.we * 9.5493;
+  var f = clamp(BK.we / TAU, 8, 190);
+  var load = clamp(SM.th * 0.7 + BK.wh[WR].slip * 0.15, 0, 1);
+  var lowRev = clamp((rpm - 900) / 2200, 0, 1);
+  var vol = (G.state === 'play' || G.state === 'pause') ? 1 : 0.0;
+  if (G.state === 'pause') vol = 0.25;
+  try {
+    AU.o1.frequency.setTargetAtTime(f, T, 0.02);
+    AU.o2.frequency.setTargetAtTime(f * 1.008, T, 0.02);
+    AU.o3.frequency.setTargetAtTime(f * 2.02, T, 0.02);
+    AU.g3.gain.setTargetAtTime(0.06 + 0.22 * load, T, 0.05);
+    /* ring-ding: below the powerband the note is a ragged burble */
+    var rag = 1 - 0.35 * (1 - lowRev) * (0.5 + 0.5 * Math.sin(T * 34));
+    AU.engGain.gain.setTargetAtTime(vol * (0.055 + 0.150 * load + 0.035 * lowRev) * rag, T, 0.03);
+    AU.lp.frequency.setTargetAtTime(clamp(340 + f * 9 + load * 2400, 250, 6000), T, 0.05);
+    AU.nBP.frequency.setTargetAtTime(clamp(f * 4.2, 90, 2200), T, 0.05);
+    AU.nGain.gain.setTargetAtTime(vol * (0.014 + 0.052 * load), T, 0.04);
+    var sl = clamp((BK.wh[WR].slip - 0.22) * 0.85 + (BK.scrape > 0 ? 0.5 : 0), 0, 1);
+    AU.spinG.gain.setTargetAtTime(vol * sl * 0.10, T, 0.03);
+    AU.spinBP.frequency.setTargetAtTime(BK.scrape > 0 ? 900 : clamp(700 + Math.abs(BK.wh[WR].spin) * 40, 700, 3400), T, 0.04);
+    var spd = Math.hypot(BK.vx, BK.vy);
+    AU.windG.gain.setTargetAtTime((G.state === 'play' ? 1 : 0.5) * (0.030 + spd * 0.0065), T, 0.2);
+    AU.windF.frequency.setTargetAtTime(360 + spd * 40, T, 0.3);
+  } catch (e){}
+  /* occasional curlew */
+  AU.curlewT -= dt;
+  if (AU.curlewT <= 0 && G.state === 'play'){
+    AU.curlewT = rnd(14, 34);
+    sndCurlew();
+  }
+}
+function blip(type, f0, f1, t, g, filt){
+  if (!AU.ready) return;
+  var a = AU.ctx, T = a.currentTime;
+  var o = a.createOscillator(); o.type = type || 'sine';
+  o.frequency.setValueAtTime(f0, T);
+  if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), T + t);
+  var gn = a.createGain();
+  gn.gain.setValueAtTime(0.0001, T);
+  gn.gain.exponentialRampToValueAtTime(Math.max(0.0002, g), T + Math.min(0.02, t * 0.3));
+  gn.gain.exponentialRampToValueAtTime(0.0001, T + t);
+  o.connect(gn);
+  if (filt){ var bf = a.createBiquadFilter(); bf.type = 'lowpass'; bf.frequency.value = filt; gn.connect(bf); bf.connect(AU.bus); }
+  else gn.connect(AU.bus);
+  o.start(T); o.stop(T + t + 0.02);
+}
+function noiseBurst(dur, f, q, g, type){
+  if (!AU.ready) return;
+  var a = AU.ctx, T = a.currentTime;
+  var n = a.createBufferSource(); n.buffer = AU.noise.buffer;
+  n.playbackRate.value = 0.8 + Math.random() * 0.5;
+  var bf = a.createBiquadFilter(); bf.type = type || 'bandpass'; bf.frequency.value = f; bf.Q.value = q;
+  var gn = a.createGain();
+  gn.gain.setValueAtTime(g, T);
+  gn.gain.exponentialRampToValueAtTime(0.0001, T + dur);
+  n.connect(bf); bf.connect(gn); gn.connect(AU.bus);
+  n.start(T, Math.random() * 1.5); n.stop(T + dur + 0.02);
+}
+function sndSplash(e){ noiseBurst(0.20 + e * 0.2, 2100 + Math.random() * 900, 0.7, 0.10 + e * 0.16); }
+function sndThud(e){ noiseBurst(0.10 + e * 0.10, 130, 1.1, 0.16 * e, 'lowpass'); blip('sine', 90, 46, 0.12, 0.14 * e, 400); }
+function sndDab(wet){ if (wet) sndSplash(0.7); else noiseBurst(0.14, 640, 1.3, 0.10); }
+function sndClick(){ blip('square', 1400, 900, 0.045, 0.055, 2600); }
+function sndCard(){ blip('triangle', 760, 1180, 0.10, 0.055, 3000); }
+function sndCrash(){ noiseBurst(0.42, 420, 0.5, 0.30, 'lowpass'); blip('sawtooth', 180, 52, 0.34, 0.14, 700); }
+function sndWhistle(){
+  if (!AU.ready) return;
+  blip('sine', 2050, 2160, 0.34, 0.075);
+  blip('sine', 2680, 2790, 0.34, 0.045);
+  setTimeout(function(){ blip('sine', 2050, 2100, 0.20, 0.06); blip('sine', 2680, 2740, 0.20, 0.035); }, 400);
+}
+function sndFinish(){
+  blip('triangle', 520, 780, 0.20, 0.08, 3200);
+  setTimeout(function(){ blip('triangle', 780, 1040, 0.30, 0.08, 3200); }, 180);
+}
+function sndCurlew(){
+  if (!AU.ready) return;
+  var a = AU.ctx, T = a.currentTime;
+  for (var i = 0; i < 3; i++){
+    (function(k){
+      setTimeout(function(){ blip('sine', 900 + k * 210, 1500 + k * 260, 0.16, 0.026, 4000); }, k * 190);
+    })(i);
+  }
+}
+function setMute(m){
+  G.muted = m;
+  if (AU.ready) try { AU.master.gain.setTargetAtTime(m ? 0 : 0.85, AU.ctx.currentTime, 0.03); } catch (e){}
+  setCall(m ? 'MUTED' : 'SOUND ON', '', '', 0.8);
+}
+
+/* ================================================================ RENDER */
+var SKY = null, SKYW = 0, SKYH = 0;
+function makeSky(){
+  var c = document.createElement('canvas');
+  c.width = 1; c.height = Math.max(2, Math.round(VH * BS));
+  var g = c.getContext('2d');
+  var gr = g.createLinearGradient(0, 0, 0, c.height);
+  gr.addColorStop(0.00, '#8e9aa0');
+  gr.addColorStop(0.34, '#a4aeb1');
+  gr.addColorStop(0.62, '#bcc2bd');
+  gr.addColorStop(0.86, '#c8ccc3');
+  gr.addColorStop(1.00, '#b6bbb2');
+  g.fillStyle = gr; g.fillRect(0, 0, 1, c.height);
+  SKY = c; SKYW = 1; SKYH = c.height;
+}
+/* hill layers: sum-of-sines in pixel space, parallax-scrolled */
+var HILL = [
+  { par: 0.05, amp: 0.070, base: 0.20, col: '#8e979a', f: [0.00061, 0.00158, 0.00364], ph: [2.2, 0.9, 1.4] },
+  { par: 0.10, amp: 0.085, base: 0.30, col: '#7d878a', f: [0.00092, 0.00231, 0.00517], ph: [0.4, 2.1, 3.9] },
+  { par: 0.20, amp: 0.105, base: 0.40, col: '#68757a', f: [0.00121, 0.00287, 0.00631], ph: [1.7, 0.6, 2.3] },
+  { par: 0.36, amp: 0.120, base: 0.52, col: '#53626a', f: [0.00164, 0.00352, 0.00811], ph: [2.9, 1.2, 0.3] }
+];
+function drawHills(){
+  var i, L, px, u, h, y;
+  for (i = 0; i < HILL.length; i++){
+    L = HILL[i];
+    var off = CAM.x * CAM.ppm * L.par;
+    var yb = VH * L.base + (CAM.y * CAM.ppm * L.par * 0.42);
+    var amp = VH * L.amp;
+    ctx.beginPath();
+    ctx.moveTo(-4, VH + 4);
+    for (px = -4; px <= VW + 8; px += 12){
+      u = px + off;
+      h = 0.58 * Math.sin(u * L.f[0] + L.ph[0]) + 0.28 * Math.sin(u * L.f[1] + L.ph[1]) + 0.14 * Math.sin(u * L.f[2] + L.ph[2]);
+      y = yb - h * amp;
+      ctx.lineTo(px, y);
+    }
+    ctx.lineTo(VW + 8, VH + 4);
+    ctx.closePath();
+    ctx.fillStyle = L.col;
+    ctx.fill();
+    /* a mist band at the foot of each ridge, faded in three soft steps */
+    var mb = yb + amp * 0.26, mh = Math.max(5, VH * 0.030);
+    var ma = i >= 2 ? 0.09 : 0.13;
+    ctx.fillStyle = 'rgba(200,207,203,' + (ma * 0.5).toFixed(3) + ')'; ctx.fillRect(0, mb - mh, VW, mh);
+    ctx.fillStyle = 'rgba(200,207,203,' + ma.toFixed(3) + ')';         ctx.fillRect(0, mb, VW, mh);
+    ctx.fillStyle = 'rgba(200,207,203,' + (ma * 0.55).toFixed(3) + ')';ctx.fillRect(0, mb + mh, VW, mh);
+    ctx.fillStyle = 'rgba(200,207,203,' + (ma * 0.22).toFixed(3) + ')';ctx.fillRect(0, mb + mh * 2, VW, mh * 1.6);
+  }
+  /* pine belt on the near ridge */
+  var offP = CAM.x * CAM.ppm * 0.50;
+  var ybP = VH * 0.585 + CAM.y * CAM.ppm * 0.50 * 0.42;
+  ctx.fillStyle = '#2f3f36';
+  ctx.beginPath();
+  ctx.moveTo(-4, VH + 4);
+  for (px = -4; px <= VW + 8; px += 7){
+    u = px + offP;
+    h = 0.5 * Math.sin(u * 0.0021 + 1.1) + 0.24 * Math.sin(u * 0.0047 + 2.6);
+    var tree = (Math.sin(u * 0.19) * Math.sin(u * 0.071 + 1.3) > 0.15) ? (10 + 12 * Math.abs(Math.sin(u * 0.31))) : 0;
+    y = ybP - h * VH * 0.055 - tree * (VH / 800);
+    ctx.lineTo(px, y);
+  }
+  ctx.lineTo(VW + 8, VH + 4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(198,205,201,0.11)';
+  ctx.fillRect(0, ybP + 3, VW, Math.max(4, VH * 0.022));
+  ctx.fillStyle = 'rgba(198,205,201,0.05)';
+  ctx.fillRect(0, ybP + 3 + Math.max(4, VH * 0.022), VW, Math.max(6, VH * 0.035));
+}
+
+function drawTerrain(){
+  var mx = 1.2;
+  var x0 = CAM.x - (VW * 0.5) / CAM.ppm - mx, x1 = CAM.x + (VW * 0.5) / CAM.ppm + mx;
+  var i0 = clamp(Math.floor((x0 - TX0) / TDX), 0, TN - 1);
+  var i1 = clamp(Math.ceil((x1 - TX0) / TDX), 0, TN - 1);
+  var stride = Math.max(1, Math.floor(1.4 / (TDX * CAM.ppm)));
+  var i, x, y;
+  /* body */
+  ctx.beginPath();
+  ctx.moveTo(sx(TX0 + i0 * TDX), VH + 40);
+  for (i = i0; i <= i1; i += stride){
+    ctx.lineTo(sx(TX0 + i * TDX), sy(TY[i]));
+  }
+  ctx.lineTo(sx(TX0 + i1 * TDX), sy(TY[i1]));
+  ctx.lineTo(sx(TX0 + i1 * TDX), VH + 40);
+  ctx.closePath();
+  ctx.fillStyle = '#23261f';
+  ctx.fill();
+  /* peat and subsoil strata so the foreground is ground, not a void */
+  var bandN = [0.34, 0.95, 2.0], bandC = ['#31352b', '#2a2e26', '#212419'];
+  for (var q = 0; q < 3; q++){
+    ctx.beginPath();
+    for (i = i0; i <= i1; i += stride) ctx.lineTo(sx(TX0 + i * TDX), sy(TY[i] - bandN[q]));
+    ctx.lineTo(sx(TX0 + i1 * TDX), VH + 40); ctx.lineTo(sx(TX0 + i0 * TDX), VH + 40);
+    ctx.closePath(); ctx.fillStyle = bandC[q]; ctx.fill();
+  }
+  if (SUBST && CAM.ppm > 24){
+    var sn = SUBST.length / 3;
+    ctx.fillStyle = '#3b4038';
+    for (i = 0; i < sn; i++){
+      var stx = SUBST[i * 3];
+      if (stx < x0 - 1 || stx > x1 + 1) continue;
+      var sty = heightAt(stx) - SUBST[i * 3 + 1], str = SUBST[i * 3 + 2] * CAM.ppm;
+      if (str < 1) continue;
+      ctx.beginPath(); ctx.ellipse(sx(stx), sy(sty), str, str * 0.62, SUBST[i * 3 + 1], 0, TAU); ctx.fill();
+    }
+  }
+  /* per-surface top band, in runs */
+  ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+  var lw = Math.max(2, 0.18 * CAM.ppm);
+  var run = i0, cur = TS[i0];
+  for (i = i0 + stride; i <= i1 + stride; i += stride){
+    var ii = Math.min(i, i1);
+    if (TS[ii] !== cur || ii >= i1){
+      ctx.beginPath();
+      for (var j = run; j <= ii; j += stride) ctx.lineTo(sx(TX0 + j * TDX), sy(TY[j]) + lw * 0.42);
+      ctx.strokeStyle = SCOL[cur]; ctx.lineWidth = lw; ctx.stroke();
+      ctx.beginPath();
+      for (j = run; j <= ii; j += stride) ctx.lineTo(sx(TX0 + j * TDX), sy(TY[j]) + lw * 0.06);
+      ctx.strokeStyle = SCOL2[cur]; ctx.lineWidth = Math.max(1, lw * 0.34); ctx.stroke();
+      run = ii; cur = TS[ii];
+    }
+  }
+  /* speckles */
+  if (CAM.ppm > 26 && SPECK){
+    var n = SPECK.length / 3;
+    var a = binSearchSpeck(x0), b = binSearchSpeck(x1);
+    ctx.save();
+    for (i = a; i < b && i < n; i++){
+      x = SPECK[i * 3]; y = SPECK[i * 3 + 1];
+      var r = SPECK[i * 3 + 2] * CAM.ppm;
+      if (r < 0.55) continue;
+      ctx.fillStyle = SCOL2[SPECKC[i]];
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(sx(x) - r, sy(y) - r * 0.7, r * 2, r * 1.4);
+    }
+    ctx.restore();
+  }
+  /* tufts */
+  if (TUFT && CAM.ppm > 22){
+    var m = TUFT.length / 4;
+    for (i = 0; i < m; i++){
+      x = TUFT[i * 4];
+      if (x < x0 - 1 || x > x1 + 1) continue;
+      y = TUFT[i * 4 + 1];
+      var kind = TUFT[i * 4 + 2], sc = TUFT[i * 4 + 3] * CAM.ppm * 0.012;
+      var px = sx(x), py = sy(y);
+      if (kind === 0){       /* grass */
+        ctx.strokeStyle = '#6d7150'; ctx.lineWidth = Math.max(0.8, sc * 1.1);
+        ctx.beginPath();
+        for (var k = -1; k <= 1; k++){ ctx.moveTo(px + k * sc * 2, py); ctx.lineTo(px + k * sc * 3.4, py - sc * 9); }
+        ctx.stroke();
+      } else if (kind === 1){ /* heather */
+        ctx.fillStyle = '#7d6c84';
+        ctx.beginPath(); ctx.ellipse(px, py - sc * 4, sc * 5, sc * 3.6, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#5d5747';
+        ctx.fillRect(px - sc * 4, py - sc * 2, sc * 8, sc * 2.2);
+      } else if (kind === 2){ /* pebble */
+        ctx.fillStyle = '#6f767a';
+        ctx.beginPath(); ctx.ellipse(px, py - sc * 1.4, sc * 3.4, sc * 2.1, 0, 0, TAU); ctx.fill();
+      } else {                /* rush */
+        ctx.strokeStyle = '#57603f'; ctx.lineWidth = Math.max(0.8, sc);
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + sc * 1.5, py - sc * 12);
+        ctx.moveTo(px, py); ctx.lineTo(px - sc * 3, py - sc * 9); ctx.stroke();
+      }
+    }
+  }
+}
+function binSearchSpeck(x){
+  var lo = 0, hi = (SPECK.length / 3) | 0;
+  while (lo < hi){ var m = (lo + hi) >> 1; if (SPECK[m * 3] < x) lo = m + 1; else hi = m; }
+  return lo;
+}
+
+var WT = 0, WTOP = [], WGND = [];
+function drawWater(){
+  var x0 = CAM.x - (VW * 0.5) / CAM.ppm - 1, x1 = CAM.x + (VW * 0.5) / CAM.ppm + 1;
+  for (var i = 0; i < WATER.length; i++){
+    var w = WATER[i];
+    if (w.x1 < x0 || w.x0 > x1 || !w.lv) continue;
+    var a = Math.max(w.x0, x0), b = Math.min(w.x1, x1);
+    var step = Math.max(0.05, 2.5 / CAM.ppm);
+    var x, run = null, top = WTOP, gnd = WGND;
+    for (x = a; x <= b + step; x += step){
+      var xx = Math.min(x, b);
+      var wl = waterLevelAt(xx) + 0.013 * Math.sin(xx * 5.1 + WT * 3.4) + 0.007 * Math.sin(xx * 11.3 - WT * 5.1);
+      var gy = heightAt(xx);
+      if (wl > gy + 0.004){
+        if (!run){ run = true; top.length = 0; gnd.length = 0; }
+        top.push(sx(xx), sy(wl)); gnd.push(sx(xx), sy(gy) + 1);
+      } else if (run){ flushWater(top, gnd); run = null; }
+    }
+    if (run) flushWater(top, gnd);
+  }
+}
+function flushWater(top, gnd){
+  if (top.length < 4) return;
+  var i;
+  ctx.beginPath();
+  ctx.moveTo(top[0], top[1]);
+  for (i = 2; i < top.length; i += 2) ctx.lineTo(top[i], top[i + 1]);
+  for (i = gnd.length - 2; i >= 0; i -= 2) ctx.lineTo(gnd[i], gnd[i + 1]);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(56,88,86,0.80)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(top[0], top[1]);
+  for (i = 2; i < top.length; i += 2) ctx.lineTo(top[i], top[i + 1]);
+  ctx.strokeStyle = 'rgba(196,222,215,0.72)';
+  ctx.lineWidth = Math.max(1, CAM.ppm * 0.024);
+  ctx.stroke();
+  /* riffles where the burn runs over the stones */
+  if (CAM.ppm > 30 && top.length > 8){
+    ctx.strokeStyle = 'rgba(214,234,228,0.34)';
+    ctx.lineWidth = Math.max(0.8, CAM.ppm * 0.012);
+    ctx.beginPath();
+    for (i = 0; i < top.length; i += 2){
+      var ph = Math.sin(top[i] * 0.09 + WT * 4.2);
+      if (ph < 0.45) continue;
+      ctx.moveTo(top[i] - CAM.ppm * 0.08, top[i + 1] + CAM.ppm * 0.012);
+      ctx.lineTo(top[i] + CAM.ppm * 0.08, top[i + 1] + CAM.ppm * 0.012);
+    }
+    ctx.stroke();
+  }
+}
+
+/* -------------------------------------------------------------- furniture */
+function boardText(str, x, yTop, w, col, tcol, noPost){
+  var px = sx(x), py = sy(yTop);
+  var pw = w * CAM.ppm, ph = pw * 0.34;
+  if (!noPost){
+    ctx.fillStyle = '#3a3227';
+    ctx.fillRect(px - CAM.ppm * 0.022, py, CAM.ppm * 0.044, CAM.ppm * 1.05);
+  }
+  ctx.fillStyle = col;
+  ctx.fillRect(px - pw / 2, py - ph, pw, ph);
+  ctx.strokeStyle = 'rgba(30,26,20,0.6)'; ctx.lineWidth = 1;
+  ctx.strokeRect(px - pw / 2, py - ph, pw, ph);
+  var fs = Math.max(6, ph * 0.44);
+  ctx.fillStyle = tcol;
+  ctx.font = '700 ' + fs.toFixed(1) + 'px ui-monospace,Menlo,Consolas,monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(str, px, py - ph * 0.5);
+}
+var DASH = [6, 6], NODASH = [];
+function drawFurniture(){
+  var x0 = CAM.x - (VW * 0.5) / CAM.ppm - 3, x1 = CAM.x + (VW * 0.5) / CAM.ppm + 3;
+  var i, s, x;
+  for (i = 0; i < 5; i++){
+    s = SECTIONS[i];
+    if (s.x1 < x0 || s.x0 > x1) continue;
+    /* taped line along the far side */
+    ctx.strokeStyle = 'rgba(224,224,214,0.55)'; ctx.lineWidth = Math.max(1, CAM.ppm * 0.020);
+    ctx.beginPath();
+    var first = true;
+    for (x = Math.max(s.x0, x0 - 1); x <= Math.min(s.x1, x1 + 1); x += 0.5){
+      var ty = heightAt(x) + 0.80 + 0.05 * Math.sin(x * 0.9 + WT);
+      if (first){ ctx.moveTo(sx(x), sy(ty)); first = false; } else ctx.lineTo(sx(x), sy(ty));
+    }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(180,60,48,0.55)'; ctx.lineWidth = Math.max(1, CAM.ppm * 0.010);
+    ctx.stroke();
+    for (x = s.x0; x <= s.x1 + 0.01; x += 3.2){
+      if (x < x0 - 1 || x > x1 + 1) continue;
+      var gy = heightAt(x);
+      ctx.fillStyle = '#4a4436';
+      ctx.fillRect(sx(x) - CAM.ppm * 0.018, sy(gy + 0.86), CAM.ppm * 0.036, CAM.ppm * 0.88);
+    }
+    if (s.x0 > x0 - 2 && s.x0 < x1 + 2)
+      boardText('SECTION ' + (i + 1) + ' BEGINS', s.x0, heightAt(s.x0) - 0.02, 1.30, '#dcd8c8', '#2a2a24');
+    if (s.x1 > x0 - 2 && s.x1 < x1 + 2)
+      boardText('ENDS', s.x1, heightAt(s.x1) - 0.02, 0.85, '#dcd8c8', '#2a2a24');
+    /* obligatory gate */
+    if (s.gate && s.gate.x > x0 - 3 && s.gate.x < x1 + 3){
+      var gx = s.gate.x, gh = heightAt(gx) + s.gate.h;
+      for (var k = -1; k <= 1; k += 2){
+        var px2 = gx + k * 0.92;
+        ctx.fillStyle = '#4a4436';
+        ctx.fillRect(sx(px2) - CAM.ppm * 0.022, sy(heightAt(px2) + s.gate.h + 0.12), CAM.ppm * 0.044, CAM.ppm * (s.gate.h + 0.14));
+      }
+      ctx.strokeStyle = '#d8d4c4'; ctx.lineWidth = Math.max(1.4, CAM.ppm * 0.028);
+      ctx.beginPath(); ctx.moveTo(sx(gx - 0.92), sy(gh)); ctx.lineTo(sx(gx + 0.92), sy(gh)); ctx.stroke();
+      ctx.strokeStyle = 'rgba(180,60,48,0.85)'; ctx.lineWidth = Math.max(0.8, CAM.ppm * 0.012);
+      DASH[0] = DASH[1] = CAM.ppm * 0.12; ctx.setLineDash(DASH);
+      ctx.beginPath(); ctx.moveTo(sx(gx - 0.92), sy(gh)); ctx.lineTo(sx(gx + 0.92), sy(gh)); ctx.stroke();
+      ctx.setLineDash(NODASH);
+    }
+    /* the observer */
+    if (s.obs > x0 - 2 && s.obs < x1 + 2) drawObserver(i, s.obs);
+  }
+  /* finish banner */
+  if (COURSE_END > x0 - 3 && COURSE_END < x1 + 3){
+    var fy = heightAt(COURSE_END);
+    for (var q = -1; q <= 1; q += 2){
+      ctx.fillStyle = '#4a4436';
+      ctx.fillRect(sx(COURSE_END + q * 1.4) - CAM.ppm * 0.03, sy(fy + 2.5), CAM.ppm * 0.06, CAM.ppm * 2.5);
+    }
+    boardText('FINISH', COURSE_END, fy + 2.62, 2.2, '#cfa855', '#221e16', true);
+  }
+}
+function drawObserver(i, x){
+  var gy = heightAt(x), px = sx(x), py = sy(gy), u = CAM.ppm;
+  var react = G.obsReact[i], fing = G.obsFing[i];
+  var arm = react > 0 ? clamp(react * 1.6, 0, 1) : 0;
+  /* legs */
+  ctx.strokeStyle = '#3f4438'; ctx.lineWidth = Math.max(1.4, u * 0.055); ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(px - u * 0.05, py); ctx.lineTo(px - u * 0.03, py - u * 0.38);
+  ctx.moveTo(px + u * 0.06, py); ctx.lineTo(px + u * 0.03, py - u * 0.38);
+  ctx.stroke();
+  /* tweed coat */
+  ctx.fillStyle = '#6b6349';
+  ctx.beginPath();
+  ctx.moveTo(px - u * 0.13, py - u * 0.30);
+  ctx.lineTo(px + u * 0.13, py - u * 0.30);
+  ctx.lineTo(px + u * 0.11, py - u * 0.86);
+  ctx.lineTo(px - u * 0.11, py - u * 0.86);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(40,36,26,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+  /* head + bunnet */
+  ctx.fillStyle = '#c8a98a';
+  ctx.beginPath(); ctx.arc(px, py - u * 0.98, u * 0.085, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#5b5440';
+  ctx.beginPath(); ctx.ellipse(px, py - u * 1.04, u * 0.115, u * 0.055, 0, 0, TAU); ctx.fill();
+  ctx.fillRect(px - u * 0.02, py - u * 1.06, u * 0.15, u * 0.028);
+  /* clipboard arm */
+  ctx.strokeStyle = '#6b6349'; ctx.lineWidth = Math.max(1.2, u * 0.045);
+  ctx.beginPath(); ctx.moveTo(px - u * 0.10, py - u * 0.78); ctx.lineTo(px - u * 0.20, py - u * 0.60); ctx.stroke();
+  ctx.fillStyle = '#d8d2bd';
+  ctx.fillRect(px - u * 0.28, py - u * 0.66, u * 0.16, u * 0.20);
+  ctx.strokeStyle = 'rgba(40,36,26,0.6)'; ctx.lineWidth = 1;
+  ctx.strokeRect(px - u * 0.28, py - u * 0.66, u * 0.16, u * 0.20);
+  /* marking arm */
+  var ax = px + u * (0.10 + 0.10 * arm), ay = py - u * (0.78 + 0.42 * arm);
+  ctx.strokeStyle = '#6b6349'; ctx.lineWidth = Math.max(1.2, u * 0.045);
+  ctx.beginPath(); ctx.moveTo(px + u * 0.10, py - u * 0.78); ctx.lineTo(ax, ay); ctx.stroke();
+  if (arm > 0.02 && fing > 0){
+    ctx.strokeStyle = '#c8a98a'; ctx.lineWidth = Math.max(1, u * 0.024);
+    ctx.beginPath();
+    var nf = Math.min(3, fing);
+    if (fing === 5){
+      ctx.moveTo(ax, ay); ctx.lineTo(ax + u * 0.02, ay - u * 0.16);
+      ctx.moveTo(ax, ay); ctx.lineTo(ax + u * 0.08, ay - u * 0.13);
+    } else {
+      for (var f = 0; f < nf; f++){
+        ctx.moveTo(ax + f * u * 0.030 - u * 0.02, ay);
+        ctx.lineTo(ax + f * u * 0.034 - u * 0.02, ay - u * 0.15);
+      }
+    }
+    ctx.stroke();
+    if (fing === 5){
+      /* whistle puff */
+      ctx.fillStyle = 'rgba(240,240,235,' + (0.35 * arm).toFixed(2) + ')';
+      ctx.beginPath(); ctx.arc(px + u * 0.16, py - u * 0.98, u * 0.10 * (1.4 - arm), 0, TAU); ctx.fill();
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ logs */
+function drawLogs(){
+  for (var i = 0; i < LOGS.length; i++){
+    var L = LOGS[i];
+    var px = sx(L.x), py = sy(L.y), r = L.r * CAM.ppm;
+    if (px < -r * 2 || px > VW + r * 2) continue;
+    ctx.fillStyle = '#4a3f2e';
+    ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#332b1f'; ctx.lineWidth = Math.max(1, r * 0.10); ctx.stroke();
+    /* end grain rings so the roll is visible */
+    ctx.strokeStyle = 'rgba(154,128,92,0.75)'; ctx.lineWidth = Math.max(0.8, r * 0.055);
+    for (var k = 1; k <= 3; k++){
+      ctx.beginPath(); ctx.arc(px, py, r * (0.22 * k), 0, TAU); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(206,180,138,0.8)'; ctx.lineWidth = Math.max(1, r * 0.07);
+    ctx.beginPath(); ctx.moveTo(px, py);
+    ctx.lineTo(px + Math.cos(-L.a) * r * 0.9, py + Math.sin(-L.a) * r * 0.9); ctx.stroke();
+  }
+}
+
+/* ------------------------------------------------------------------ bike */
+function bx(lx, ly){ return sx(BK.x + Math.cos(BK.a) * lx - Math.sin(BK.a) * ly); }
+function by(lx, ly){ return sy(BK.y + Math.sin(BK.a) * lx + Math.cos(BK.a) * ly); }
+function drawWheel(i){
+  var w = BK.wh[i], r = (i === WF ? P.rF : P.rR) * CAM.ppm;
+  var px = sx(w.cx), py = sy(w.cy);
+  var ang = -w.spin;
+  ctx.strokeStyle = '#15181a'; ctx.lineWidth = Math.max(2, r * 0.215);
+  ctx.beginPath(); ctx.arc(px, py, r * 0.90, 0, TAU); ctx.stroke();
+  /* knobs */
+  if (r > 8){
+    ctx.strokeStyle = '#22262a'; ctx.lineWidth = Math.max(1, r * 0.09);
+    ctx.beginPath();
+    for (var k = 0; k < 12; k++){
+      var a = ang + k * TAU / 12;
+      ctx.moveTo(px + Math.cos(a) * r * 0.97, py + Math.sin(a) * r * 0.97);
+      ctx.lineTo(px + Math.cos(a) * r * 1.05, py + Math.sin(a) * r * 1.05);
+    }
+    ctx.stroke();
+  }
+  /* rim + spokes */
+  ctx.strokeStyle = '#9aa2a6'; ctx.lineWidth = Math.max(1, r * 0.055);
+  ctx.beginPath(); ctx.arc(px, py, r * 0.74, 0, TAU); ctx.stroke();
+  if (r > 7){
+    ctx.strokeStyle = 'rgba(180,188,192,0.85)'; ctx.lineWidth = Math.max(0.7, r * 0.030);
+    ctx.beginPath();
+    for (var s = 0; s < 6; s++){
+      var a2 = ang + s * TAU / 6;
+      ctx.moveTo(px + Math.cos(a2) * r * 0.14, py + Math.sin(a2) * r * 0.14);
+      ctx.lineTo(px + Math.cos(a2) * r * 0.72, py + Math.sin(a2) * r * 0.72);
+    }
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#7d858a';
+  ctx.beginPath(); ctx.arc(px, py, Math.max(1.2, r * 0.13), 0, TAU); ctx.fill();
+}
+function drawBike(){
+  var u = CAM.ppm;
+  var wf = BK.wh[WF], wr = BK.wh[WR];
+  /* --- forks --- */
+  wheelGeom(WF);
+  var fmx = G_mx, fmy = G_my;
+  ctx.strokeStyle = '#b9c0c4'; ctx.lineWidth = Math.max(1.6, u * 0.055); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(sx(fmx), sy(fmy)); ctx.lineTo(sx(wf.cx), sy(wf.cy)); ctx.stroke();
+  ctx.strokeStyle = '#5e666a'; ctx.lineWidth = Math.max(1.2, u * 0.032);
+  ctx.beginPath(); ctx.moveTo(sx(fmx + G_ax * 0.14), sy(fmy + G_ay * 0.14)); ctx.lineTo(sx(wf.cx), sy(wf.cy)); ctx.stroke();
+  /* front mudguard */
+  ctx.strokeStyle = '#c3c9cc'; ctx.lineWidth = Math.max(1.2, u * 0.035);
+  ctx.beginPath();
+  var fa = Math.atan2(-G_ay, -G_ax);
+  ctx.arc(sx(wf.cx), sy(wf.cy), P.rF * 1.22 * u, -fa - 1.15, -fa + 0.62);
+  ctx.stroke();
+
+  /* --- swingarm --- */
+  var pvx = bx(-0.16, 0.03), pvy = by(-0.16, 0.03);
+  ctx.strokeStyle = '#3d4348'; ctx.lineWidth = Math.max(1.8, u * 0.062);
+  ctx.beginPath(); ctx.moveTo(pvx, pvy); ctx.lineTo(sx(wr.cx), sy(wr.cy)); ctx.stroke();
+  /* shock */
+  ctx.strokeStyle = '#8d949a'; ctx.lineWidth = Math.max(1.4, u * 0.040);
+  ctx.beginPath(); ctx.moveTo(bx(-0.34, 0.36), by(-0.34, 0.36));
+  ctx.lineTo(sx(wr.cx * 0.35 + (BK.x + Math.cos(BK.a) * -0.45 - Math.sin(BK.a) * 0.10) * 0.65),
+             sy(wr.cy * 0.35 + (BK.y + Math.sin(BK.a) * -0.45 + Math.cos(BK.a) * 0.10) * 0.65));
+  ctx.stroke();
+  /* rear mudguard */
+  ctx.strokeStyle = '#c3c9cc'; ctx.lineWidth = Math.max(1.2, u * 0.034);
+  ctx.beginPath();
+  ctx.moveTo(bx(-0.86, 0.30), by(-0.86, 0.30));
+  ctx.lineTo(bx(-0.46, 0.34), by(-0.46, 0.34));
+  ctx.stroke();
+
+  /* --- exhaust (expansion chamber) --- */
+  ctx.strokeStyle = '#6e6f6a'; ctx.lineWidth = Math.max(1.6, u * 0.075);
+  ctx.beginPath();
+  ctx.moveTo(bx(0.10, -0.06), by(0.10, -0.06));
+  ctx.quadraticCurveTo(bx(0.06, 0.24), by(0.06, 0.24), bx(-0.36, 0.20), by(-0.36, 0.20));
+  ctx.quadraticCurveTo(bx(-0.62, 0.22), by(-0.62, 0.22), bx(-0.80, 0.29), by(-0.80, 0.29));
+  ctx.stroke();
+
+  /* --- engine block --- */
+  ctx.fillStyle = '#5b6165';
+  ctx.beginPath();
+  ctx.moveTo(bx(-0.16, -0.10), by(-0.16, -0.10));
+  ctx.lineTo(bx(0.15, -0.06), by(0.15, -0.06));
+  ctx.lineTo(bx(0.16, 0.20), by(0.16, 0.20));
+  ctx.lineTo(bx(-0.18, 0.18), by(-0.18, 0.18));
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#7f878b'; ctx.lineWidth = Math.max(0.8, u * 0.016);
+  ctx.beginPath();
+  for (var f2 = 0; f2 < 3; f2++){
+    ctx.moveTo(bx(-0.02, 0.06 + f2 * 0.045), by(-0.02, 0.06 + f2 * 0.045));
+    ctx.lineTo(bx(0.15, 0.08 + f2 * 0.045), by(0.15, 0.08 + f2 * 0.045));
+  }
+  ctx.stroke();
+  /* skid plate */
+  ctx.strokeStyle = '#9aa1a5'; ctx.lineWidth = Math.max(1.2, u * 0.030);
+  ctx.beginPath(); ctx.moveTo(bx(-0.20, -0.14), by(-0.20, -0.14)); ctx.lineTo(bx(0.18, -0.10), by(0.18, -0.10)); ctx.stroke();
+
+  /* --- frame --- */
+  ctx.strokeStyle = '#31373b'; ctx.lineWidth = Math.max(1.4, u * 0.038);
+  ctx.beginPath();
+  ctx.moveTo(bx(0.36, 0.44), by(0.36, 0.44));
+  ctx.lineTo(bx(-0.10, 0.34), by(-0.10, 0.34));
+  ctx.lineTo(bx(-0.40, 0.36), by(-0.40, 0.36));
+  ctx.moveTo(bx(0.36, 0.44), by(0.36, 0.44));
+  ctx.lineTo(bx(0.14, 0.02), by(0.14, 0.02));
+  ctx.moveTo(bx(-0.16, 0.03), by(-0.16, 0.03));
+  ctx.lineTo(bx(-0.12, 0.32), by(-0.12, 0.32));
+  ctx.stroke();
+
+  /* --- tank: silver with the red pinstripe --- */
+  ctx.fillStyle = '#c9ced3';
+  ctx.beginPath();
+  ctx.moveTo(bx(0.34, 0.46), by(0.34, 0.46));
+  ctx.lineTo(bx(0.30, 0.60), by(0.30, 0.60));
+  ctx.lineTo(bx(0.02, 0.62), by(0.02, 0.62));
+  ctx.lineTo(bx(-0.10, 0.52), by(-0.10, 0.52));
+  ctx.lineTo(bx(-0.08, 0.40), by(-0.08, 0.40));
+  ctx.lineTo(bx(0.22, 0.38), by(0.22, 0.38));
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#9aa1a7'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = '#a3302a'; ctx.lineWidth = Math.max(1, u * 0.020);
+  ctx.beginPath(); ctx.moveTo(bx(0.30, 0.50), by(0.30, 0.50)); ctx.lineTo(bx(-0.06, 0.46), by(-0.06, 0.46)); ctx.stroke();
+  /* seat */
+  ctx.fillStyle = '#26262a';
+  ctx.beginPath();
+  ctx.moveTo(bx(-0.08, 0.52), by(-0.08, 0.52));
+  ctx.lineTo(bx(-0.46, 0.44), by(-0.46, 0.44));
+  ctx.lineTo(bx(-0.46, 0.38), by(-0.46, 0.38));
+  ctx.lineTo(bx(-0.08, 0.44), by(-0.08, 0.44));
+  ctx.closePath(); ctx.fill();
+  /* bars */
+  ctx.strokeStyle = '#20242a'; ctx.lineWidth = Math.max(1.4, u * 0.032);
+  ctx.beginPath();
+  ctx.moveTo(bx(0.38, 0.47), by(0.38, 0.47));
+  ctx.lineTo(bx(0.44, 0.60), by(0.44, 0.60));
+  ctx.lineTo(bx(0.60, 0.545), by(0.60, 0.545));
+  ctx.stroke();
+  ctx.fillStyle = '#3a3f42';
+  ctx.beginPath(); ctx.arc(bx(0.60, 0.545), by(0.60, 0.545), Math.max(1.5, u * 0.045), 0, TAU); ctx.fill();
+  /* footpegs */
+  ctx.strokeStyle = '#7f878b'; ctx.lineWidth = Math.max(1.2, u * 0.028);
+  ctx.beginPath(); ctx.moveTo(bx(-0.10, 0.02), by(-0.10, 0.02)); ctx.lineTo(bx(-0.02, -0.01), by(-0.02, -0.01)); ctx.stroke();
+}
+function drawRider(){
+  var u = CAM.ppm;
+  var hipx = sx(BK.rx), hipy = sy(BK.ry);
+  var barx = bx(0.60, 0.545), bary = by(0.60, 0.545);
+  var pegx = bx(-0.06, 0.02), pegy = by(-0.06, 0.02);
+  /* torso direction: from hip up, tilted toward the bars */
+  var tdx = barx - hipx, tdy = bary - hipy;
+  var tl = Math.hypot(tdx, tdy) || 1;
+  var upx = -Math.sin(BK.a), upy = -Math.cos(BK.a);   /* screen-space up along chassis */
+  var lean = clamp(BK.leanX * 1.1, -0.5, 0.5);
+  var shx = hipx + (upx * 0.40 + (tdx / tl) * 0.16) * u;
+  var shy = hipy + (upy * 0.40 + (tdy / tl) * 0.16) * u;
+  var headx = shx + upx * u * 0.20 + (tdx / tl) * u * 0.045;
+  var heady = shy + upy * u * 0.20 + (tdy / tl) * u * 0.045;
+  /* legs */
+  var footAx, footAy, footBx2, footBy2;
+  footAx = pegx; footAy = pegy; footBx2 = pegx; footBy2 = pegy;
+  var dab = BK.footT > 0;
+  if (dab){ footBx2 = sx(BK.footX); footBy2 = sy(BK.footY); }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  drawLimb(hipx, hipy, footAx, footAy, u * 0.11, '#4e5640', u * 0.095);
+  drawLimb(hipx, hipy, footBx2, footBy2, dab ? -u * 0.15 : u * 0.11, '#5c6349', u * 0.095);
+  /* boots */
+  ctx.fillStyle = '#191a17';
+  ctx.beginPath(); ctx.arc(footAx, footAy, Math.max(1.8, u * 0.068), 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(footBx2, footBy2, Math.max(1.8, u * 0.068), 0, TAU); ctx.fill();
+  /* torso: Barbour jacket */
+  ctx.strokeStyle = '#4b5340'; ctx.lineWidth = Math.max(3, u * 0.20);
+  ctx.beginPath(); ctx.moveTo(hipx, hipy); ctx.lineTo(shx, shy); ctx.stroke();
+  ctx.strokeStyle = '#3a4132'; ctx.lineWidth = Math.max(1, u * 0.03);
+  ctx.beginPath(); ctx.moveTo(hipx, hipy); ctx.lineTo(shx, shy); ctx.stroke();
+  /* arms */
+  drawLimb(shx, shy, barx, bary, u * 0.07, '#4b5340', u * 0.062);
+  /* head + pudding-basin helmet */
+  ctx.fillStyle = '#c9a888';
+  ctx.beginPath(); ctx.arc(headx, heady, Math.max(2, u * 0.085), 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ddd6c2';
+  ctx.beginPath();
+  ctx.arc(headx, heady - u * 0.012, Math.max(2.2, u * 0.098), PI * 1.02, PI * 2.06);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#8d8873'; ctx.lineWidth = 1; ctx.stroke();
+  /* goggles */
+  ctx.strokeStyle = '#2b2b26'; ctx.lineWidth = Math.max(1, u * 0.024);
+  ctx.beginPath();
+  ctx.moveTo(headx - u * 0.08, heady - u * 0.01);
+  ctx.lineTo(headx + u * 0.08, heady - u * 0.02);
+  ctx.stroke();
+}
+function drawLimb(x0, y0, x1, y1, bend, col, wdt){
+  var mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+  var dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1;
+  var nx = -dy / L, ny = dx / L;
+  var kx = mx + nx * bend, ky = my + ny * bend;
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, wdt);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(kx, ky, x1, y1); ctx.stroke();
+}
+
+/* ------------------------------------------------------------- particles */
+var PCOL = ['rgba(196,220,216,', 'rgba(74,60,44,', 'rgba(120,112,80,', 'rgba(140,146,148,'];
+var PSTR = (function(){
+  var a = [], i, j;
+  for (i = 0; i < PCOL.length; i++){ a[i] = []; for (j = 0; j <= 16; j++) a[i][j] = PCOL[i] + (j / 16 * 0.85).toFixed(3) + ')'; }
+  return a;
+})();
+var EXSTR = (function(){ var a = [], j; for (j = 0; j <= 16; j++) a[j] = 'rgba(180,182,178,' + (j / 16 * 0.20).toFixed(3) + ')'; return a; })();
+function drawParticles(){
+  var n = PART.n;
+  for (var i = 0; i < n; i++){
+    var t = PART.l[i] / PART.L[i];
+    var px = sx(PART.x[i]), py = sy(PART.y[i]);
+    if (px < -20 || px > VW + 20 || py < -20 || py > VH + 20) continue;
+    var r = PART.s[i] * CAM.ppm;
+    var k = PART.k[i];
+    var ai = (t * 16) | 0; if (ai < 0) ai = 0; else if (ai > 16) ai = 16;
+    if (k === 3){ r *= (1 + (1 - t) * 3.4); ctx.fillStyle = EXSTR[ai]; }
+    else ctx.fillStyle = PSTR[PART.c[i]][ai];
+    ctx.beginPath(); ctx.arc(px, py, Math.max(0.6, r), 0, TAU); ctx.fill();
+  }
+}
+/* drizzle: screen-space streaks */
+var RAIN_N = 150, RAINX = new Float32Array(RAIN_N), RAINY = new Float32Array(RAIN_N), RAINV = new Float32Array(RAIN_N);
+(function(){ for (var i = 0; i < RAIN_N; i++){ RAINX[i] = Math.random(); RAINY[i] = Math.random(); RAINV[i] = 0.6 + Math.random() * 0.8; } })();
+function drawRain(dt){
+  ctx.strokeStyle = 'rgba(206,214,212,0.20)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (var i = 0; i < RAIN_N; i++){
+    RAINY[i] += RAINV[i] * dt * 0.85;
+    RAINX[i] -= RAINV[i] * dt * 0.16;
+    if (RAINY[i] > 1){ RAINY[i] -= 1; RAINX[i] = Math.random(); }
+    if (RAINX[i] < 0) RAINX[i] += 1;
+    var px = RAINX[i] * VW, py = RAINY[i] * VH;
+    ctx.moveTo(px, py); ctx.lineTo(px - 2.6, py + 11 * RAINV[i]);
+  }
+  ctx.stroke();
+}
+
+/* ------------------------------------------------------------- the frame */
+function render(dt){
+  ctx.setTransform(BS, 0, 0, BS, 0, 0);
+  /* sky */
+  if (SKY) ctx.drawImage(SKY, 0, 0, 1, SKYH, 0, 0, VW, VH);
+  else { ctx.fillStyle = '#a8b0ae'; ctx.fillRect(0, 0, VW, VH); }
+  drawHills();
+  WT += dt;
+  drawTerrain();
+  drawFurniture();
+  drawWater();
+  drawLogs();
+  drawParticles();
+  if (!(G.pendingFive >= 0 && G.fiveT < 0.35)){
+    drawWheel(WR);
+    drawBike();
+    drawRider();
+    drawWheel(WF);
+  }
+  drawRain(dt);
+  /* vignette-ish darkening at the edges, cheap */
+  ctx.fillStyle = 'rgba(10,14,13,0.16)';
+  ctx.fillRect(0, 0, VW, Math.max(20, VH * 0.06));
+}
+
+/* ================================================================== HUD */
+var callT = 0;
+function setCall(main, sub, cls, dur){
+  elCall.textContent = main || '';
+  elSub.textContent = sub || '';
+  elCall.className = (main ? 'on ' : '') + (cls || '');
+  elSub.className = sub ? 'on' : '';
+  callT = dur || 0;
+}
+var lastChips = '';
+function updateHUD(force){
+  var i;
+  if (G.cur >= 0){
+    var s = SECTIONS[G.cur];
+    elSecL.textContent = 'SECTION ' + (G.cur + 1);
+    elSecName.textContent = s.n;
+    elSecSub.textContent = s.sub;
+  } else {
+    var nx = -1;
+    for (i = 0; i < 5; i++) if (G.marks[i] < 0){ nx = i; break; }
+    elSecL.textContent = 'LIAISON';
+    elSecName.textContent = nx >= 0 ? ('TO SECTION ' + (nx + 1)) : 'TO THE FINISH';
+    elSecSub.textContent = nx >= 0 ? SECTIONS[nx].n.toLowerCase() : 'ride it in';
+  }
+  var key = G.marks.join(',') + '|' + G.cur;
+  if (key !== lastChips || force){
+    lastChips = key;
+    var html = '';
+    for (i = 0; i < 5; i++){
+      var m = G.marks[i], c = 'chip';
+      var t = '·';
+      if (m >= 0 && !(G.cur === i)){ t = String(m); c += m === 0 ? ' clean' : (m === 5 ? ' five' : ' done'); }
+      else if (G.cur === i){ c += ' now'; t = m > 0 ? String(m) : '–'; }
+      html += '<div class="' + c + '">' + t + '</div>';
+    }
+    elChips.innerHTML = html;
+  }
+  var tot = totalMarks();
+  elMarkN.textContent = String(tot);
+  var mm = Math.floor(G.t / 60), ss = G.t - mm * 60;
+  elClock.textContent = mm + ':' + (ss < 10 ? '0' : '') + ss.toFixed(1);
+  var rpm = BK.we * 9.5493;
+  elBarF.style.width = clamp(rpm / 9800 * 100, 0, 100).toFixed(1) + '%';
+  var spd = Math.hypot(BK.vx, BK.vy);
+  elSpd.textContent = spd.toFixed(1) + ' m/s';
+  var sf = BK.wh[WR].grounded ? BK.wh[WR].surf : (BK.wh[WF].grounded ? BK.wh[WF].surf : -1);
+  elGripL.textContent = sf >= 0 ? SNAME[sf] : 'AIRBORNE';
+  var mu = sf >= 0 ? MU[sf] : 0;
+  elGripDot.style.background = sf < 0 ? '#8e9a94' : (mu > 0.8 ? '#8fc47a' : (mu > 0.54 ? '#e0a34a' : '#d9563f'));
+  var rt = retryTarget();
+  if (rt >= 0 && G.state === 'play'){ elRetryL.textContent = 'R · RETRY SECTION ' + (rt + 1); elRetryL.className = 'on'; }
+  else elRetryL.className = '';
+  /* no-stop meter */
+  if (G.stopT > 0.7 && G.cur >= 0 && G.pendingFive === -1){
+    elStopBox.className = 'on';
+    elStopF.style.width = clamp((G.stopT - 0.7) / 1.3 * 100, 0, 100).toFixed(0) + '%';
+  } else elStopBox.className = '';
+}
+
+/* ================================================================== UI */
+function showPane(p){
+  document.body.classList.toggle('ovon', !!p);
+  pStart.className = 'pane' + (p === 'start' ? ' on' : '');
+  pPause.className = 'pane' + (p === 'pause' ? ' on' : '');
+  pEnd.className = 'pane' + (p === 'end' ? ' on' : '');
+  elOv.className = p ? '' : 'off';
+}
+function startGame(){
+  initAudio();
+  fullReset();
+  G.state = 'play';
+  showPane(null);
+  elHud.className = 'on';
+  acc = 0; last = performance.now();
+  setCall('THE MOOR ROAD', 'ride on to section 1 — the liaison is unscored', 'gold', 2.4);
+}
+var pausedFrom = 'play';
+function openControls(){
+  if (G.state === 'play'){ pausedFrom = 'play'; G.state = 'pause'; showPane('pause'); }
+  else if (G.state === 'pause'){ resumeGame(); }
+  else if (G.state === 'end'){ showPane(pPause.className.indexOf('on') >= 0 ? 'end' : 'pause'); }
+  else if (G.state === 'start'){ /* already listing them */ }
+}
+function resumeGame(){
+  if (G.state !== 'pause') return;
+  G.state = 'play';
+  showPane(null);
+  acc = 0; last = performance.now();
+}
+function showResults(tot, cleans){
+  var i, rows = '<tr><th>SECTION</th><th class="r">MARKS</th></tr>';
+  for (i = 0; i < 5; i++){
+    var m = G.marks[i] < 0 ? 0 : G.marks[i];
+    rows += '<tr><td class="nm">' + (i + 1) + ' &nbsp; ' + SECTIONS[i].n + '</td>' +
+            '<td class="r mk ' + (m === 0 ? 'c0' : (m === 5 ? 'c5' : '')) + '">' + m + '</td></tr>';
+  }
+  rows += '<tr class="tot"><td>TOTAL</td><td class="r">' + tot + '</td></tr>';
+  D('sheet').innerHTML = rows;
+  var aw = tot === 0 ? 'FEET UP' : (tot <= 3 ? 'FIRST CLASS' : (tot <= 8 ? 'SECOND CLASS' : 'FINISHER'));
+  var el = D('awrd'); el.textContent = aw; el.className = 'awrd' + (tot === 0 ? ' perfect' : '');
+  var mm = Math.floor(G.t / 60), ss = G.t - mm * 60;
+  D('rTime').textContent = mm + ':' + (ss < 10 ? '0' : '') + ss.toFixed(1);
+  D('rClean').textContent = String(cleans);
+  D('rRetry').textContent = String(G.retries);
+  D('rNote').innerHTML = tot === 0
+    ? 'A clean loop. The observer had nothing to write down all day.'
+    : (tot <= 3 ? 'A first-class ride. Press <kbd>F</kbd> for another go.'
+                : 'Lower is better. Press <kbd>F</kbd> to ride the loop again.');
+  showPane('end');
+  elHud.className = '';
+}
+
+/* =============================================================== INPUT */
+var KEY = {};
+var isTouch = false;
+function setTouchMode(on){
+  if (isTouch === on) return;
+  isTouch = on;
+  document.body.classList.toggle('touch', on);
+}
+function applyKeys(){
+  CMD.th = (KEY.w ? 1 : 0);
+  CMD.br = (KEY.s ? 1 : 0);
+  CMD.lean = (KEY.a ? -1 : 0) + (KEY.d ? 1 : 0);
+  if (TCH.th) CMD.th = 1;
+  if (TCH.br) CMD.br = 1;
+  if (TCH.lb && !TCH.lf) CMD.lean = -1;
+  else if (TCH.lf && !TCH.lb) CMD.lean = 1;
+}
+var TCH = { th:false, br:false, lb:false, lf:false };
+window.addEventListener('keydown', function(e){
+  var c = e.code;
+  if (c === 'F5' || (e.ctrlKey || e.metaKey)) return;
+  var handled = true;
+  if (G.state === 'start'){
+    if (c === 'KeyH' || c === 'Slash') { handled = true; }
+    else { startGame(); e.preventDefault(); return; }
+  }
+  switch (c){
+    case 'KeyW': case 'ArrowUp': KEY.w = true; break;
+    case 'KeyS': case 'ArrowDown': KEY.s = true; break;
+    case 'KeyA': case 'ArrowLeft': KEY.a = true; break;
+    case 'KeyD': case 'ArrowRight': KEY.d = true; break;
+    case 'KeyR': doRetry(); break;
+    case 'KeyP': case 'Escape':
+      if (G.state === 'play') openControls(); else if (G.state === 'pause') resumeGame();
+      break;
+    case 'KeyH': case 'Slash':
+      if (G.state === 'play') openControls();
+      else if (G.state === 'pause') resumeGame();
+      else if (G.state === 'end'){
+        showPane(pPause.className.indexOf('on') >= 0 ? 'end' : 'pause');
+      }
+      break;
+    case 'KeyM': setMute(!G.muted); break;
+    case 'KeyF': initAudio(); fullReset(); startGame(); break;
+    default: handled = false;
+  }
+  if (handled) e.preventDefault();
+  applyKeys();
+});
+window.addEventListener('keyup', function(e){
+  switch (e.code){
+    case 'KeyW': case 'ArrowUp': KEY.w = false; break;
+    case 'KeyS': case 'ArrowDown': KEY.s = false; break;
+    case 'KeyA': case 'ArrowLeft': KEY.a = false; break;
+    case 'KeyD': case 'ArrowRight': KEY.d = false; break;
+  }
+  applyKeys();
+});
+/* touch buttons, multi-touch capable */
+function bindTouch(id, on, off){
+  var el = D(id);
+  var down = function(e){ e.preventDefault(); setTouchMode(true); el.className = 'tb down'; on(); applyKeys(); };
+  var up = function(e){ if (e) e.preventDefault(); el.className = 'tb'; off(); applyKeys(); };
+  el.addEventListener('touchstart', down, { passive: false });
+  el.addEventListener('touchend', up, { passive: false });
+  el.addEventListener('touchcancel', up, { passive: false });
+  el.addEventListener('mousedown', down);
+  window.addEventListener('mouseup', up);
+}
+bindTouch('tTH', function(){ TCH.th = true; }, function(){ TCH.th = false; });
+bindTouch('tBR', function(){ TCH.br = true; }, function(){ TCH.br = false; });
+bindTouch('tLB', function(){ TCH.lb = true; }, function(){ TCH.lb = false; });
+bindTouch('tLF', function(){ TCH.lf = true; }, function(){ TCH.lf = false; });
+D('tHELP').addEventListener('touchstart', function(e){ e.preventDefault(); setTouchMode(true); if (G.state === 'play') openControls(); else if (G.state === 'pause') resumeGame(); }, { passive: false });
+D('tHELP').addEventListener('click', function(e){ e.preventDefault(); if (G.state === 'play') openControls(); else if (G.state === 'pause') resumeGame(); });
+window.addEventListener('touchstart', function(){ setTouchMode(true); if (G.state === 'start'){ initAudio(); } }, { passive: true, capture: true });
+
+D('bStart').addEventListener('click', function(e){ e.stopPropagation(); startGame(); });
+D('bResume').addEventListener('click', function(e){ e.stopPropagation(); resumeGame(); });
+D('bRestart2').addEventListener('click', function(e){ e.stopPropagation(); fullReset(); startGame(); });
+D('bAgain').addEventListener('click', function(e){ e.stopPropagation(); fullReset(); startGame(); });
+D('bCtl2').addEventListener('click', function(e){ e.stopPropagation(); showPane('pause'); pausedFrom = 'end'; });
+elOv.addEventListener('mousedown', function(e){
+  if (e.target === elOv && G.state === 'start') startGame();
+});
+
+/* pause on blur / hidden */
+function autoPause(){ if (G.state === 'play'){ pausedFrom = 'play'; G.state = 'pause'; showPane('pause'); } }
+window.addEventListener('blur', autoPause);
+document.addEventListener('visibilitychange', function(){ if (document.hidden) autoPause(); });
+
+/* ================================================================ resize */
+var RES_STEPS = [1, 0.86, 0.74, 0.62], resIdx = 0, BS = 1;
+function resize(){
+  VW = Math.max(1, window.innerWidth);
+  VH = Math.max(1, window.innerHeight);
+  var dpr = Math.min(window.devicePixelRatio || 1, 3);
+  /* a 4K backing store on a phone-class GPU is not worth the frame it costs */
+  var area = VW * VH;
+  if (area * dpr * dpr > 5.0e6) dpr = Math.max(1, Math.sqrt(5.0e6 / area));
+  DPR = dpr;
+  BS = DPR * RES_STEPS[resIdx];
+  /* RETINA/DPR RULE 2: backing store is sized separately from the CSS size */
+  cv.width = Math.max(1, Math.round(VW * BS));
+  cv.height = Math.max(1, Math.round(VH * BS));
+  /* RULE 1 belt-and-braces (the stylesheet already pins it to the viewport) */
+  cv.style.width = '100%';
+  cv.style.height = '100%';
+  makeSky();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 120); });
+
+/* ============================================================== MAIN LOOP */
+var acc = 0, last = 0, fpsT = 0, fpsN = 0, FPS = 60;
+function simStep(dt){
+  physStep(dt, false);
+  stepGame(dt);
+}
+function frame(now){
+  requestAnimationFrame(frame);
+  var dt = (now - last) / 1000; last = now;
+  if (!(dt > 0)) dt = 0;
+  if (dt > 0.25) dt = 0.25;          /* clamp after a tab-away */
+  if (G.state === 'play'){
+    acc += dt;
+    var n = 0;
+    while (acc >= DT && n < 14){ simStep(DT); acc -= DT; n++; }
+    if (acc > DT * 6) acc = 0;        /* give up on a backlog rather than spiral */
+    consumeEvents(dt);
+    stepParticles(dt);
+  }
+  if (G.state === 'play' || G.state === 'pause' || G.state === 'end' || G.state === 'start'){
+    stepCamera(G.state === 'play' ? dt : Math.min(dt, 0.02));
+    render(dt);
+  }
+  if (G.state === 'play'){
+    updateHUD(false);
+    if (callT > 0){ callT -= dt; if (callT <= 0) setCall('', ''); }
+  }
+  audioTick(dt);
+  fpsN++; fpsT += dt;
+  if (fpsT > 0.5){
+    FPS = fpsN / fpsT; fpsT = 0; fpsN = 0;
+    /* adaptive internal resolution: drop it if the frame budget is blown,
+       claw it back when there is headroom. CSS size never changes. */
+    govT += 0.5;
+    if (govT > 1.6 && G.state === 'play'){
+      govT = 0;
+      if (FPS < 46 && resIdx < RES_STEPS.length - 1){ resIdx++; resize(); }
+      else if (FPS > 57.5 && resIdx > 0){ resIdx--; resize(); }
+    }
+  }
+}
+var govT = 0;
+
+/* ================================================================= boot */
+buildWorld();
+resize();
+fullReset();
+showPane('start');
+requestAnimationFrame(function(t){ last = t; requestAnimationFrame(frame); });
+
+/* optional greeting */
+(function(){
+  var tries = 0;
+  var iv = setInterval(function(){
+    tries++;
+    var a = window.__arcade;
+    if (a){
+      clearInterval(iv);
+      try {
+        if (a.player && !a.player.isGuest && a.player.displayName){
+          var el = D('riderGreet');
+          el.textContent = 'RIDER: ' + a.player.displayName;
+          el.style.display = 'block';
+        }
+      } catch (e){}
+    }
+    if (tries > 40) clearInterval(iv);
+  }, 250);
+})();
+
+/* ============================================================== HARNESS
+   Exposed for scripted-rider tuning runs. Never used by play.          */
+window.__dab = {
+  G: G, BK: BK, P: P, SECTIONS: SECTIONS, CMD: CMD, SM: SM, DT: DT,
+  reset: fullReset,
+  place: placeBike,
+  step: simStep,
+  heightAt: heightAt,
+  slopeAt: slopeAt,
+  surfAt: surfAt2,
+  play: function(){ G.state = 'play'; },
+  teleport: function(x){
+    G.pendingFive = -1; G.fiveT = 0; G.cur = -1; G.stopT = 0; G.moveT = 0;
+    placeBike(x, { settle: true });
+    G.maxX = BK.x; PART.n = 0; CAM.x = BK.x; CAM.y = BK.y + 0.5; CAM.lead = 0;
+    var si = sectionAt(x); if (si >= 0){ G.cur = si; if (G.marks[si] < 0) G.marks[si] = 0; SECTIONS[si].maxX = BK.x; }
+    updateHUD(true);
+  },
+  fps: function(){ return FPS; },
+  audio: function(){ return { ready: AU.ready, muted: G.muted, ctx: AU.ctx ? AU.ctx.state : 'none' }; },
+  run: function(seconds, ctrl){
+    var n = Math.round(seconds / DT);
+    for (var i = 0; i < n; i++){
+      if (ctrl) ctrl(i * DT, this.snap());
+      simStep(DT);
+      if (this._stop) break;
+    }
+    return this.snap();
+  },
+  snap: function(){
+    tipState();
+    return {
+      t: G.t, x: BK.x, y: BK.y, a: BK.a, vx: BK.vx, vy: BK.vy, w: BK.w,
+      rpm: BK.we * 9.5493, bal: BK.bal, balv: BK.balv,
+      fg: BK.wh[WF].grounded, rg: BK.wh[WR].grounded,
+      fN: BK.wh[WF].N, rN: BK.wh[WR].N,
+      slip: BK.wh[WR].slip, spinR: BK.wh[WR].spin,
+      cur: G.cur, marks: G.marks.slice(), total: totalMarks(), why: G.fiveReason,
+      crashed: BK.crashed, stopT: G.stopT, pending: G.pendingFive,
+      pitch: pitchRel(), tipR: TIP.rear, tipF: TIP.front, surf: (BK.wh[WR].grounded ? BK.wh[WR].surf : -1),
+      foot: BK.footT > 0, air: BK.airT
+    };
+  }
+};
+</script>
+</body>
+</html>
