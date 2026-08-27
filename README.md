@@ -1,7 +1,30 @@
 # aimade-drops
 
-Static hosting for games published to [aimade.games](https://aimade.games) by the
-every-3-hours game routine. Each game is one self-contained HTML file in `games/`,
-served via GitHub Pages and embedded on aimade.games in a sandboxed iframe.
+Ninety-six browser games, each one a real physics simulation, each one built, tuned, and shipped by an autonomous Claude routine that runs every three hours. No human edits this repo. A human wrote this README, and that's the last hand-made thing in it.
 
-Built by Claude. Do not edit by hand — the routine owns this repo.
+Every game is one self-contained HTML file in [`games/`](games/) — no build step, no dependencies, no assets. They're served via GitHub Pages and published to [aimade.games](https://aimade.games), where they pick up identity, leaderboards, achievements, and save states from one script tag.
+
+## How this works
+
+A scheduled routine wakes every three hours, invents a game concept, builds an honest simulation of it, tunes the mechanics against scripted pilot archetypes across multiple seeds, verifies it in a real browser at several resolutions and viewports, writes a technical drop note, and commits. The commit log is the making-of documentary: 131 of the 142 commits are authored by Claude, and each one describes the simulation it shipped in 300–500 words. [Read a few](../../commits/main) — they're the best part of the repo.
+
+The routine follows house rules that hold across all 96 games: a fixed physics timestep decoupled from render, WebAudio-only sound (no audio files), DPR-pinned canvas verified at multiple pixel ratios, full keyboard and touch parity, a pause/controls panel on `H`, and zero console errors across a full scripted playthrough. The mechanic must *emerge* from the simulated system — if the physics is faked, the game doesn't ship.
+
+## Eight worth your time
+
+| | |
+|---|---|
+| [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/3c95ab39-b4e5-4f6e-9e83-1ef89dccc9ea/screenshot-ogb0ithxbc.png" width="400" alt="PARISON — a glowing parison sagging off the blowpipe beside the glory hole">](https://aimade.games/g/parison)<br>**[PARISON](https://aimade.games/g/parison)** · Victorian glassblowing. The glass is a viscoelastic soft body with real VFT viscosity — one creep law produces inflation, sag, tool marks and freezing alike. Its blackbody glow is the only thermometer you get. | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/4f87d7d9-d383-46a8-940a-91c173de66b5/screenshot-1q1bywrgw9.png" width="400" alt="PAMPERO — full canvas as the squall's black line closes from windward">](https://aimade.games/g/pampero)<br>**[PAMPERO](https://aimade.games/g/pampero)** · A tall ship in the 1928 grain race. All thirteen sails are spring-mass cloth that bellies, flogs, and tears seam by seam. The fastest passage is carried at the edge of tearing. |
+| [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/b13cdb6e-a15e-4943-9e0e-c1a2f80ce4cb/screenshot-uj2bqoth2o.png" width="400" alt="LIFTING — the ragdoll walker mid-stride inside a judge's gaze cone">](https://aimade.games/g/lifting)<br>**[LIFTING](https://aimade.games/g/lifting)** · Edwardian race walking as an 11-segment ragdoll with a sequential-impulse solver. The judges can only card what the eye can catch — flight under 45 ms is invisible, so the fastest walk is a nearly illegal one. | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/1195e8b1-645a-44e6-babb-83048396f462/screenshot-n0b8vo2vst.png" width="400" alt="DROOP — riding a TV pickup as 94,000 kettles switch on">](https://aimade.games/g/droop)<br>**[DROOP](https://aimade.games/g/droop)** · The British grid's frequency desk, 1990, built on the real swing equation. When the programme ends, a million kettles switch on inside two minutes — and you knew when, from the TV listings on the wall. |
+| [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/2bbd4ba8-cbf2-48fe-8fed-3f8b1a6f2742/screenshot-woje05x8qx.png" width="400" alt="ROTOVATOR — the tether tip catching a capsule at 39.6 m/s relative">](https://aimade.games/g/rotovator)<br>**[ROTOVATOR](https://aimade.games/g/rotovator)** · A momentum-exchange tether where conservation of momentum is the economy. Every catch drags your orbit down; throwing trash downward is literally your engine. Angular momentum conserved to 3.2e-14. | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/aeb4ecde-2f71-46c0-9424-7320fbb08da0/screenshot-dutlv99dq3.png" width="400" alt="STOKE — 120.5 mph downhill with the big-end bearing in the amber">](https://aimade.games/g/stoke)<br>**[STOKE](https://aimade.games/g/stoke)** · Driver and fireman on a 1938 record attempt. Wheelslip emerges from torque ripple against an adhesion limit, and the big-end bearing warns you it's dying with the period-correct aniseed stink capsule. |
+| [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/9b9bb305-aabc-4ef1-8bcc-16eec2860419/screenshot-tx55eka4tr.png" width="400" alt="PITPROP — the chimney mid-fall at 45 degrees, hinging over the cut">](https://aimade.games/g/pitprop)<br>**[PITPROP](https://aimade.games/g/pitprop)** · Chimney-felling by fire, 1965, no dynamite. A limit-analysis solve decides if she sits down on you early; falling shafts snap mid-air straight out of the bending stress — measured, not authored. | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/c530dddc-c483-4cc8-b079-cfe746c20440/screenshot-n4z8ug2jgy.png" width="400" alt="BAFFLES — sixteen bearings converging on a submarine plot">](https://aimade.games/g/baffles)<br>**[BAFFLES](https://aimade.games/g/baffles)** · Cold War submarine tracking. The contact is never painted on your map: 720 particle-filter hypotheses, constrained by passive bearings, separated only by the parallax of your own course changes. |
+
+The other 88 are on [aimade.games](https://aimade.games) — steam records, avalanche control, curling, orbital mechanics, slime-mold logistics, a Sydney-to-Hobart yacht race, and whatever the routine invents next.
+
+## The pattern
+
+This repo is the *artifact bucket* half of a deliberate separation: the intelligence lives in the routine and in the [aimade.games](https://aimade.games) publishing tools (an MCP server the agent drives: create game → upload build → define achievements → publish); the output lands here as flat files with a documented commit trail. The machinery that runs factories like this one is public at [autonomous-factory](https://github.com/elliothimmelfarb/autonomous-factory).
+
+---
+
+<sub>Games by Claude, via the every-3-hours drop routine. Do not edit by hand — the routine owns this repo.</sub>
