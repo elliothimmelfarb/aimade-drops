@@ -356,21 +356,34 @@ function mix(a,b){return fnv(String(a>>>0)+':'+String(b>>>0));}
 
 /* ============================================================ 1. constants */
 var NST=180;                       /* radial terrain stations per planet      */
-var GK=260;                        /* surface gravity per unit mass           */
-var DT=1/240, MAXT=40, MOVE_T=0.6; /* fixed step, shell cap, move window      */
-var WIND_MAX=30, WIND_G_REF=10;    /* ion wind: bites where gravity let go    */
+/* The whole sim runs on a contracted clock: k=1.35. Accelerations carry k^2
+   and launch speeds carry k, which leaves every trajectory's SHAPE identical
+   and makes the flights 26% shorter. Nothing else in the model knows. */
+var TK=1.35;
+var GK=474;                        /* surface gravity per unit mass (260*k^2) */
+var DT=1/240, MAXT=60, MOVE_T=0.45;/* fixed step, shell cap, move window.
+   The cap is generous on purpose: an orbit that means to come down needs two
+   or three revolutions for A's pull to precess its periapsis into B's rock.
+   Direct shots are unaffected - they end when they hit. */
+var WIND_MAX=14.6, WIND_G_REF=5.5; /* ion wind: only bites at the L1 saddle   */
+var WIND_DV=68;                    /* per-shell delta-v budget: it perturbs a
+                                      shot, it can never reroute one          */
 var MAX_HP=100, MAX_ROUNDS=30, MOVE_MAX=3;
 var SLOPE_DEG=65;
 var TANK_R=15, TANK_H=9, SHELL_R=5, KESSLER_R=22;
 var DIG_MAX=64;                    /* deepest a crater can cut, from base     */
 var SAMPLE=5;                      /* trajectory sample stride                */
 
+/* Everything falls the same - the gun is what differs. The launcher delivers a
+   fixed impulse, so a heavy shell leaves the muzzle slower for the same power
+   (sm) and is pushed around less by the plasma wind (wm). No shell has its own
+   private gravity. */
 var WEAPONS={
-  slug:    {slug:'slug',    name:'SLUG',        ab:'SLUG', dmg:26, r:58, gm:1.00, wm:1.00, inf:true},
-  driver:  {slug:'driver',  name:'MASS DRIVER', ab:'DRVR', dmg:46, r:84, gm:1.28, wm:0.26},
-  cluster: {slug:'cluster', name:'CLUSTER',     ab:'CLST', dmg:13, r:44, gm:1.00, wm:1.25, split:5},
-  retro:   {slug:'retro',   name:'RETRO',       ab:'RETR', dmg:32, r:60, gm:1.00, wm:0.80, retro:true},
-  tunneler:{slug:'tunneler',name:'TUNNELER',    ab:'TUNL', dmg:32, r:52, gm:1.06, wm:0.75, drill:56}
+  slug:    {slug:'slug',    name:'SLUG',        ab:'SLUG', dmg:26, r:58, sm:1.00, wm:1.00, inf:true},
+  driver:  {slug:'driver',  name:'MASS DRIVER', ab:'DRVR', dmg:54, r:90, sm:0.84, wm:0.26},
+  cluster: {slug:'cluster', name:'CLUSTER',     ab:'CLST', dmg:14, r:44, sm:1.05, wm:1.25, split:5},
+  retro:   {slug:'retro',   name:'RETRO',       ab:'RETR', dmg:32, r:60, sm:1.00, wm:0.80, retro:true},
+  tunneler:{slug:'tunneler',name:'TUNNELER',    ab:'TUNL', dmg:34, r:54, sm:0.93, wm:0.75, drill:56}
 };
 var WORDER=['slug','driver','cluster','retro','tunneler'];
 var DROPPABLE=['driver','cluster','retro','tunneler'];
@@ -520,7 +533,8 @@ function depthIn(w,p,x,y){
   if(d>planetR(map,p)*1.35)return -1e9;
   return radAtAngle(w,p,Math.atan2(dy,dx))-d;
 }
-function powerToSpeed(p){return 95+p*4.55;}
+function powerToSpeed(p){return 128+p*6.14;}      /* (95+p*4.55)*k */
+function powerOfSpeed(v){return (v-128)/6.14;}
 
 /* ============================================================ 4. world */
 function zeros(){var a=new Array(NST),i;for(i=0;i<NST;i++)a[i]=0;return a;}
@@ -625,8 +639,8 @@ function resolveRound(world,orders,roundSeed){
     if(ws!=='slug'&&!(w.tanks[seat].inv[ws]>0))ws='slug';
     if(ws!=='slug')w.tanks[seat].inv[ws]--;
     var ang=clamp(od.a,10,170), pw=clamp(od.p,15,100);
-    var dir=aimVec(w,seat,ang), sp=powerToSpeed(pw), p0=tpos(seat,0);
-    var sh={seat:seat,w:ws,root:true,
+    var dir=aimVec(w,seat,ang), sp=powerToSpeed(pw)*WEAPONS[ws].sm, p0=tpos(seat,0);
+    var sh={seat:seat,w:ws,root:true,dv:0,
       x:p0.x+dir.x*22,y:p0.y+dir.y*22,vx:dir.x*sp,vy:dir.y*sp,
       alive:true,crossed:false,dom0:dominant(map,p0.x,p0.y),drill:0,born:0,idx:shells.length,
       wrap:0,lastA:0,maxRev:0,wrapO:0,lastO:0,maxRevO:0,back:0,
@@ -743,14 +757,18 @@ function resolveRound(world,orders,roundSeed){
       if(!s.alive)continue;
       var WD=WEAPONS[s.w];
       if(s.drill>0){
-        var sp2=hyp(s.vx,s.vy)||1, ux=s.vx/sp2, uy=s.vy/sp2, adv=190*DT;
+        var sp2=hyp(s.vx,s.vy)||1, ux=s.vx/sp2, uy=s.vy/sp2, adv=256*DT;
         s.x+=ux*adv; s.y+=uy*adv; s.drill-=adv;
         if(s.drill<=0){detonate(s,s.x,s.y,-1,t,'drill');continue;}
       }else{
         accAt(map,s.x,s.y,acc);
-        var wf=windFactor(map,s.x,s.y)*WD.wm;
-        s.vx+=acc.x*WD.gm*DT;
-        s.vy+=(acc.y*WD.gm+wind*wf)*DT;
+        var wa=0;
+        if(s.dv<WIND_DV){
+          wa=wind*windFactor(map,s.x,s.y)*WD.wm;
+          s.dv+=Math.abs(wa)*DT;
+        }
+        s.vx+=acc.x*DT;
+        s.vy+=(acc.y+wa)*DT;
         s.x+=s.vx*DT; s.y+=s.vy*DT;
       }
       if(step%SAMPLE===0)s.pts.push(s.x,s.y);
@@ -778,8 +796,10 @@ function resolveRound(world,orders,roundSeed){
           var vn=hyp(s.vx,s.vy)||1, px2=-s.vy/vn, py2=s.vx/vn;
           for(j=0;j<WD.split;j++){
             var off=(j-(WD.split-1)/2);
-            var b={seat:s.seat,w:'cluster',root:false,x:s.x+px2*off*5,y:s.y+py2*off*5,
-                   vx:s.vx+px2*off*17,vy:s.vy+py2*off*17,alive:true,crossed:true,dom0:dm,drill:0,
+            /* the bus throws them apart mechanically - it no longer relies on
+               a wind strong enough to bend a trajectory */
+            var b={seat:s.seat,w:'cluster',root:false,dv:s.dv,x:s.x+px2*off*6,y:s.y+py2*off*6,
+                   vx:s.vx+px2*off*30,vy:s.vy+py2*off*30,alive:true,crossed:true,dom0:dm,drill:0,
                    born:t,idx:tl.shells.length,wrap:s.wrap,lastA:s.lastA,maxRev:s.maxRev,
                    wrapO:s.wrapO,lastO:s.lastO,maxRevO:s.maxRevO,back:s.back,
                    pts:[s.x+px2*off*5,s.y+py2*off*5]};
@@ -890,7 +910,7 @@ function resolveRound(world,orders,roundSeed){
   else if(h1<=0){over=true;winner=0;}
   else if(h0<=0){over=true;winner=1;}
   else if(w.round>MAX_ROUNDS){over=true;if(h0>h1)winner=0;else if(h1>h0)winner=1;else draw=true;}
-  tl.dur=t+1.4;
+  tl.dur=t+1.0;
   return {world:w,tl:tl,stats:stats,over:over,winner:winner,draw:draw};
 }
 
@@ -899,8 +919,8 @@ function resolveRound(world,orders,roundSeed){
    SAME field equations the resolver uses. No closed-form shortcut exists here. */
 function probeShot(w,seat,wep,ang,pow,dt,wind,maxT){
   var map=MAPS[w.mapId], WD=WEAPONS[wep]||WEAPONS.slug;
-  var dir=aimVec(w,seat,ang), sp=powerToSpeed(pow), o=tankPt(w,seat);
-  var x=o.x+dir.x*22, y=o.y+dir.y*22, vx=dir.x*sp, vy=dir.y*sp;
+  var dir=aimVec(w,seat,ang), sp=powerToSpeed(pow)*WD.sm, o=tankPt(w,seat);
+  var x=o.x+dir.x*22, y=o.y+dir.y*22, vx=dir.x*sp, vy=dir.y*sp, dv=0;
   var tp=tankPt(w,1-seat), tx=tp.x, ty=tp.y;
   var ecx=planetCX(map,1-seat), ocx=planetCX(map,seat);
   var t=0, closest=1e9, acc={x:0,y:0}, dom0=dominant(map,x,y), crossed=false;
@@ -909,9 +929,10 @@ function probeShot(w,seat,wep,ang,pow,dt,wind,maxT){
   var bound=map.dist*1.9, MT=maxT||MAXT;
   while(t<MT){
     accAt(map,x,y,acc);
-    var wf=windFactor(map,x,y)*WD.wm;
-    vx+=acc.x*WD.gm*dt;
-    vy+=(acc.y*WD.gm+wind*wf)*dt;
+    var wa=0;
+    if(dv<WIND_DV){ wa=wind*windFactor(map,x,y)*WD.wm; dv+=Math.abs(wa)*dt; }
+    vx+=acc.x*dt;
+    vy+=(acc.y+wa)*dt;
     x+=vx*dt; y+=vy*dt; t+=dt;
     var na=Math.atan2(y,x-ecx);
     wrap+=angNorm(na-lastA); lastA=na;
@@ -949,12 +970,12 @@ function solveShot(w,seat,wep,wind){
   var bestA=90,bestP=70,bestC=1e9,a,p,r,c;
   for(a=14;a<=166;a+=4){
     for(p=20;p<=100;p+=4){
-      r=probeShot(w,seat,wep,a,p,1/50,wind,30);
+      r=probeShot(w,seat,wep,a,p,1/50,wind,24);
       c=candCost(w,seat,r);
       if(c<bestC){bestC=c;bestA=a;bestP=p;}
     }
   }
-  var passes=[{d:3,st:1,dt:1/120,mt:34},{d:1,st:0.34,dt:1/240,mt:MAXT}];
+  var passes=[{d:3,st:1,dt:1/120,mt:28},{d:1,st:0.34,dt:1/240,mt:32}];
   for(var q=0;q<passes.length;q++){
     var P=passes[q],cA=bestA,cP=bestP;
     bestC=1e9;
@@ -1111,15 +1132,20 @@ function cpuOrder(w,seat,cpu,wind){
     if(orb&&orb.closest<Math.max(150,sol.cost*1.4)){
       var goal=seat===0?'B':'A';
       var d=orbDescend(w,seat,wind,orb.a,orb.p,goal);
-      if(d&&d.r.fate===goal&&isOrbital(d.r)&&d.r.closest<170){
+      /* only worth the flight if it actually threatens - a 60-second orbit
+         that lands two craters away teaches nothing */
+      if(d&&d.r.fate===goal&&isOrbital(d.r)&&d.r.closest<60){
         wep='slug'; sol={a:Math.round(d.a*10)/10,p:Math.round(d.p*10)/10,cost:d.r.closest};
         orbTaken=true; cpu.orbital++;
       }
     }
   }
 
-  var err=cpu.err*(orbTaken?0.28:1);
-  if(cpu.enemyStill>=2)err*=0.6;
+  /* a walked direct shot carries the CPU's usual error; a computed orbit does
+     not - the trajectory is chaotic, so a degree of jitter would simply throw
+     it away, and a miss by two thousand units teaches the player nothing */
+  var err=cpu.err*(orbTaken?0.06:1);
+  if(cpu.enemyStill>=2)err*=0.5;
   var a=sol.a+(rng()*2-1)*err;
   var p=sol.p+(rng()*2-1)*err*0.45;
   cpu.firedLast=true;
@@ -1435,6 +1461,7 @@ function hexRGB(h){
   return ((n>>16)&255)+','+((n>>8)&255)+','+(n&255);
 }
 var stars=[],neb=[],fils=[],speck=[[],[]],parts=[],rings=[],floaters=[],glows=[],streaks=[],flares=[];
+var motes=[],moteBox={x:0,w:1,h:1};
 function makeSky(seed,mapId){
   var map=MAPS[mapId], r=mulberry32((seed>>>0)^0x51F0),i,p;
   stars=[];
@@ -1454,6 +1481,14 @@ function makeSky(seed,mapId){
     fils.push({x:r()*1.4-0.2,y:r()*1.4-0.2,r:r()*Math.PI,l:0.5+r()*0.9,t:0.012+r()*0.03,
       c:c2[0],a:c2[1]*(0.30+r()*0.35)});
   }
+  /* the ion wind made visible: plasma motes drifting only where windFactor is
+     actually significant, i.e. the L1 saddle. Curvature gets a visible cause. */
+  var map2=MAPS[mapId], lx=l1x(map2);
+  moteBox={x:lx,w:map2.dist*0.36,h:map2.dist*0.44};
+  motes=[];
+  for(i=0;i<230;i++)
+    motes.push({x:lx+(r()*2-1)*moteBox.w,y:(r()*2-1)*moteBox.h,
+                s:0.45+r()*0.95,ph:r()*TAU,f:0});
   for(p=0;p<2;p++){
     speck[p]=[];
     var n=Math.round(52+r()*26);
@@ -1813,8 +1848,40 @@ function drawPods(){
     }
   }
 }
+function stepMotes(dt){
+  if(!G.world||!motes.length)return;
+  var map=MAPS[G.world.mapId], wv=G.tl?G.tl.wind:G.wind, i;
+  for(i=0;i<motes.length;i++){
+    var mo=motes[i];
+    mo.f=windFactor(map,mo.x,mo.y);
+    mo.y+=wv*mo.f*6*mo.s*dt;
+    mo.x+=Math.sin(G.fxT*0.5+mo.ph)*7*mo.f*dt;
+    if(mo.y>moteBox.h)mo.y-=moteBox.h*2;
+    else if(mo.y<-moteBox.h)mo.y+=moteBox.h*2;
+  }
+}
+function drawMotes(){
+  if(!G.world||!motes.length)return;
+  var wv=G.tl?G.tl.wind:G.wind, dir=wv<0?-1:1, i;
+  if(Math.abs(wv)<0.4)return;
+  X.save(); X.globalCompositeOperation='lighter'; X.lineCap='round';
+  for(i=0;i<motes.length;i++){
+    var mo=motes[i], a=clamp((mo.f-0.11)*1.7,0,1);
+    if(a<=0.02)continue;
+    var px=wx(mo.x),py=wy(mo.y);
+    if(px<-40||px>VW+40||py<-40||py>VH+40)continue;
+    var L=Math.max(2,Math.abs(wv)*mo.f*mo.s*0.9*cam.s*6);
+    X.strokeStyle='rgba(186,150,255,'+(a*0.48).toFixed(3)+')';
+    X.lineWidth=Math.max(0.9,1.5*cam.s*2);
+    X.beginPath(); X.moveTo(px,py); X.lineTo(px,py+dir*L); X.stroke();
+    X.fillStyle='rgba(226,206,255,'+(a*0.55).toFixed(3)+')';
+    X.fillRect(px-0.7,py+dir*L-0.7,1.6,1.6);
+  }
+  X.restore();
+}
 function stepFx(dt){
   var i,p,map=G.world?MAPS[G.world.mapId]:null,acc={x:0,y:0};
+  stepMotes(dt);
   for(i=parts.length-1;i>=0;i--){
     p=parts[i]; p.l-=dt;
     if(p.l<=0){parts.splice(i,1);continue;}
@@ -1883,14 +1950,14 @@ function drawFx(){
 function drawPredictor(){
   if(G.phase!=='order'||G.orderKind!=='fire'||!G.world)return;
   var w=G.world, seat=G.mySeat, map=MAPS[w.mapId];
-  var WD=WEAPONS[G.wep], dir=aimVec(w,seat,G.ang), sp=powerToSpeed(G.pow);
+  var WD=WEAPONS[G.wep], dir=aimVec(w,seat,G.ang), sp=powerToSpeed(G.pow)*WD.sm;
   var o=tankPt(w,seat);
   var x=o.x+dir.x*22,y=o.y+dir.y*22,vx=dir.x*sp,vy=dir.y*sp,dt=1/90,acc={x:0,y:0};
   X.beginPath(); X.moveTo(wx(x),wy(y));
   for(var i=0;i<130;i++){
     accAt(map,x,y,acc);
-    var wf=windFactor(map,x,y)*WD.wm;
-    vx+=acc.x*WD.gm*dt; vy+=(acc.y*WD.gm+G.wind*wf)*dt;
+    var wa=G.wind*windFactor(map,x,y)*WD.wm;
+    vx+=acc.x*dt; vy+=(acc.y+wa)*dt;
     x+=vx*dt; y+=vy*dt;
     X.lineTo(wx(x),wy(y));
   }
@@ -1995,8 +2062,8 @@ function updateHUD(){
   $('#youBar').style.width=(h0/MAX_HP*100)+'%'; $('#foeBar').style.width=(h1/MAX_HP*100)+'%';
   $('#roundLbl').textContent=compact?('R '+w.round+'/'+MAX_ROUNDS+' · '+map.name):('ROUND '+w.round+' / '+MAX_ROUNDS+' · '+map.name);
   var wv=G.wind;
-  $('#windArrow').textContent=Math.abs(wv)<2?'·':(wv<0?(Math.abs(wv)>16?'▲▲':'▲'):(wv>16?'▼▼':'▼'));
-  $('#windVal').textContent=Math.abs(wv).toFixed(0);
+  $('#windArrow').textContent=Math.abs(wv)<0.8?'·':(wv<0?(Math.abs(wv)>8?'▲▲':'▲'):(wv>8?'▼▼':'▼'));
+  $('#windVal').textContent=Math.abs(wv).toFixed(1);
   $('#spinVal').textContent=map.spin[me]?('· SPIN '+(map.spin[me]/10).toFixed(1)+'°/R'):'';
   var inv=w.tanks[me].inv,html='',n,i;
   for(i=1;i<WORDER.length;i++){
@@ -2122,7 +2189,20 @@ function flashScreen(a){
 }
 function pace(){
   var tl=G.tl; if(!tl)return 1;
-  var any=false,minAlt=1e9,i;
+  var i;
+  /* The resolver already stamped every impact with its sim time, so the clock
+     does not have to guess from altitude - which is useless for an orbiting
+     shell that is permanently "near" a surface. Slow only for the seconds that
+     actually matter, and run hard everywhere else. */
+  var nx=1e9;
+  for(i=G.ev.b;i<tl.booms.length;i++){ if(tl.booms[i].t>=G.playT){nx=tl.booms[i].t-G.playT;break;} }
+  for(i=G.ev.s;i<tl.splits.length;i++){ if(tl.splits[i].t>=G.playT){nx=Math.min(nx,tl.splits[i].t-G.playT);break;} }
+  for(i=G.ev.f;i<tl.fizzles.length;i++){ if(tl.fizzles[i].t>=G.playT){nx=Math.min(nx,tl.fizzles[i].t-G.playT);break;} }
+  if(nx<0.55)return 0.55;                       /* terminal descent, slow-mo  */
+  if(nx<1.4)return 1.1;                         /* the run-in                 */
+  var since=G.lastEvent?(G.playT-G.lastEvent.t):1e9;
+  if(since<0.6)return 0.9;                      /* let the blast breathe      */
+  var any=false,minAlt=1e9;
   for(i=0;i<tl.shells.length;i++){
     var q=shellAt(tl.shells[i],G.playT);
     if(!q||q.done)continue;
@@ -2130,10 +2210,9 @@ function pace(){
     var a=altitudeAt(G.world,q.x,q.y);
     if(a<minAlt)minAlt=a;
   }
-  if(!any)return 1.7;
-  if(minAlt<150)return 0.55;
-  if(minAlt<430)return 1;
-  return clamp(1+(minAlt-430)/900*4.6,1,5.6);
+  if(!any)return 3;
+  if(minAlt<260)return 2.6;                     /* low pass: still readable   */
+  return clamp(3.4+(minAlt-260)/620*2.6,3.4,6);
 }
 function stepPlayback(dt){
   if(G.phase!=='play'||!G.tl)return;
@@ -2287,6 +2366,7 @@ function render(now){
   stepCam(dt);
   touchHint=(G.phase==='order')?1:0;
   drawBackdrop(now);
+  drawMotes();
   drawL1(now);
   drawGhostTrails();
   if(G.phase==='play')drawLiveTrails(G.playT);
@@ -2835,7 +2915,9 @@ window.__roche={
   windForSeed:windForSeed,roundSeedOf:roundSeedOf,
   makeCpu:makeCpu,cpuOrder:cpuOrder,cpuLearn:cpuLearn,
   l1x:l1x,accAt:accAt,planetR:planetR,planetCX:planetCX,planetGM:planetGM,
-  escSpeed:escSpeed,powerToSpeed:powerToSpeed,radOf:radOf,tankPt:tankPt,
+  escSpeed:escSpeed,powerToSpeed:powerToSpeed,powerOfSpeed:powerOfSpeed,
+  TK:TK,WIND_MAX:WIND_MAX,WIND_G_REF:WIND_G_REF,WIND_DV:WIND_DV,windFactor:windFactor,
+  radOf:radOf,tankPt:tankPt,
   getState:function(){return {mode:G.mode,phase:G.phase,round:G.world?G.world.round:0,
     hp:G.world?[G.world.tanks[0].hp,G.world.tanks[1].hp]:null,paused:G.paused,seat:G.mySeat,
     wind:G.wind,ach:G.ach.slice(),ghost:G.ghost?G.ghost.length:0,pace:G.paceCur,
