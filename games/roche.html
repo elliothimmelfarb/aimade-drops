@@ -679,7 +679,10 @@ function resolveRound(world,orders,roundSeed){
     }
   }
   function boom(x,y,WD,owner,directSeat,t,tag){
-    tl.booms.push({t:t,x:x,y:y,r:WD.r,w:WD.slug,tag:tag||''});
+    /* the event carries its own consequences so the playback can apply them at
+       the moment it draws the flash - see stageBoom() in the renderer */
+    var ev={t:t,x:x,y:y,r:WD.r,w:WD.slug,tag:tag||'',dl:null,pk:null};
+    tl.booms.push(ev);
     for(var sd=0;sd<2;sd++){
       if(w.tanks[sd].hp<=0)continue;
       var p=tpos(sd,t), dd=hyp(p.x-x,p.y-y);
@@ -696,13 +699,25 @@ function resolveRound(world,orders,roundSeed){
       if(sd===owner)stats[owner].self+=dmg;
       else{stats[owner].dealt+=dmg;stats[owner].hits++;if(directSeat===sd)stats[owner].direct++;}
     }
+    var b0=w.d[0].slice(), b1=w.d[1].slice(), ii;
     carve(x,y,WD.r);
-    var kept=[];
+    var dl=[];
+    for(ii=0;ii<NST;ii++){
+      if(w.d[0][ii]!==b0[ii])dl.push(0,ii,w.d[0][ii]);
+      if(w.d[1][ii]!==b1[ii])dl.push(1,ii,w.d[1][ii]);
+    }
+    ev.dl=dl;
+    var kept=[],pk=[];
     for(var q=0;q<w.pods.length;q++){
       var pd=w.pods[q], pp=surfPt(w,pd.p,pd.c,6);
-      if(hyp(pp.x-x,pp.y-y)<WD.r*0.85){tl.booms.push({t:t,x:pp.x,y:pp.y,r:28,w:'pod',tag:'pod'});continue;}
+      if(hyp(pp.x-x,pp.y-y)<WD.r*0.85){
+        tl.booms.push({t:t,x:pp.x,y:pp.y,r:28,w:'pod',tag:'pod',dl:null,pk:null});
+        pk.push(pd.p,pd.c);
+        continue;
+      }
       kept.push(pd);
     }
+    ev.pk=pk;
     w.pods=kept;
   }
 
@@ -858,6 +873,17 @@ function resolveRound(world,orders,roundSeed){
   for(i=0;i<2;i++){
     if(map.spin[i]){ w.rot[i]=(w.rot[i]+map.spin[i])%3600; tl.spun[i]=map.spin[i]; }
   }
+
+  /* everything the playback cannot derive from the events: where the tanks
+     ended up, what was collected and dropped, the round and the spin. Applied
+     as the last staged step so the staged world lands exactly on this one. */
+  tl.final={round:w.round,rot:[w.rot[0],w.rot[1]],
+    tanks:[0,1].map(function(s2){
+      var t2=w.tanks[s2];
+      return {c:t2.c,hp:t2.hp,inv:{driver:t2.inv.driver,cluster:t2.inv.cluster,
+        retro:t2.inv.retro,tunneler:t2.inv.tunneler}};
+    }),
+    pods:w.pods.map(function(p){return {c:p.c,p:p.p,w:p.w,n:p.n};})};
 
   var h0=w.tanks[0].hp,h1=w.tanks[1].hp,over=false,winner=null,draw=false;
   if(h0<=0&&h1<=0){over=true;draw=true;}
@@ -1914,7 +1940,7 @@ var G={
   wind:0,hpShow:[MAX_HP,MAX_HP],leadShell:null,lastEvent:null,ghost:null,
   cpu:null,hotOrders:[null,null],hotSeat:0,orders:null,afterReplay:null,
   tot:[{dealt:0,shots:0,hits:0,direct:0,self:0},{dealt:0,shots:0,hits:0,direct:0,self:0}],
-  rounds:0,scoreSent:false,overDone:false,ach:[],ev:null,toastT:0,
+  rounds:0,scoreSent:false,overDone:false,ach:[],ev:null,toastT:0,stageHash:null,authHash:null,
   names:['PLANET A','PLANET B'],
   online:{id:null,match:null,state:null,prevWorld:null,seat:0,unwatch:null,busy:false,lastSeed:null,replaying:false}
 };
@@ -2035,11 +2061,44 @@ function commitOrder(order){
     onlineSubmit(order);
   }
 }
+/* ---- render-side staging -----------------------------------------------
+   The resolver already computed every consequence and stamped it with a sim
+   time. Playback runs over a staged copy of the pre-round world that eats
+   those events as the clock passes them, so the rock breaks under the flash
+   instead of a whole round later. The authoritative world still lands at the
+   end - stageFinal makes the staged copy converge on it exactly. */
+function stageBoom(w,bm){
+  var dl=bm.dl,i,k;
+  if(dl)for(i=0;i<dl.length;i+=3)w.d[dl[i]][dl[i+1]]=dl[i+2];
+  var pk=bm.pk;
+  if(pk&&pk.length&&w.pods.length){
+    var kept=[];
+    for(i=0;i<w.pods.length;i++){
+      var gone=false;
+      for(k=0;k<pk.length;k+=2)if(pk[k]===w.pods[i].p&&pk[k+1]===w.pods[i].c)gone=true;
+      if(!gone)kept.push(w.pods[i]);
+    }
+    w.pods=kept;
+  }
+}
+function stageFinal(w,f){
+  if(!f)return;
+  w.round=f.round; w.rot=[f.rot[0],f.rot[1]];
+  for(var s=0;s<2;s++){
+    var a=w.tanks[s], b=f.tanks[s];
+    a.c=b.c; a.hp=b.hp;
+    a.inv.driver=b.inv.driver; a.inv.cluster=b.inv.cluster;
+    a.inv.retro=b.inv.retro; a.inv.tunneler=b.inv.tunneler;
+  }
+  w.pods=f.pods.map(function(p){return {c:p.c,p:p.p,w:p.w,n:p.n};});
+}
 function beginPlayback(orders){
   var rs=currentRoundSeed();
   playTimeline(resolveRound(G.world,orders,rs),orders);
 }
 function playTimeline(r,orders){
+  /* render and mutate a staging copy; r.world stays the authority */
+  G.world=cloneWorld(G.world);
   G.pending=r; G.tl=r.tl; G.playT=0; G.phase='play'; G.orders=orders;
   G.ev={b:0,h:0,f:0,s:0,co:0}; G.lastEvent=null; G.paceCur=1;
   G.ghost=null;
@@ -2090,6 +2149,7 @@ function stepPlayback(dt){
   }
   while(e.b<tl.booms.length&&tl.booms[e.b].t<=G.playT){
     var bm=tl.booms[e.b++];
+    stageBoom(G.world,bm);
     var kess=bm.tag==='kessler';
     rings.push({x:bm.x,y:bm.y,r:bm.r,l:0.7,m:0.7});
     rings.push({x:bm.x,y:bm.y,r:bm.r*0.6,l:0.42,m:0.42});
@@ -2108,6 +2168,7 @@ function stepPlayback(dt){
   while(e.h<tl.hits.length&&tl.hits[e.h].t<=G.playT){
     var ht=tl.hits[e.h++];
     G.hpShow[ht.seat]=Math.max(0,G.hpShow[ht.seat]-ht.dmg);
+    G.world.tanks[ht.seat].hp=Math.max(0,G.world.tanks[ht.seat].hp-ht.dmg);
     var tp=tankPt(G.world,ht.seat), f=frameAt(G.world,ht.seat,G.world.tanks[ht.seat].c);
     floaters.push({x:tp.x+f.ux*20,y:tp.y+f.uy*20,nx:f.ux,ny:f.uy,s:'-'+ht.dmg,l:1.2,m:1.2,
       c:ht.seat===G.mySeat?'#ff6b5a':'#7fe6a8'});
@@ -2153,7 +2214,10 @@ function finishRound(){
     var moved=r.tl.mv[0].c0!==r.tl.mv[0].c1;
     cpuLearn(G.cpu,r.stats,1,orders[0],moved);
   }
+  stageFinal(G.world,r.tl.final);
+  G.stageHash=hashWorld(G.world);
   G.world=r.world;
+  G.authHash=hashWorld(r.world);
   G.hpShow=[G.world.tanks[0].hp,G.world.tanks[1].hp];
   G.pending=null; G.tl=null;
   if(G.mode==='online'){
@@ -2776,6 +2840,8 @@ window.__roche={
     hp:G.world?[G.world.tanks[0].hp,G.world.tanks[1].hp]:null,paused:G.paused,seat:G.mySeat,
     wind:G.wind,ach:G.ach.slice(),ghost:G.ghost?G.ghost.length:0,pace:G.paceCur,
     t:G.playT,dur:G.tl?G.tl.dur:0,booms:G.ev?G.ev.b:0,shake:cam.shake,parts:parts.length,
+    whash:G.world?hashWorld(G.world):null,stageHash:G.stageHash,authHash:G.authHash,
+    pods:G.world?G.world.pods.length:0,
     cam:{x:cam.x,y:cam.y,s:cam.s,ts:cam.ts,manual:cam.manual,auto:cam.auto}};},
   serialize:function(w,pending,last,seats){
     return JSON.stringify({v:STATE_V,world:w,pending:pending||null,last:last||null,seats:seats||[null,null]});
