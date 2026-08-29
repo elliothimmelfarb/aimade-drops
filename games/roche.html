@@ -361,12 +361,15 @@ var NST=180;                       /* radial terrain stations per planet      */
    and makes the flights 26% shorter. Nothing else in the model knows. */
 var TK=1.35;
 var GK=474;                        /* surface gravity per unit mass (260*k^2) */
-var DT=1/240, MAXT=60, MOVE_T=0.45;/* fixed step, shell cap, move window.
+var DT=1/240, MAXT=90, MOVE_T=0.45;/* fixed step, shell cap, move window.
    The cap is generous on purpose: an orbit that means to come down needs two
    or three revolutions for A's pull to precess its periapsis into B's rock.
    Direct shots are unaffected - they end when they hit. */
-var WIND_MAX=14.6, WIND_G_REF=5.5; /* ion wind: only bites at the L1 saddle   */
-var WIND_DV=68;                    /* per-shell delta-v budget: it perturbs a
+var WIND_MAX=14.6;                 /* ion wind: only bites at the L1 saddle   */
+var WIND_K=0.10;                   /* its reach, as a fraction of the single-
+                                      body pull AT L1 - so the saddle stays
+                                      proportionally narrow at any separation */
+var WIND_DV=48;                    /* per-shell delta-v budget: it perturbs a
                                       shot, it can never reroute one          */
 var MAX_HP=100, MAX_ROUNDS=30, MOVE_MAX=3;
 var SLOPE_DEG=65;
@@ -391,22 +394,22 @@ var DROPPABLE=['driver','cluster','retro','tunneler'];
 /* four map presets. dist = centre separation; spin in tenths of a degree per
    round; star = the distant sun that lights both discs. */
 var MAPS=[
-  {id:0,name:'HYADES PAIR',ra:260,rb:250,ma:1.00,mb:0.95,dist:2870,rough:1.00,wind:1.00,spin:[0,0],
+  {id:0,name:'HYADES PAIR',ra:260,rb:250,ma:1.00,mb:0.95,dist:4400,rough:1.00,wind:1.00,spin:[0,0],
    star:-0.62,starCol:'#ffeccf',
    pa:{rock:'#2c4a6e',lit:'#8fc4ee',dark:'#0a1626',rim:'#7fc8ff',atm:'rgba(127,200,255,'},
    pb:{rock:'#4a3260',lit:'#c79bea',dark:'#150c22',rim:'#c096ff',atm:'rgba(192,150,255,'},
    neb:[['rgba(52,86,168,',0.30],['rgba(126,58,150,',0.22],['rgba(24,74,120,',0.26]]},
-  {id:1,name:'TALUS / ANVIL',ra:275,rb:205,ma:1.30,mb:0.60,dist:3050,rough:1.35,wind:1.20,spin:[6,-14],
+  {id:1,name:'TALUS / ANVIL',ra:275,rb:205,ma:1.30,mb:0.60,dist:4550,rough:1.35,wind:1.20,spin:[6,-14],
    star:2.45,starCol:'#ffd7a0',
    pa:{rock:'#5a3a22',lit:'#f0b877',dark:'#1a0e06',rim:'#ffb469',atm:'rgba(255,180,105,'},
    pb:{rock:'#1f4450',lit:'#8fd8e8',dark:'#06161c',rim:'#79c8d8',atm:'rgba(121,200,216,'},
    neb:[['rgba(150,72,32,',0.26],['rgba(30,80,110,',0.24],['rgba(90,40,90,',0.18]]},
-  {id:2,name:'SHEPHERD LOBES',ra:235,rb:275,ma:0.85,mb:1.25,dist:2560,rough:0.80,wind:0.85,spin:[0,0],
+  {id:2,name:'SHEPHERD LOBES',ra:235,rb:275,ma:0.85,mb:1.25,dist:4200,rough:0.80,wind:0.85,spin:[0,0],
    star:-2.05,starCol:'#d8f0ff',
    pa:{rock:'#1f5046',lit:'#84e8c0',dark:'#05130f',rim:'#71dcb1',atm:'rgba(113,220,177,'},
    pb:{rock:'#5c2740',lit:'#ff96ac',dark:'#1a0812',rim:'#f0788c',atm:'rgba(240,120,140,'},
    neb:[['rgba(30,120,100,',0.24],['rgba(140,40,70,',0.24],['rgba(20,60,110,',0.22]]},
-  {id:3,name:'COLD CONTACT',ra:250,rb:250,ma:1.10,mb:1.10,dist:3150,rough:1.55,wind:1.25,spin:[12,12],
+  {id:3,name:'COLD CONTACT',ra:250,rb:250,ma:1.10,mb:1.10,dist:4800,rough:1.55,wind:1.25,spin:[12,12],
    star:0.95,starCol:'#cfe4ff',
    pa:{rock:'#333a68',lit:'#aeb6ff',dark:'#0b0d1e',rim:'#9fa8ff',atm:'rgba(159,168,255,'},
    pb:{rock:'#5e441f',lit:'#ffd28f',dark:'#1a1206',rim:'#ffc46b',atm:'rgba(255,196,107,'},
@@ -417,8 +420,11 @@ var MAPS=[
 function planetR(map,p){return p===0?map.ra:map.rb;}
 function planetM(map,p){return p===0?map.ma:map.mb;}
 function planetGM(map,p){var r=planetR(map,p);return GK*planetM(map,p)*r*r;}
-function planetCX(map,p){return p===0?-map.dist/2:map.dist/2;}
-/* both centres sit on y = 0 */
+/* The binary axis is VERTICAL. Seat 0's world sits at +y (the bottom of its
+   own view), seat 1's at -y; each client rotates the camera 180 degrees so
+   both commanders see their own world underfoot and the enemy overhead. */
+function planetCX(map,p){return 0;}
+function planetCY(map,p){return p===0?map.dist/2:-map.dist/2;}
 function escSpeed(map,p){return Math.sqrt(2*planetGM(map,p)/planetR(map,p));}
 
 /* net acceleration from both point masses. Softened inside 0.55 R so a shell
@@ -426,7 +432,7 @@ function escSpeed(map,p){return Math.sqrt(2*planetGM(map,p)/planetR(map,p));}
 function accAt(map,x,y,out){
   var ax=0,ay=0,p,cx,dx,dy,d2,d,gm,rmin,k;
   for(p=0;p<2;p++){
-    cx=planetCX(map,p); dx=cx-x; dy=-y;
+    dx=planetCX(map,p)-x; dy=planetCY(map,p)-y;
     d2=dx*dx+dy*dy; d=Math.sqrt(d2);
     rmin=planetR(map,p)*0.55;
     if(d<rmin){d=rmin;d2=rmin*rmin;}
@@ -441,17 +447,29 @@ function gMag(map,x,y){var o=accAt(map,x,y,{x:0,y:0});return hyp(o.x,o.y);}
 /* which well owns this point (ratio of the two pulls) */
 function dominant(map,x,y){
   var pa=planetGM(map,0), pb=planetGM(map,1);
-  var dax=planetCX(map,0)-x, day=-y, dbx=planetCX(map,1)-x, dby=-y;
+  var dax=planetCX(map,0)-x, day=planetCY(map,0)-y;
+  var dbx=planetCX(map,1)-x, dby=planetCY(map,1)-y;
   var ga=pa/Math.max(1,dax*dax+day*day), gb=pb/Math.max(1,dbx*dbx+dby*dby);
   return ga>=gb?0:1;
 }
-/* exact L1 for two point masses on a line */
-function l1x(map){
+/* exact L1 for two point masses on a line - now a point on the vertical axis */
+function l1pt(map){
   var sa=Math.sqrt(planetGM(map,0)), sb=Math.sqrt(planetGM(map,1));
-  return planetCX(map,0)+map.dist*sa/(sa+sb);
+  var f=sa/(sa+sb);
+  return {x:0,y:planetCY(map,0)+(planetCY(map,1)-planetCY(map,0))*f};
+}
+/* The reference gravity scales with the map: a wider pair has a weaker field
+   everywhere, so a fixed threshold would let the wind spread across the whole
+   gap. Tying it to the pull at L1 keeps the saddle the same shape on any map. */
+function windRef(map){
+  if(map._wr===undefined){
+    var L=l1pt(map), d=Math.abs(L.y-planetCY(map,0));
+    map._wr=WIND_K*planetGM(map,0)/(d*d);
+  }
+  return map._wr;
 }
 function windFactor(map,x,y){
-  return 1/(1+gMag(map,x,y)/WIND_G_REF);
+  return 1/(1+gMag(map,x,y)/windRef(map));
 }
 function windForSeed(rs){
   var r=mulberry32(mix(rs,0x9E3779B9));
@@ -514,7 +532,7 @@ function nearestStation(w,p,phi){
 }
 function surfPt(w,p,i,extra){
   var map=MAPS[w.mapId], a=stAng(w,p,i), rr=radOf(w,p,i)+(extra||0);
-  return {x:planetCX(map,p)+Math.cos(a)*rr,y:Math.sin(a)*rr};
+  return {x:planetCX(map,p)+Math.cos(a)*rr,y:planetCY(map,p)+Math.sin(a)*rr};
 }
 function tankPt(w,seat){return surfPt(w,seat,w.tanks[seat].c,TANK_H);}
 /* local frame at a station: up = outward radial, right = tangent */
@@ -528,7 +546,7 @@ function aimVec(w,seat,angDeg){
 }
 /* depth of (x,y) below the surface of planet p; >0 means inside the rock */
 function depthIn(w,p,x,y){
-  var map=MAPS[w.mapId], cx=planetCX(map,p), dx=x-cx, dy=y;
+  var map=MAPS[w.mapId], dx=x-planetCX(map,p), dy=y-planetCY(map,p);
   var d=hyp(dx,dy);
   if(d>planetR(map,p)*1.35)return -1e9;
   return radAtAngle(w,p,Math.atan2(dy,dx))-d;
@@ -549,17 +567,19 @@ function flattestStation(w,p,center,span){
 }
 function makeWorld(mapId,seed){
   var map=MAPS[mapId%MAPS.length];
-  var w={v:2,mapId:map.id,seed:seed>>>0,round:1,rot:[0,0],d:[zeros(),zeros()],
+  var w={v:3,mapId:map.id,seed:seed>>>0,round:1,rot:[0,0],d:[zeros(),zeros()],
     tanks:[{c:0,hp:MAX_HP,inv:{driver:0,cluster:0,retro:0,tunneler:0}},
            {c:NST/2,hp:MAX_HP,inv:{driver:0,cluster:0,retro:0,tunneler:0}}],
     pods:[]};
-  /* seat 0 faces +x (towards B), seat 1 faces -x (towards A) */
-  w.tanks[0].c=flattestStation(w,0,0,10);
-  w.tanks[1].c=flattestStation(w,1,NST/2,10);
+  /* Both guns start on the facing poles - the top of your world, the underside
+     of theirs - so round one is a straight-up duel across the gap and walking
+     round the sphere is a deliberate flank. Station 135 points at -y, 45 at +y. */
+  w.tanks[0].c=flattestStation(w,0,135,9);
+  w.tanks[1].c=flattestStation(w,1,45,9);
   return w;
 }
 function cloneWorld(w){
-  return {v:2,mapId:w.mapId,seed:w.seed,round:w.round,rot:[w.rot[0],w.rot[1]],
+  return {v:3,mapId:w.mapId,seed:w.seed,round:w.round,rot:[w.rot[0],w.rot[1]],
     d:[w.d[0].slice(),w.d[1].slice()],
     tanks:[{c:w.tanks[0].c,hp:w.tanks[0].hp,inv:{driver:w.tanks[0].inv.driver,cluster:w.tanks[0].inv.cluster,retro:w.tanks[0].inv.retro,tunneler:w.tanks[0].inv.tunneler}},
            {c:w.tanks[1].c,hp:w.tanks[1].hp,inv:{driver:w.tanks[1].inv.driver,cluster:w.tanks[1].inv.cluster,retro:w.tanks[1].inv.retro,tunneler:w.tanks[1].inv.tunneler}}],
@@ -577,7 +597,7 @@ function hashWorld(w){
 function normWorld(o){
   /* rebuild a world object from parsed JSON, tolerating a missing field */
   if(!o||o.mapId==null)return null;
-  var w=cloneWorld({v:2,mapId:o.mapId|0,seed:o.seed>>>0,round:o.round|0,
+  var w=cloneWorld({v:3,mapId:o.mapId|0,seed:o.seed>>>0,round:o.round|0,
     rot:[o.rot&&o.rot[0]|0,o.rot&&o.rot[1]|0],
     d:[(o.d&&o.d[0])||zeros(),(o.d&&o.d[1])||zeros()],
     tanks:o.tanks,pods:o.pods||[]});
@@ -593,7 +613,7 @@ function resolveRound(world,orders,roundSeed){
   var rng=mulberry32(mix(roundSeed,0x51ED2701));
   var i,j,s,seat;
   var bound=map.dist*1.9, acc={x:0,y:0};
-  var tl={dur:0,wind:wind,mapId:w.mapId,l1:l1x(map),mv:[],shells:[],booms:[],hits:[],
+  var tl={dur:0,wind:wind,mapId:w.mapId,l1:l1pt(map),mv:[],shells:[],booms:[],hits:[],
           collects:[],drops:[],fizzles:[],splits:[],crossings:[],kessler:false,spun:[0,0]};
   var stats=[{dealt:0,self:0,shots:0,hits:0,direct:0,best:9999,rev:0,back:0},
              {dealt:0,self:0,shots:0,hits:0,direct:0,best:9999,rev:0,back:0}];
@@ -626,7 +646,8 @@ function resolveRound(world,orders,roundSeed){
     var a=stAng(w,sd,i0), a2=stAng(w,sd,i0+1);
     var r0=radOf(w,sd,i0)+TANK_H, r1=radOf(w,sd,i0+1)+TANK_H;
     var ang=a+(a2-a)*f, rr=r0+(r1-r0)*f;
-    return {x:planetCX(map,sd)+Math.cos(ang)*rr,y:Math.sin(ang)*rr,a:ang};
+    return {x:planetCX(map,sd)+Math.cos(ang)*rr,
+            y:planetCY(map,sd)+Math.sin(ang)*rr,a:ang};
   }
 
   /* ---- shell spawn ---- */
@@ -645,8 +666,8 @@ function resolveRound(world,orders,roundSeed){
       alive:true,crossed:false,dom0:dominant(map,p0.x,p0.y),drill:0,born:0,idx:shells.length,
       wrap:0,lastA:0,maxRev:0,wrapO:0,lastO:0,maxRevO:0,back:0,
       pts:[p0.x+dir.x*22,p0.y+dir.y*22]};
-    sh.lastA=Math.atan2(sh.y,sh.x-planetCX(map,1-seat));
-    sh.lastO=Math.atan2(sh.y,sh.x-planetCX(map,seat));
+    sh.lastA=Math.atan2(sh.y-planetCY(map,1-seat),sh.x);
+    sh.lastO=Math.atan2(sh.y-planetCY(map,seat),sh.x);
     shells.push(sh);
     stats[seat].shots++;
     tl.shells.push({seat:seat,w:ws,root:true,t0:0,pts:sh.pts,fate:'flying',ang:ang,pow:pw,rev:0,back:0});
@@ -767,23 +788,24 @@ function resolveRound(world,orders,roundSeed){
           wa=wind*windFactor(map,s.x,s.y)*WD.wm;
           s.dv+=Math.abs(wa)*DT;
         }
-        s.vx+=acc.x*DT;
-        s.vy+=(acc.y+wa)*DT;
+        s.vx+=(acc.x+wa)*DT;
+        s.vy+=acc.y*DT;
         s.x+=s.vx*DT; s.y+=s.vy*DT;
       }
       if(step%SAMPLE===0)s.pts.push(s.x,s.y);
 
       /* revolution bookkeeping about both worlds */
-      var ecx=planetCX(map,1-s.seat), ocx=planetCX(map,s.seat);
-      var na=Math.atan2(s.y,s.x-ecx);
+      var ecy=planetCY(map,1-s.seat), ocy=planetCY(map,s.seat);
+      var na=Math.atan2(s.y-ecy,s.x);
       s.wrap+=angNorm(na-s.lastA); s.lastA=na;
       var av=Math.abs(s.wrap)/TAU;
       if(av>s.maxRev)s.maxRev=av;
-      var no=Math.atan2(s.y,s.x-ocx);
+      var no=Math.atan2(s.y-ocy,s.x);
       s.wrapO+=angNorm(no-s.lastO); s.lastO=no;
       var avo=Math.abs(s.wrapO)/TAU;
       if(avo>s.maxRevO)s.maxRevO=avo;
-      if((s.x-ecx)*(s.seat===0?1:-1)>0)s.back=1;   /* got past the far limb */
+      /* past the enemy's far limb, i.e. further from you than they are */
+      if((s.y-ecy)*(s.seat===0?-1:1)>0)s.back=1;
 
       /* dominance flip: this is the real L1 crossing */
       var dm=dominant(map,s.x,s.y);
@@ -882,7 +904,7 @@ function resolveRound(world,orders,roundSeed){
       for(i=0;i<w.pods.length;i++)if(w.pods[i].p===pl)have=true;
       if(have)continue;
       /* land it within reach of the facing hemisphere, mirrored for fairness */
-      var anchor=(pl===0?0:NST/2)+Math.round((rng()*2-1)*40);
+      var anchor=(pl===0?135:45)+Math.round((rng()*2-1)*40);
       var cc2=((anchor+Math.round((rng()*2-1)*6))%NST+NST)%NST;
       var wp=DROPPABLE[Math.floor(rng()*DROPPABLE.length)];
       var nn=rng()<0.38?2:1;
@@ -922,25 +944,25 @@ function probeShot(w,seat,wep,ang,pow,dt,wind,maxT){
   var dir=aimVec(w,seat,ang), sp=powerToSpeed(pow)*WD.sm, o=tankPt(w,seat);
   var x=o.x+dir.x*22, y=o.y+dir.y*22, vx=dir.x*sp, vy=dir.y*sp, dv=0;
   var tp=tankPt(w,1-seat), tx=tp.x, ty=tp.y;
-  var ecx=planetCX(map,1-seat), ocx=planetCX(map,seat);
+  var ecy=planetCY(map,1-seat), ocy=planetCY(map,seat), away=(seat===0?-1:1);
   var t=0, closest=1e9, acc={x:0,y:0}, dom0=dominant(map,x,y), crossed=false;
-  var lastA=Math.atan2(y,x-ecx), wrap=0, maxRev=0, back=0;
-  var lastO=Math.atan2(y,x-ocx), wrapO=0, maxRevO=0;
+  var lastA=Math.atan2(y-ecy,x), wrap=0, maxRev=0, back=0;
+  var lastO=Math.atan2(y-ocy,x), wrapO=0, maxRevO=0;
   var bound=map.dist*1.9, MT=maxT||MAXT;
   while(t<MT){
     accAt(map,x,y,acc);
     var wa=0;
     if(dv<WIND_DV){ wa=wind*windFactor(map,x,y)*WD.wm; dv+=Math.abs(wa)*dt; }
-    vx+=acc.x*dt;
-    vy+=(acc.y+wa)*dt;
+    vx+=(acc.x+wa)*dt;
+    vy+=acc.y*dt;
     x+=vx*dt; y+=vy*dt; t+=dt;
-    var na=Math.atan2(y,x-ecx);
+    var na=Math.atan2(y-ecy,x);
     wrap+=angNorm(na-lastA); lastA=na;
     var av=Math.abs(wrap)/TAU; if(av>maxRev)maxRev=av;
-    var no=Math.atan2(y,x-ocx);
+    var no=Math.atan2(y-ocy,x);
     wrapO+=angNorm(no-lastO); lastO=no;
     var avo=Math.abs(wrapO)/TAU; if(avo>maxRevO)maxRevO=avo;
-    if((x-ecx)*(seat===0?1:-1)>0)back=1;
+    if((y-ecy)*away>0)back=1;
     if(!crossed){
       var dm=dominant(map,x,y);
       if(dm!==dom0&&dm===1-seat){crossed=true;if(WD.retro){vx*=0.26;vy*=0.26;}}
@@ -969,13 +991,13 @@ function candCost(w,seat,r){
 function solveShot(w,seat,wep,wind){
   var bestA=90,bestP=70,bestC=1e9,a,p,r,c;
   for(a=14;a<=166;a+=4){
-    for(p=20;p<=100;p+=4){
-      r=probeShot(w,seat,wep,a,p,1/50,wind,24);
+    for(p=20;p<=100;p+=3){
+      r=probeShot(w,seat,wep,a,p,1/50,wind,40);
       c=candCost(w,seat,r);
       if(c<bestC){bestC=c;bestA=a;bestP=p;}
     }
   }
-  var passes=[{d:3,st:1,dt:1/120,mt:28},{d:1,st:0.34,dt:1/240,mt:32}];
+  var passes=[{d:3,st:1,dt:1/120,mt:48},{d:1,st:0.34,dt:1/240,mt:54}];
   for(var q=0;q<passes.length;q++){
     var P=passes[q],cA=bestA,cP=bestP;
     bestC=1e9;
@@ -996,30 +1018,63 @@ function solveShot(w,seat,wep,wind){
 function isOrbital(r,want){
   return (r.rev>=(want||0.45))||(r.back&&r.revE>=0.22);
 }
-function sweepOrbital(w,seat,wind,want){
-  var goal=seat===0?'B':'A',best=null,a,p,r;
+/* Returns up to n spread-out orbital candidates, best first. Captures are
+   chaotic, so a single seed integrated coarsely is a lottery - the caller
+   descends several of these at the real timestep and keeps what lands. */
+function sweepOrbital(w,seat,wind,want,n){
+  var goal=seat===0?'B':'A',got=[],a,p,r;
+  function pr(aa,pp){return probeShot(w,seat,'slug',aa,pp,1/120,wind,MAXT);}
+  function take(aa,pp,rr){
+    if(rr.fate!==goal||!isOrbital(rr,want))return;
+    got.push({a:aa,p:pp,score:rr.closest-rr.rev*40,rev:rr.rev,back:rr.back,
+              closest:rr.closest,t:rr.t});
+  }
+  function reaches(rr){return rr.fate===goal||(rr.fate==='stall'&&rr.rev>0.2);}
+  for(a=12;a<=168;a+=3){                        /* broad coverage ... */
+    for(p=18;p<=100;p+=2)take(a,p,pr(a,p));
+  }
+  /* ... and the sliver at the low-energy transfer edge, where captures live */
   for(a=12;a<=168;a+=3){
-    for(p=18;p<=100;p+=2){
-      r=probeShot(w,seat,'slug',a,p,1/60,wind,MAXT);
-      if(r.fate!==goal)continue;
-      if(!isOrbital(r,want))continue;
-      var sc=r.closest-r.rev*40;
-      if(!best||sc<best.score)best={a:a,p:p,score:sc,rev:r.rev,back:r.back,closest:r.closest,t:r.t};
+    var top=pr(a,100);
+    if(!reaches(top))continue;
+    var lo=18,hi=100,k,mid,rm;
+    if(reaches(pr(a,18)))hi=18;
+    else for(k=0;k<9;k++){
+      mid=(lo+hi)/2; rm=pr(a,mid); take(a,mid,rm);
+      if(reaches(rm))hi=mid; else lo=mid;
+    }
+    for(k=-3;k<=7;k++){
+      p=hi+k*0.28;
+      if(p<15||p>100)continue;
+      take(a,p,pr(a,p));
     }
   }
-  return best;
+  if(!got.length)return null;
+  got.sort(function(u,v){return u.score-v.score;});
+  if(!n)return got[0];
+  var out=[],i,j;
+  for(i=0;i<got.length&&out.length<n;i++){
+    var dup=false;
+    for(j=0;j<out.length;j++)
+      if(Math.abs(out[j].a-got[i].a)<5&&Math.abs(out[j].p-got[i].p)<2)dup=true;
+    if(!dup)out.push(got[i]);
+  }
+  return out;
 }
 /* Where on the enemy's circumference did it land, relative to their tank? */
 function impactErr(w,seat,r){
-  var map=MAPS[w.mapId], ecx=planetCX(map,1-seat), tp=tankPt(w,1-seat);
-  return angNorm(Math.atan2(r.y,r.x-ecx)-Math.atan2(tp.y,tp.x-ecx));
+  var map=MAPS[w.mapId], ecy=planetCY(map,1-seat), tp=tankPt(w,1-seat);
+  return angNorm(Math.atan2(r.y-ecy,r.x)-Math.atan2(tp.y-ecy,tp.x));
 }
 /* Proof that the fantasy is real on this board: an orbital / around-the-back
    trajectory that actually lands on the enemy gun, at dial resolution.
    Coarse grid over orbital candidates, then a pattern-search descent on the
    closest approach at the resolver's own timestep. */
+/* Accuracy dominates - but between two orbits that both land, prefer the one
+   that gets there sooner. Short captures are commoner, easier to repeat, and
+   far nicer to watch than ninety seconds of coasting. */
 function orbScore(r,goal){
-  return r.closest+(r.fate===goal?0:(r.fate==='stall'?30:4000));
+  return r.closest+(r.fate===goal?0:(r.fate==='stall'?30:4000))+r.t*0.12;
 }
 function orbDescend(w,seat,wind,a0,p0,goal){
   var ba=a0,bp=p0,st=1.2,sp=0.7,i,k;
@@ -1045,11 +1100,26 @@ function findOrbitalHit(w,seat,wind,opt){
   var aStep=opt.aStep||1.5, pStep=opt.pStep||0.5, cdt=opt.dt||1/120;
   var cands=[],a,p,r;
   for(a=12;a<=168;a+=aStep){
+    var prevFate=null;
     for(p=18;p<=100;p+=pStep){
       r=probeShot(w,seat,'slug',a,p,cdt,wind,MAXT);
-      if(r.fate!==goal&&r.fate!=='stall')continue;
-      if(!isOrbital(r))continue;
-      cands.push({a:a,p:p,s:orbScore(r,goal)});
+      if(r.fate===goal||r.fate==='stall'){
+        if(isOrbital(r))cands.push({a:a,p:p,s:orbScore(r,goal)});
+      }
+      /* Every capture lives on the low-energy transfer edge - the sliver of
+         power where the shot stops falling back and only just crosses the
+         saddle. Walk into that bracket finely wherever the fate flips. */
+      if(prevFate&&prevFate!==r.fate&&(prevFate===goal||r.fate===goal||
+         prevFate==='stall'||r.fate==='stall')){
+        for(var q=1;q<8;q++){
+          var pf=p-pStep+pStep*q/8;
+          if(pf<15||pf>100)continue;
+          var rf=probeShot(w,seat,'slug',a,pf,cdt,wind,MAXT);
+          if((rf.fate===goal||rf.fate==='stall')&&isOrbital(rf))
+            cands.push({a:a,p:pf,s:orbScore(rf,goal)});
+        }
+      }
+      prevFate=r.fate;
     }
   }
   if(!cands.length)return null;
@@ -1127,17 +1197,21 @@ function cpuOrder(w,seat,cpu,wind){
      A CPU orbital strike is the clearest way to teach the player what the
      field can do, so it takes one whenever it is nearly as good. */
   var wantOrb=rng(), orbTaken=false;
-  if(wantOrb<0.28||sol.cost>150){
-    var orb=sweepOrbital(w,seat,wind,0.45);
-    if(orb&&orb.closest<Math.max(150,sol.cost*1.4)){
-      var goal=seat===0?'B':'A';
-      var d=orbDescend(w,seat,wind,orb.a,orb.p,goal);
-      /* only worth the flight if it actually threatens - a 60-second orbit
-         that lands two craters away teaches nothing */
-      if(d&&d.r.fate===goal&&isOrbital(d.r)&&d.r.closest<60){
-        wep='slug'; sol={a:Math.round(d.a*10)/10,p:Math.round(d.p*10)/10,cost:d.r.closest};
-        orbTaken=true; cpu.orbital++;
-      }
+  if(wantOrb<0.30||sol.cost>150){
+    var goal=seat===0?'B':'A';
+    var cands=sweepOrbital(w,seat,wind,0.45,3), bd=null, ci;
+    if(cands)for(ci=0;ci<cands.length;ci++){
+      var d=orbDescend(w,seat,wind,cands[ci].a,cands[ci].p,goal);
+      if(d&&d.r.fate===goal&&isOrbital(d.r)&&(!bd||d.r.closest<bd.r.closest))bd=d;
+      if(bd&&bd.r.closest<45)break;
+    }
+    /* Worth the flight if it kills. In open play it is also worth it to crater
+       their far side and show the player what the field can do - but never
+       while punishing a camper, where a walked direct shot is simply better. */
+    var lim=(cpu.enemyStill<2)?130:75;
+    if(bd&&bd.r.closest<lim){
+      wep='slug'; sol={a:Math.round(bd.a*10)/10,p:Math.round(bd.p*10)/10,cost:bd.r.closest};
+      orbTaken=true; cpu.orbital++;
     }
   }
 
@@ -1194,19 +1268,26 @@ function resize(){
   C.style.width=VW+'px'; C.style.height=VH+'px';
   X.setTransform(DPR,0,0,DPR,0,0);
 }
-function wx(x){return (x-cam.x)*cam.s+VW/2+cam.shx;}
-function wy(y){return (y-cam.y)*cam.s+VH/2+cam.shy;}
-function sx2w(px){return (px-VW/2-cam.shx)/cam.s+cam.x;}
-function sy2w(py){return (py-VH/2-cam.shy)/cam.s+cam.y;}
+/* Seat 1 sees the whole world turned through 180 degrees, so that its own
+   planet is underfoot too. A half-turn is a pure sign flip on both axes, so
+   one factor threads through every world<->screen conversion and everything
+   drawn through them - trails, particles, craters, tanks - rotates with it. */
+function camF(){return G.flip?-1:1;}
+function wx(x){return (x-cam.x)*cam.s*camF()+VW/2+cam.shx;}
+function wy(y){return (y-cam.y)*cam.s*camF()+VH/2+cam.shy;}
+function sx2w(px){return (px-VW/2-cam.shx)/(cam.s*camF())+cam.x;}
+function sy2w(py){return (py-VH/2-cam.shy)/(cam.s*camF())+cam.y;}
+/* the HUD panels sit top-left / top-centre / top-right and the order bar along
+   the bottom, so a vertical planet stack has to be inset clear of both */
 function viewPad(){
-  return {t:(compact?76:96),b:($('#order').classList.contains('on')?(compact?108:96):46),
-          l:compact?12:70,r:compact?12:70};
+  return {t:(compact?88:104),b:($('#order').classList.contains('on')?(compact?116:106):48),
+          l:compact?10:56,r:compact?10:56};
 }
 function scaleLimits(){
   if(!G.world)return {min:0.05,max:1.6};
   var map=MAPS[G.world.mapId];
   var span=map.dist+planetR(map,0)*2+planetR(map,1)*2;
-  return {min:Math.min(VW,VH)/(span*2.6),max:1.9};
+  return {min:Math.min(VW,VH)/(span*2.2),max:1.9};
 }
 /* the box the director wants on screen, as {x,y,w,h} in world units */
 function frameBox(box,pad){
@@ -1223,23 +1304,49 @@ function frameBox(box,pad){
 }
 function systemBox(){
   var map=MAPS[G.world.mapId];
-  var x0=planetCX(map,0)-planetR(map,0)*1.18, x1=planetCX(map,1)+planetR(map,1)*1.18;
-  var ry=Math.max(planetR(map,0),planetR(map,1))*1.35;
-  return {x:x0,y:-ry,w:x1-x0,h:ry*2};
+  var rx=Math.max(planetR(map,0),planetR(map,1))*1.30;
+  var y0=planetCY(map,1)-planetR(map,1)*1.16;   /* seat 1's world, at -y */
+  var y1=planetCY(map,0)+planetR(map,0)*1.16;   /* seat 0's world, at +y */
+  return {x:-rx,y:y0,w:rx*2,h:y1-y0};
 }
 function orderTarget(){
   var map=MAPS[G.world.mapId];
   var box=systemBox();
   var f=frameBox(box,1.12);
-  var floor=46/Math.max(planetR(map,0),planetR(map,1));
+  var floor=26/Math.max(planetR(map,0),planetR(map,1));
   if(f.fit>=floor)return {x:f.x,y:f.y,s:f.s};
-  /* both worlds will not fit at a readable size (phones): lean on your own,
-     leaving the enemy world just off the edge in the direction you must shoot */
-  var mineX=planetCX(map,G.mySeat), R=planetR(map,G.mySeat);
-  var t=tankPt(G.world,G.mySeat);
-  var lean=(G.mySeat===0?1:-1)*R*1.15;
-  var g=frameBox({x:mineX+lean-R*1.35,y:-R*1.35,w:R*2.7,h:R*2.7},1.06);
-  return {x:g.x+(t.x-mineX)*0.18,y:g.y+t.y*0.18,s:Math.max(g.s,floor)};
+  /* Both worlds will not fit at a readable size (a short landscape window):
+     stand on your own, with the axis to the enemy running off the top edge -
+     the direction you have to shoot anyway. The disc is placed in SCREEN space
+     so it always lands inside the HUD-safe band: it sits on the floor of the
+     band, taking a little over half of it, and the rest of the frame is the
+     open sky the shot climbs through. */
+  var P=viewPad();
+  var aw=Math.max(60,VW-P.l-P.r), ah=Math.max(60,VH-P.t-P.b);
+  var R=planetR(map,G.mySeat), mineY=planetCY(map,G.mySeat), mineX=planetCX(map,G.mySeat);
+  var t=tankPt(G.world,G.mySeat), F=camF(), L=scaleLimits();
+  var gap=Math.max(10,ah*0.06);          /* breathing room off the HUD bands */
+  var room=Math.max(20,ah-gap*2);        /* the tallest the disc may ever be */
+  /* the gun stands on the pole that faces the enemy, i.e. the top of the disc:
+     hold that point below mid-screen so you are still looking UP the axis at
+     the shot, with the disc a hint of your world rather than a wall of it */
+  var lowHalf=Math.max(60,(P.t+ah-gap)-VH*0.57);
+  var s=Math.min(room*0.56,Math.max(20,aw-gap*2)*0.62,lowHalf)/(2*R);
+  s=clamp(s,L.min,L.max);
+  if(s*2*R>room)s=room/(2*R);            /* the fit wins over every clamp */
+  /* screen y of the disc centre: resting on the floor of the safe band */
+  var yc=P.t+ah-gap-R*s;
+  var xc=VW/2+(P.l-P.r)/2;
+  return {x:mineX+(t.x-mineX)*0.18-(xc-VW/2)/(s*F),
+          y:mineY-(yc-VH/2)/(s*F), s:s};
+}
+/* what the director would frame for a given map and seat, without disturbing
+   the live game - camera geometry only, it runs no simulation */
+function probeOrderFrame(mapId,seat){
+  var w0=G.world,s0=G.mySeat,f0=G.flip,g;
+  G.world=makeWorld(mapId,12345); G.mySeat=seat; G.flip=(seat===1);
+  try{g=orderTarget();}finally{G.world=w0;G.mySeat=s0;G.flip=f0;}
+  return {x:g.x,y:g.y,s:g.s,flip:(seat===1)};
 }
 /* the director: follow whatever is alive, push in for the terminal descent */
 function playTarget(){
@@ -1273,24 +1380,24 @@ function playTarget(){
   }
   /* always keep the world the shell is falling towards in shot */
   var near=nearestPlanet(G.world,(x0+x1)/2,(y0+y1)/2);
-  var nr=planetR(map,near)*1.1, ncx=planetCX(map,near);
+  var nr=planetR(map,near)*1.1, ncx=planetCX(map,near), ncy=planetCY(map,near);
   var w0=Math.min(x0,ncx-nr), w1=Math.max(x1,ncx+nr);
-  var h0=Math.min(y0,-nr), h1=Math.max(y1,nr);
+  var h0=Math.min(y0,ncy-nr), h1=Math.max(y1,ncy+nr);
   var pad=minAlt<220?1.9:1.3;
   var f=frameBox({x:w0,y:h0,w:Math.max(140,w1-w0),h:Math.max(140,h1-h0)},pad);
   return {x:f.x,y:f.y,s:f.s};
 }
 function nearestPlanet(w,x,y){
   var map=MAPS[w.mapId];
-  var da=hyp(x-planetCX(map,0),y)-planetR(map,0);
-  var db=hyp(x-planetCX(map,1),y)-planetR(map,1);
+  var da=hyp(x-planetCX(map,0),y-planetCY(map,0))-planetR(map,0);
+  var db=hyp(x-planetCX(map,1),y-planetCY(map,1))-planetR(map,1);
   return da<=db?0:1;
 }
 function altitudeAt(w,x,y){
   var map=MAPS[w.mapId],p,best=1e9;
   for(p=0;p<2;p++){
-    var cx=planetCX(map,p), d=hyp(x-cx,y);
-    var a=d-radAtAngle(w,p,Math.atan2(y,x-cx));
+    var dx=x-planetCX(map,p), dy=y-planetCY(map,p), d=hyp(dx,dy);
+    var a=d-radAtAngle(w,p,Math.atan2(dy,dx));
     if(a<best)best=a;
   }
   return best;
@@ -1315,17 +1422,19 @@ function camZoom(mult,px,py){
   var ns=clamp(cam.ts*mult,L.min,L.max);
   if(ns===before)return;
   if(px!=null){
-    var wxp=(px-VW/2)/cam.s+cam.x, wyp=(py-VH/2)/cam.s+cam.y;
-    cam.tx=wxp-(px-VW/2)/ns;
-    cam.ty=wyp-(py-VH/2)/ns;
+    var F=camF();
+    var wxp=(px-VW/2)/(cam.s*F)+cam.x, wyp=(py-VH/2)/(cam.s*F)+cam.y;
+    cam.tx=wxp-(px-VW/2)/(ns*F);
+    cam.ty=wyp-(py-VH/2)/(ns*F);
   }
   cam.ts=ns;
   cam.manual=true;
   updateCamChip();
 }
 function camPan(dxp,dyp){
-  cam.tx-=dxp/cam.s; cam.ty-=dyp/cam.s;
-  cam.x-=dxp/cam.s;  cam.y-=dyp/cam.s;
+  var F=cam.s*camF();
+  cam.tx-=dxp/F; cam.ty-=dyp/F;
+  cam.x-=dxp/F;  cam.y-=dyp/F;
   cam.manual=true;
   updateCamChip();
 }
@@ -1461,7 +1570,7 @@ function hexRGB(h){
   return ((n>>16)&255)+','+((n>>8)&255)+','+(n&255);
 }
 var stars=[],neb=[],fils=[],speck=[[],[]],parts=[],rings=[],floaters=[],glows=[],streaks=[],flares=[];
-var motes=[],moteBox={x:0,w:1,h:1};
+var motes=[],moteBox={cx:0,cy:0,w:1,h:1};
 function makeSky(seed,mapId){
   var map=MAPS[mapId], r=mulberry32((seed>>>0)^0x51F0),i,p;
   stars=[];
@@ -1483,11 +1592,11 @@ function makeSky(seed,mapId){
   }
   /* the ion wind made visible: plasma motes drifting only where windFactor is
      actually significant, i.e. the L1 saddle. Curvature gets a visible cause. */
-  var map2=MAPS[mapId], lx=l1x(map2);
-  moteBox={x:lx,w:map2.dist*0.36,h:map2.dist*0.44};
+    var map2=MAPS[mapId], L=l1pt(map2);
+  moteBox={cx:L.x,cy:L.y,w:map2.dist*0.30,h:map2.dist*0.34};
   motes=[];
   for(i=0;i<230;i++)
-    motes.push({x:lx+(r()*2-1)*moteBox.w,y:(r()*2-1)*moteBox.h,
+    motes.push({x:L.x+(r()*2-1)*moteBox.w,y:L.y+(r()*2-1)*moteBox.h,
                 s:0.45+r()*0.95,ph:r()*TAU,f:0});
   for(p=0;p<2;p++){
     speck[p]=[];
@@ -1508,7 +1617,7 @@ function addParts(x,y,n,spd,col,life,drag){
 function drawBackdrop(now){
   var map=G.world?MAPS[G.world.mapId]:MAPS[0];
   X.fillStyle='#02040c'; X.fillRect(0,0,VW,VH);
-  var ox=cam.x*cam.s, oy=cam.y*cam.s, i,g;
+  var F=camF(), ox=cam.x*cam.s*F, oy=cam.y*cam.s*F, i,g;
   var big=Math.max(VW,VH);
   /* nebula: a few soft clouds plus long thin filaments, kept dark enough that
      the starfield still reads through it */
@@ -1556,7 +1665,7 @@ function drawBackdrop(now){
   }
   /* the distant star that lights both worlds */
   var sa=map.star, sc=hexRGB(map.starCol);
-  var sx=VW/2+Math.cos(sa)*big*0.46-ox*0.02, sy=VH/2+Math.sin(sa)*big*0.46-oy*0.02;
+  var sx=VW/2+Math.cos(sa)*F*big*0.46-ox*0.02, sy=VH/2+Math.sin(sa)*F*big*0.46-oy*0.02;
   X.save(); X.globalCompositeOperation='lighter';
   g=X.createRadialGradient(sx,sy,0,sx,sy,big*0.42);
   g.addColorStop(0,'rgba(255,255,255,.70)');
@@ -1578,8 +1687,8 @@ function drawBackdrop(now){
 }
 function drawL1(now){
   if(!G.world)return;
-  var map=MAPS[G.world.mapId], lx=l1x(map);
-  var px=wx(lx),py=wy(0), r=Math.max(9,26*cam.s);
+  var map=MAPS[G.world.mapId], L=l1pt(map);
+  var px=wx(L.x),py=wy(L.y), r=Math.max(9,26*cam.s);
   if(px<-60||px>VW+60)return;
   var pul=0.55+0.45*Math.sin(now*0.0016);
   X.save(); X.globalCompositeOperation='lighter';
@@ -1669,11 +1778,12 @@ function drawShellHeads(t){
 }
 function drawPlanet(p){
   var w=G.world, map=MAPS[w.mapId], R=planetR(map,p), pal=p===0?map.pa:map.pb;
-  var wcx=planetCX(map,p);
-  var cx=wx(wcx), cy=wy(0), Rp=R*cam.s;
+  var wcx=planetCX(map,p), wcy=planetCY(map,p), F=camF();
+  var cx=wx(wcx), cy=wy(wcy), Rp=R*cam.s;
   if(cx+Rp*1.6<0||cx-Rp*1.6>VW||cy+Rp*1.6<0||cy-Rp*1.6>VH)return;
   var i,g,ang,rr,px,py;
-  var lx=Math.cos(map.star), ly=Math.sin(map.star);   /* toward the star */
+  var lx=Math.cos(map.star), ly=Math.sin(map.star);   /* toward the star, WORLD */
+  var slx=lx*F, sly=ly*F;                             /* the same, on SCREEN   */
   var arc=R*TAU/NST;
   /* --- atmosphere, brighter on the lit limb --- */
   X.save(); X.globalCompositeOperation='lighter';
@@ -1682,7 +1792,7 @@ function drawPlanet(p){
   g.addColorStop(0.26,pal.atm+'.20)');
   g.addColorStop(1,pal.atm+'0)');
   X.fillStyle=g; X.beginPath(); X.arc(cx,cy,Rp*1.32,0,TAU); X.fill();
-  var hx=cx+lx*Rp*0.98, hy=cy+ly*Rp*0.98;
+  var hx=cx+slx*Rp*0.98, hy=cy+sly*Rp*0.98;
   g=X.createRadialGradient(hx,hy,0,hx,hy,Rp*0.85);
   g.addColorStop(0,pal.atm+'.26)');
   g.addColorStop(1,pal.atm+'0)');
@@ -1693,7 +1803,7 @@ function drawPlanet(p){
     X.beginPath();
     for(i=0;i<=NST;i++){
       ang=stAng(w,p,i); rr=radOf(w,p,i);
-      px=wx(wcx+Math.cos(ang)*rr); py=wy(Math.sin(ang)*rr);
+      px=wx(wcx+Math.cos(ang)*rr); py=wy(wcy+Math.sin(ang)*rr);
       if(i===0)X.moveTo(px,py); else X.lineTo(px,py);
     }
     X.closePath();
@@ -1702,7 +1812,7 @@ function drawPlanet(p){
   X.fillStyle=pal.rock; X.fill();
   X.save(); X.clip();
   /* the sub-solar shine */
-  var gx=cx+lx*Rp*0.62, gy=cy+ly*Rp*0.62;
+  var gx=cx+slx*Rp*0.62, gy=cy+sly*Rp*0.62;
   g=X.createRadialGradient(gx,gy,Rp*0.02,gx,gy,Rp*1.30);
   g.addColorStop(0,'rgba('+hexRGB(pal.lit)+',.92)');
   g.addColorStop(0.28,'rgba('+hexRGB(pal.lit)+',.34)');
@@ -1722,10 +1832,10 @@ function drawPlanet(p){
       var al=lit>0?lit*0.24:lit*0.44;
       if(Math.abs(al)<0.012)continue;
       X.beginPath();
-      X.moveTo(wx(wcx+Math.cos(a0)*r0),wy(Math.sin(a0)*r0));
-      X.lineTo(wx(wcx+Math.cos(a1)*r1),wy(Math.sin(a1)*r1));
-      X.lineTo(wx(wcx+Math.cos(a1)*(r1-band)),wy(Math.sin(a1)*(r1-band)));
-      X.lineTo(wx(wcx+Math.cos(a0)*(r0-band)),wy(Math.sin(a0)*(r0-band)));
+      X.moveTo(wx(wcx+Math.cos(a0)*r0),wy(wcy+Math.sin(a0)*r0));
+      X.lineTo(wx(wcx+Math.cos(a1)*r1),wy(wcy+Math.sin(a1)*r1));
+      X.lineTo(wx(wcx+Math.cos(a1)*(r1-band)),wy(wcy+Math.sin(a1)*(r1-band)));
+      X.lineTo(wx(wcx+Math.cos(a0)*(r0-band)),wy(wcy+Math.sin(a0)*(r0-band)));
       X.closePath();
       X.fillStyle=(al>0?'rgba(255,246,228,':'rgba(2,4,12,')+Math.abs(al).toFixed(3)+')';
       X.fill();
@@ -1733,10 +1843,10 @@ function drawPlanet(p){
   }
   /* impact craters, lit from the star */
   if(Rp>30){
-    var sp=speck[p], rot=w.rot[p]*0.1*RAD, la=Math.atan2(ly,lx);
+    var sp=speck[p], rot=w.rot[p]*0.1*RAD, la=Math.atan2(sly,slx);
     for(i=0;i<sp.length;i++){
       var s2=sp[i], a2=s2.a+rot;
-      var dx=Math.cos(a2)*s2.d*Rp, dy=Math.sin(a2)*s2.d*Rp;
+      var dx=Math.cos(a2)*s2.d*Rp*F, dy=Math.sin(a2)*s2.d*Rp*F;
       var cr=s2.s*Rp;
       if(cr<1.1)continue;
       var px2=cx+dx, py2=cy+dy;
@@ -1750,7 +1860,7 @@ function drawPlanet(p){
     }
   }
   /* day / night terminator */
-  g=X.createLinearGradient(cx+lx*Rp,cy+ly*Rp,cx-lx*Rp,cy-ly*Rp);
+  g=X.createLinearGradient(cx+slx*Rp,cy+sly*Rp,cx-slx*Rp,cy-sly*Rp);
   g.addColorStop(0,'rgba(255,250,236,.13)');
   g.addColorStop(0.30,'rgba(0,0,0,0)');
   g.addColorStop(0.56,'rgba(2,4,12,.42)');
@@ -1777,7 +1887,7 @@ function drawPlanet(p){
   /* --- the lit limb: a rim light that fades round to the night side --- */
   X.save();
   discPath();
-  var e0x=cx+lx*Rp, e0y=cy+ly*Rp, e1x=cx-lx*Rp, e1y=cy-ly*Rp;
+  var e0x=cx+slx*Rp, e0y=cy+sly*Rp, e1x=cx-slx*Rp, e1y=cy-sly*Rp;
   g=X.createLinearGradient(e0x,e0y,e1x,e1y);
   g.addColorStop(0,pal.rim);
   g.addColorStop(0.45,pal.rim);
@@ -1790,8 +1900,8 @@ function drawPlanet(p){
 function drawHealthArc(p){
   var w=G.world, map=MAPS[w.mapId], R=planetR(map,p), Rp=R*cam.s;
   if(Rp<26)return;
-  var cx=wx(planetCX(map,p)), cy=wy(0);
-  var a=stAng(w,p,w.tanks[p].c);
+  var cx=wx(planetCX(map,p)), cy=wy(planetCY(map,p));
+  var a=stAng(w,p,w.tanks[p].c)+(camF()<0?Math.PI:0);
   var hp=clamp(G.hpShow[p]/MAX_HP,0,1);
   var span=0.46, r=Rp*1.15;
   X.save(); X.lineCap='round';
@@ -1806,7 +1916,8 @@ function drawTank(w,p,x,y,ang,ax,ay,you,alpha){
   var s=Math.max(7,15*cam.s*1.7);
   var px=wx(x),py=wy(y);
   if(px<-60||px>VW+60||py<-60||py>VH+60)return;
-  var ux=ax,uy=ay, rx=-uy, ry=ux;
+  var F=camF();
+  var ux=ax*F,uy=ay*F, rx=-uy, ry=ux;
   var col=you?'#eaf4ff':'#ffb0a4';
   X.save(); X.globalCompositeOperation='lighter';
   var gg=X.createRadialGradient(px,py,0,px,py,s*3.4);
@@ -1854,10 +1965,10 @@ function stepMotes(dt){
   for(i=0;i<motes.length;i++){
     var mo=motes[i];
     mo.f=windFactor(map,mo.x,mo.y);
-    mo.y+=wv*mo.f*6*mo.s*dt;
-    mo.x+=Math.sin(G.fxT*0.5+mo.ph)*7*mo.f*dt;
-    if(mo.y>moteBox.h)mo.y-=moteBox.h*2;
-    else if(mo.y<-moteBox.h)mo.y+=moteBox.h*2;
+    mo.x+=wv*mo.f*6*mo.s*dt;                       /* the wind blows across */
+    mo.y+=Math.sin(G.fxT*0.5+mo.ph)*7*mo.f*dt;
+    if(mo.x>moteBox.cx+moteBox.w)mo.x-=moteBox.w*2;
+    else if(mo.x<moteBox.cx-moteBox.w)mo.x+=moteBox.w*2;
   }
 }
 function drawMotes(){
@@ -1870,12 +1981,13 @@ function drawMotes(){
     if(a<=0.02)continue;
     var px=wx(mo.x),py=wy(mo.y);
     if(px<-40||px>VW+40||py<-40||py>VH+40)continue;
-    var L=Math.max(2,Math.abs(wv)*mo.f*mo.s*0.9*cam.s*6);
+    var len=Math.abs(wv)*mo.f*mo.s*1.6;
+    var ex=wx(mo.x+dir*len), ey=wy(mo.y);
     X.strokeStyle='rgba(186,150,255,'+(a*0.48).toFixed(3)+')';
     X.lineWidth=Math.max(0.9,1.5*cam.s*2);
-    X.beginPath(); X.moveTo(px,py); X.lineTo(px,py+dir*L); X.stroke();
+    X.beginPath(); X.moveTo(px,py); X.lineTo(ex,ey); X.stroke();
     X.fillStyle='rgba(226,206,255,'+(a*0.55).toFixed(3)+')';
-    X.fillRect(px-0.7,py+dir*L-0.7,1.6,1.6);
+    X.fillRect(ex-0.7,ey-0.7,1.6,1.6);
   }
   X.restore();
 }
@@ -2003,7 +2115,7 @@ var touchHint=0;
 var G={
   mode:'menu',phase:'idle',paused:false,
   world:null,tl:null,pending:null,playT:0,lastFrame:0,fxT:0,paceCur:1,
-  mySeat:0,ang:90,pow:65,wep:'slug',moveD:0,orderKind:'fire',foeAng:90,
+  mySeat:0,flip:false,ang:90,pow:65,wep:'slug',moveD:0,orderKind:'fire',foeAng:90,
   wind:0,hpShow:[MAX_HP,MAX_HP],leadShell:null,lastEvent:null,ghost:null,
   cpu:null,hotOrders:[null,null],hotSeat:0,orders:null,afterReplay:null,
   tot:[{dealt:0,shots:0,hits:0,direct:0,self:0},{dealt:0,shots:0,hits:0,direct:0,self:0}],
@@ -2062,7 +2174,8 @@ function updateHUD(){
   $('#youBar').style.width=(h0/MAX_HP*100)+'%'; $('#foeBar').style.width=(h1/MAX_HP*100)+'%';
   $('#roundLbl').textContent=compact?('R '+w.round+'/'+MAX_ROUNDS+' · '+map.name):('ROUND '+w.round+' / '+MAX_ROUNDS+' · '+map.name);
   var wv=G.wind;
-  $('#windArrow').textContent=Math.abs(wv)<0.8?'·':(wv<0?(Math.abs(wv)>8?'▲▲':'▲'):(wv>8?'▼▼':'▼'));
+  var wd=wv*(G.flip?-1:1);
+  $('#windArrow').textContent=Math.abs(wv)<0.8?'·':(wd<0?(Math.abs(wv)>8?'◀◀':'◀'):(Math.abs(wv)>8?'▶▶':'▶'));
   $('#windVal').textContent=Math.abs(wv).toFixed(1);
   $('#spinVal').textContent=map.spin[me]?('· SPIN '+(map.spin[me]/10).toFixed(1)+'°/R'):'';
   var inv=w.tanks[me].inv,html='',n,i;
@@ -2097,6 +2210,7 @@ function startRound(){
   if(G.mode==='cpu'){G.mySeat=0;}
   else if(G.mode==='hotseat'){G.hotOrders=[null,null];G.hotSeat=(G.world.round-1)%2;G.mySeat=G.hotSeat;}
   else if(G.mode==='online'){G.mySeat=G.online.seat;}
+  G.flip=(G.mySeat===1);
   if(!WEAPONS[G.wep].inf&&!(G.world.tanks[G.mySeat].inv[G.wep]>0))G.wep='slug';
   G.orderKind='fire'; G.moveD=0;
   G.phase='order';
@@ -2115,7 +2229,7 @@ function commitOrder(order){
   }else if(G.mode==='hotseat'){
     G.hotOrders[G.mySeat]=order;
     if(G.hotOrders[0]!==null&&G.hotOrders[1]!==null){
-      G.mySeat=G.hotSeat;
+      G.mySeat=G.hotSeat; G.flip=(G.mySeat===1); camSnap();
       beginPlayback(G.hotOrders.slice());
     }else{
       G.phase='curtain'; showOrderBar(false);
@@ -2187,19 +2301,32 @@ function flashScreen(a){
   var f=$('#flash'); f.style.opacity=String(a);
   setTimeout(function(){f.style.opacity='0';},80);
 }
+/* The resolver hands us the whole timeline up front, so playback does not have
+   to guess its pacing: pick a wall-clock budget for the round and run at the
+   rate that meets it, then spend that budget where it matters - full speed
+   across empty gap, slow-mo into every impact. */
+function paceBase(){
+  var d=G.tl?G.tl.dur:1;
+  var target=clamp(d*0.40,3.2,8.2);
+  return clamp(d/target,1,10);
+}
 function pace(){
   var tl=G.tl; if(!tl)return 1;
   var i;
-  /* The resolver already stamped every impact with its sim time, so the clock
-     does not have to guess from altitude - which is useless for an orbiting
-     shell that is permanently "near" a surface. Slow only for the seconds that
-     actually matter, and run hard everywhere else. */
   var nx=1e9;
   for(i=G.ev.b;i<tl.booms.length;i++){ if(tl.booms[i].t>=G.playT){nx=tl.booms[i].t-G.playT;break;} }
   for(i=G.ev.s;i<tl.splits.length;i++){ if(tl.splits[i].t>=G.playT){nx=Math.min(nx,tl.splits[i].t-G.playT);break;} }
   for(i=G.ev.f;i<tl.fizzles.length;i++){ if(tl.fizzles[i].t>=G.playT){nx=Math.min(nx,tl.fizzles[i].t-G.playT);break;} }
-  if(nx<0.55)return 0.55;                       /* terminal descent, slow-mo  */
-  if(nx<1.4)return 1.1;                         /* the run-in                 */
+  var b=paceBase();
+  /* Decelerate into the impact over a real run-in. The window has to scale
+     with the rate we are travelling at, or a fast playback blows straight
+     through the slow-motion and never actually slows down. */
+  var lead=Math.max(1.2,b*0.6);
+  if(nx<0.45)return 0.55;                       /* terminal descent, slow-mo  */
+  if(nx<lead){
+    var u=(nx-0.45)/(lead-0.45);
+    return 0.55+(b-0.55)*u*u*u;
+  }
   var since=G.lastEvent?(G.playT-G.lastEvent.t):1e9;
   if(since<0.6)return 0.9;                      /* let the blast breathe      */
   var any=false,minAlt=1e9;
@@ -2210,14 +2337,15 @@ function pace(){
     var a=altitudeAt(G.world,q.x,q.y);
     if(a<minAlt)minAlt=a;
   }
-  if(!any)return 3;
-  if(minAlt<260)return 2.6;                     /* low pass: still readable   */
-  return clamp(3.4+(minAlt-260)/620*2.6,3.4,6);
+  if(!any)return b;
+  if(minAlt<200)return Math.min(b,5);           /* a low pass stays readable  */
+  return b;
 }
 function stepPlayback(dt){
   if(G.phase!=='play'||!G.tl)return;
   var target=pace();
-  G.paceCur=lerp(G.paceCur,target,1-Math.pow(0.03,dt));
+  /* slowing down is a cut, speeding back up is a glide */
+  G.paceCur=lerp(G.paceCur,target,1-Math.pow(target<G.paceCur?1e-26:0.03,dt));
   G.playT+=dt*G.paceCur;
   var tl=G.tl,e=G.ev,i;
   while(e.s<tl.splits.length&&tl.splits[e.s].t<=G.playT){
@@ -2387,7 +2515,8 @@ function render(now){
     var r0=radOf(G.world,i,i0)+TANK_H,r1=radOf(G.world,i,i0+1)+TANK_H;
     var aa=a0+(a1-a0)*f, rr=r0+(r1-r0)*f;
     var map=MAPS[G.world.mapId];
-    pos.push({x:planetCX(map,i)+Math.cos(aa)*rr,y:Math.sin(aa)*rr,ux:Math.cos(aa),uy:Math.sin(aa)});
+    pos.push({x:planetCX(map,i)+Math.cos(aa)*rr,y:planetCY(map,i)+Math.sin(aa)*rr,
+              ux:Math.cos(aa),uy:Math.sin(aa)});
     ang.push(i===G.mySeat?G.ang:G.foeAng);
   }
   drawGhostMove();
@@ -2404,7 +2533,7 @@ function render(now){
 
 /* ============================================================ 13. online */
 var ON=G.online;
-var STATE_V=2;
+var STATE_V=3;
 function lobbyMsg(s){$('#lobbyMsg').textContent=s||'';}
 function screenOff(){
   ['#intro','#lobby','#signin','#result'].forEach(function(s){$(s).classList.remove('on');});
@@ -2535,7 +2664,7 @@ function onlineAdopt(m,animate){
   }
   if(G.phase==='play'&&ON.replaying)return;
   ON.match=m; ON.state=m.state; ON.seat=m.yourSeat>=0?m.yourSeat:0;
-  G.mySeat=ON.seat;
+  G.mySeat=ON.seat; G.flip=(G.mySeat===1);
   var st=m.state, fresh=!G.world;
   if(fresh)makeSky(st.world.seed,st.world.mapId);
   var nm=['PLANET A','PLANET B'];
@@ -2814,7 +2943,7 @@ function startLocal(mode){
   G.ang=90; G.pow=68; G.wep='slug'; G.foeAng=90;
   makeSky(seed,mapId);
   $('#hud').classList.add('on');
-  G.mySeat=0;
+  G.mySeat=0; G.flip=false;
   camSnap();
   startRound();
   var map=MAPS[mapId];
@@ -2823,6 +2952,8 @@ function startLocal(mode){
 function curtainGo(){
   $('#curtain').classList.remove('on');
   G.mySeat=1-G.mySeat;
+  /* the device changed hands: the world turns over with it */
+  G.flip=(G.mySeat===1); camSnap();
   G.orderKind='fire'; G.moveD=0;
   if(!WEAPONS[G.wep].inf&&!(G.world.tanks[G.mySeat].inv[G.wep]>0))G.wep='slug';
   G.hpShow=[G.world.tanks[0].hp,G.world.tanks[1].hp];
@@ -2891,7 +3022,7 @@ withArcade(function(a){
 function attract(){
   var seed=(Math.random()*4294967295)>>>0, mapId=Math.floor(Math.random()*MAPS.length);
   G.mode='menu'; G.phase='idle'; G.tl=null; G.pending=null; G.ghost=null;
-  G.world=makeWorld(mapId,seed); G.mySeat=0; G.hpShow=[MAX_HP,MAX_HP];
+  G.world=makeWorld(mapId,seed); G.mySeat=0; G.flip=false; G.hpShow=[MAX_HP,MAX_HP];
   G.ang=90; G.foeAng=90;
   parts=[];rings=[];floaters=[];glows=[];streaks=[];flares=[];
   makeSky(seed,mapId);
@@ -2914,13 +3045,14 @@ window.__roche={
   orbDescend:orbDescend,solveShotAround:solveShotAround,
   windForSeed:windForSeed,roundSeedOf:roundSeedOf,
   makeCpu:makeCpu,cpuOrder:cpuOrder,cpuLearn:cpuLearn,
-  l1x:l1x,accAt:accAt,planetR:planetR,planetCX:planetCX,planetGM:planetGM,
+  l1pt:l1pt,accAt:accAt,planetR:planetR,planetCX:planetCX,planetCY:planetCY,planetGM:planetGM,
   escSpeed:escSpeed,powerToSpeed:powerToSpeed,powerOfSpeed:powerOfSpeed,
-  TK:TK,WIND_MAX:WIND_MAX,WIND_G_REF:WIND_G_REF,WIND_DV:WIND_DV,windFactor:windFactor,
+  TK:TK,WIND_MAX:WIND_MAX,WIND_K:WIND_K,WIND_DV:WIND_DV,windFactor:windFactor,windRef:windRef,
   radOf:radOf,tankPt:tankPt,
   getState:function(){return {mode:G.mode,phase:G.phase,round:G.world?G.world.round:0,
     hp:G.world?[G.world.tanks[0].hp,G.world.tanks[1].hp]:null,paused:G.paused,seat:G.mySeat,
     wind:G.wind,ach:G.ach.slice(),ghost:G.ghost?G.ghost.length:0,pace:G.paceCur,
+    flip:G.flip,
     t:G.playT,dur:G.tl?G.tl.dur:0,booms:G.ev?G.ev.b:0,shake:cam.shake,parts:parts.length,
     whash:G.world?hashWorld(G.world):null,stageHash:G.stageHash,authHash:G.authHash,
     pods:G.world?G.world.pods.length:0,
@@ -2964,7 +3096,8 @@ window.__roche={
     get:function(){return {x:cam.x,y:cam.y,s:cam.s,ts:cam.ts,manual:cam.manual,auto:cam.auto};},
     limits:scaleLimits,
     tankScreen:tankScreen,
-    ringPx:aimRingPx
+    ringPx:aimRingPx,
+    probeOrder:probeOrderFrame
   },
   ui:{
     title:function(){toTitle();},
