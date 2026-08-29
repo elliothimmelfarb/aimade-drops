@@ -1,0 +1,3383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<title>Quarrel</title>
+<style>
+:root{
+  --safeT: env(safe-area-inset-top, 0px);
+  --safeB: env(safe-area-inset-bottom, 0px);
+  --safeL: env(safe-area-inset-left, 0px);
+  --safeR: env(safe-area-inset-right, 0px);
+
+  --night:#0b0a0c;
+  --stone:#6a6153;
+  --stone-hi:#988c76;
+  --stone-lo:#332e26;
+  --lead:#1d1f23;
+
+  --parch:#eddfbd;
+  --parch2:#dccda4;
+  --parch-lo:#c8b686;
+  --ink:#2c2116;
+  --ink-soft:#5a4a36;
+  --rule:rgba(44,33,22,.26);
+
+  --warm:#c0392b;
+  --warm-hi:#f0836a;
+  --cool:#2f6bb8;
+  --cool-hi:#7fb2f0;
+  --gild:#c69a3c;
+  --gild-hi:#f0cd7a;
+
+  --ui: 'Palatino Linotype','Book Antiqua',Palatino,Georgia,'Times New Roman',serif;
+  --sans: 'Trebuchet MS','Segoe UI',Avenir,Helvetica,Arial,sans-serif;
+  --mono: ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{
+  margin:0;padding:0;width:100%;height:100%;
+  background:var(--night);color:var(--parch);font-family:var(--ui);
+  overflow:hidden;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;touch-action:none;
+}
+
+/* ===== RETINA / DPR RULE 1 ==========================================
+   The canvas is ALWAYS pinned to the viewport by CSS, whatever size the
+   backing store happens to be.  The backing store is sized separately in
+   resize().  This is the bug that keeps shipping; it does not ship here.
+   =================================================================== */
+canvas#glass{
+  position:fixed; left:0; top:0; right:0; bottom:0;
+  width:100%; height:100%;
+  display:block; touch-action:none; z-index:0;
+}
+
+/* ============================== HUD ================================= */
+#hud{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;transition:opacity .45s ease;}
+#hud.on{opacity:1;}
+
+.plate{
+  background:
+    linear-gradient(180deg, rgba(237,223,189,.95), rgba(214,197,158,.93));
+  border:1px solid rgba(58,44,28,.55);
+  border-radius:3px;
+  box-shadow:0 5px 20px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,250,232,.6);
+  color:var(--ink);
+}
+
+/* --- top: the two glaziers and whose hand the work is in --- */
+#topbar{
+  position:fixed;z-index:6;pointer-events:none;
+  top:calc(var(--safeT) + 8px);
+  left:calc(var(--safeL) + 50px); right:calc(var(--safeR) + 50px);
+  max-width:660px;margin:0 auto;
+  display:flex;align-items:stretch;gap:0;
+  padding:0;overflow:hidden;
+}
+.side{flex:1 1 0;min-width:0;padding:6px 9px 6px;display:flex;flex-direction:column;gap:1px;}
+.side.r{text-align:right;align-items:flex-end;}
+.side .nm{
+  font-family:var(--sans);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;
+}
+.side.l .nm{color:#8c2f22;}
+.side.r .nm{color:#1e4f8f;}
+.side .sc{font-size:23px;line-height:1;font-weight:700;letter-spacing:-.01em;color:var(--ink);}
+.side .sub{font-family:var(--sans);font-size:9px;letter-spacing:.05em;color:var(--ink-soft);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.side .sub .ti{color:#8a6f3e;font-weight:700;}
+.side .sub .cols::after{content:' · ';color:var(--ink-soft);font-weight:400;}
+.side .bolts{display:flex;gap:3px;margin-top:2px;height:9px;align-items:center;}
+.side.r .bolts{justify-content:flex-end;}
+.bq{width:12px;height:5px;border-radius:1px;background:#8c2f22;opacity:.9;
+    clip-path:polygon(0 50%,22% 0,100% 22%,100% 78%,22% 100%);}
+.side.r .bq{background:#1e4f8f;clip-path:polygon(100% 50%,78% 0,0 22%,0 78%,78% 100%);}
+.bq.spent{background:rgba(44,33,22,.22);}
+#mid{
+  flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:5px 10px;border-left:1px solid var(--rule);border-right:1px solid var(--rule);
+  background:rgba(200,182,140,.35);min-width:96px;
+}
+#midTop{font-family:var(--sans);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft);}
+#midMain{font-size:14px;font-weight:700;line-height:1.15;text-align:center;color:var(--ink);}
+#midSub{font-family:var(--sans);font-size:9px;color:var(--ink-soft);margin-top:1px;}
+.turnwarm #midMain{color:#8c2f22;} .turncool #midMain{color:#1e4f8f;}
+
+/* --- message line --- */
+#msg{
+  position:fixed;z-index:6;pointer-events:none;
+  left:50%;transform:translateX(-50%);
+  top:calc(var(--safeT) + 8px + 62px);
+  font-family:var(--sans);font-size:11.5px;letter-spacing:.04em;
+  color:rgba(237,223,189,.86);text-shadow:0 1px 6px rgba(0,0,0,.9);
+  white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis;
+  padding:3px 10px;border-radius:2px;background:rgba(12,10,8,.45);
+  opacity:0;transition:opacity .3s ease;
+}
+#msg.on{opacity:1;}
+
+/* --- bottom: the bench --- */
+/* left/right + auto margins rather than left:50% + translate — a
+   shrink-to-fit box anchored at 50% only gets half the viewport to size
+   itself in, which collapses the wrapping bench on a phone. */
+#bench{
+  position:fixed;z-index:6;pointer-events:none;
+  left:calc(var(--safeL) + 4px); right:calc(var(--safeR) + 4px);
+  margin:0 auto; width:fit-content;
+  bottom:calc(var(--safeB) + 26px);
+  padding:6px 9px 7px;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  max-width:min(97vw,700px);
+}
+#tally{display:flex;align-items:center;gap:7px;font-family:var(--sans);font-size:9px;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--ink-soft);}
+#tally .tl{display:flex;align-items:center;gap:3px;}
+#tally i{width:7px;height:7px;display:inline-block;transform:rotate(45deg);border:1px solid rgba(30,22,12,.45);}
+#tally b{font-family:var(--ui);font-size:11px;font-weight:700;color:var(--ink);}
+#tally .lbl{opacity:.7;letter-spacing:.13em;}
+
+#row2{display:flex;align-items:flex-end;justify-content:center;gap:7px;pointer-events:auto;flex-wrap:wrap;}
+#btnBolt{order:1;} #mkrow{order:2;} #btnSet{order:3;}
+@media (max-width:620px){ #mkrow{order:1;} #btnBolt{order:2;} #btnSet{order:3;} }
+#mkrow{display:flex;align-items:flex-end;gap:6px;pointer-events:auto;flex:0 0 auto;}
+.slot{
+  position:relative;width:46px;height:56px;padding:0;margin:0;border:0;background:none;
+  cursor:pointer;display:block;flex:0 0 auto;
+  transition:transform .16s cubic-bezier(.3,1.5,.5,1);
+}
+.slot canvas{display:block;width:46px;height:52px;}
+.slot .num{
+  position:absolute;left:0;right:0;bottom:0;text-align:center;
+  font-family:var(--mono);font-size:9px;color:rgba(44,33,22,.7);line-height:1;
+}
+.slot:disabled{cursor:default;opacity:.4;}
+.slot.sel{transform:translateY(-6px);}
+.slot.sel .num{color:var(--ink);font-weight:700;}
+.slot.gone{opacity:.22;pointer-events:none;}
+
+.bbtn{
+  pointer-events:auto;cursor:pointer;font-family:var(--sans);font-weight:700;
+  font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:0 11px;height:40px;margin-bottom:8px;
+  border:1px solid rgba(58,44,28,.6);border-radius:3px;color:var(--ink);
+  background:linear-gradient(180deg,rgba(240,228,198,.95),rgba(206,188,148,.95));
+  box-shadow:0 3px 10px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,250,232,.65);
+  display:flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto;
+}
+.bbtn:disabled{opacity:.35;cursor:default;}
+.bbtn.armed{background:linear-gradient(180deg,#d8564a,#98281c);color:#ffeede;border-color:#5e1a12;}
+.bbtn.go{background:linear-gradient(180deg,var(--gild-hi),#a97d24);color:#2a1c05;border-color:#5c4310;}
+.bbtn svg{display:block;}
+
+/* --- hint strip: keyboard only, one slim line, never overlapping --- */
+#strip{
+  position:fixed;z-index:6;pointer-events:none;
+  left:50%;transform:translateX(-50%);
+  bottom:calc(var(--safeB) + 5px);
+  display:flex;align-items:center;gap:8px;white-space:nowrap;
+  opacity:0;transition:opacity .5s ease;
+  font-family:var(--sans);font-size:10.5px;letter-spacing:.05em;
+  color:rgba(237,223,189,.7);height:15px;
+  max-width:min(97vw,760px);overflow:hidden;
+}
+#strip.on{opacity:.6;}
+body.touch #strip{display:none;}
+#strip .g{display:flex;align-items:center;gap:3px;}
+#strip .sep{opacity:.3;}
+kbd{
+  display:inline-block;font-family:var(--mono);font-size:9.5px;line-height:1;
+  padding:3px 4px;border-radius:2px;background:rgba(22,18,14,.8);
+  border:1px solid rgba(237,223,189,.24);color:rgba(245,230,200,.95);
+  box-shadow:0 1px 0 rgba(0,0,0,.55);
+}
+@media (max-width:560px){ #strip{font-size:9px;gap:6px;} #strip kbd{font-size:8.5px;padding:2px 3px;} }
+@media (max-width:430px){ #strip .g.opt,#strip .sep.opt{display:none;} }
+
+/* --- corner buttons --- */
+.corner{
+  position:fixed;z-index:7;pointer-events:auto;cursor:pointer;
+  width:38px;height:38px;border-radius:50%;
+  background:rgba(20,16,12,.82);border:1px solid rgba(237,223,189,.24);
+  color:var(--parch);font-family:var(--ui);font-size:17px;font-weight:700;
+  align-items:center;justify-content:center;display:none;
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  padding:0;line-height:1;
+}
+#tq{left:calc(var(--safeL) + 6px); top:calc(var(--safeT) + 8px);}
+#mute{right:calc(var(--safeR) + 6px); top:calc(var(--safeT) + 8px);font-size:14px;color:rgba(237,223,189,.75);}
+body.touch #tq.on{display:flex;}
+#mute.on{display:flex;}
+
+/* ============================ overlays ============================== */
+.ov{
+  position:fixed;inset:0;z-index:20;display:none;
+  align-items:center;justify-content:center;
+  padding:calc(var(--safeT) + 14px) 14px calc(var(--safeB) + 14px);
+  background:radial-gradient(130% 100% at 50% 34%, rgba(26,19,11,.50), rgba(6,5,4,.86));
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  overflow-y:auto;overscroll-behavior:contain;
+}
+.ov.on{display:flex;}
+.card{
+  position:relative;width:100%;max-width:600px;margin:auto;
+  background:
+    radial-gradient(120px 90px at 12% 8%, rgba(206,180,126,.5), transparent 70%),
+    radial-gradient(150px 110px at 88% 92%, rgba(196,168,116,.45), transparent 70%),
+    radial-gradient(90px 70px at 70% 22%, rgba(214,192,146,.35), transparent 70%),
+    linear-gradient(168deg, #f2e6c6 0%, #e6d6ad 46%, #dbc99d 100%);
+  color:var(--ink);
+  border:1px solid #7d6a45;border-radius:2px;
+  box-shadow:0 24px 70px rgba(0,0,0,.72), inset 0 0 60px rgba(148,116,60,.16);
+  padding:20px 22px 20px;
+}
+.card::after{
+  content:'';position:absolute;inset:4px;border:1px solid rgba(120,96,54,.32);
+  border-radius:1px;pointer-events:none;
+}
+.kicker{
+  font-family:var(--sans);font-size:9.5px;letter-spacing:.24em;text-transform:uppercase;
+  color:#8a6f3e;margin-bottom:5px;
+}
+.card h1{
+  margin:0 0 2px;font-size:44px;line-height:1;letter-spacing:.02em;font-weight:700;
+  color:#2a1d10;
+}
+.card h1 .dr{color:#9c2b1e;}
+.card h2{margin:0 0 8px;font-size:24px;line-height:1.1;color:#2a1d10;}
+.sub{font-family:var(--sans);font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;
+  color:#8a6f3e;margin-bottom:12px;}
+.lede{font-size:14.5px;line-height:1.5;margin:0 0 13px;color:#3c2e1e;}
+.lede b{color:#20160c;}
+.note{font-family:var(--sans);font-size:11px;line-height:1.5;color:#5c4a32;margin-top:11px;}
+.note b{color:#33261a;}
+.greet{font-family:var(--sans);font-size:11.5px;color:#6b563a;margin:-2px 0 11px;line-height:1.45;}
+.greet b{color:#2a1d10;}
+
+.sechead{
+  font-family:var(--sans);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;
+  color:#8a6f3e;margin:14px 0 7px;padding-bottom:4px;border-bottom:1px solid rgba(120,96,54,.3);
+}
+.sechead.sec2{color:#9c8659;}
+.ctrlgrid{display:grid;grid-template-columns:auto 1fr;gap:6px 11px;align-items:center;}
+.ctrlgrid .kk{display:flex;gap:3px;flex-wrap:wrap;}
+.ctrlgrid .dd{font-family:var(--sans);font-size:11.5px;line-height:1.35;color:#4a3a26;}
+.ctrlgrid .dd b{color:#241a0f;}
+.card kbd{background:rgba(56,42,24,.9);border-color:rgba(255,244,214,.28);color:#f6e9c9;}
+
+.seats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 2px;}
+.seat{display:flex;gap:9px;align-items:flex-start;padding:8px 9px;border:1px solid rgba(120,96,54,.34);
+  border-radius:2px;background:rgba(255,248,226,.3);}
+.seat .sw{display:flex;gap:3px;flex:0 0 auto;padding-top:2px;}
+.seat .sw i{width:11px;height:11px;transform:rotate(45deg);display:block;border:1px solid rgba(30,22,12,.4);}
+.seat .nn{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
+.seat .dd{font-family:var(--sans);font-size:10.5px;color:#5c4a32;line-height:1.35;margin-top:2px;}
+
+.modes{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
+.ov button.go,.ov button.alt{
+  flex:1 1 30%;min-width:120px;cursor:pointer;font-family:var(--sans);font-weight:700;
+  font-size:12px;letter-spacing:.09em;text-transform:uppercase;padding:11px 12px;
+  border-radius:2px;border:1px solid #5c4310;
+  background:linear-gradient(180deg,var(--gild-hi),#a97d24);color:#2a1c05;
+  box-shadow:0 3px 12px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,248,220,.6);
+}
+.ov button.alt{background:linear-gradient(180deg,#e3d3a8,#c3ad78);color:#33261a;border-color:#7d6a45;}
+.ov button.go:disabled,.ov button.alt:disabled{opacity:.4;cursor:default;}
+.btnrow{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap;}
+.btnrow button{flex:1 1 auto;}
+
+.diffrow{display:flex;gap:6px;margin-top:9px;}
+.diffrow button{
+  flex:1 1 0;cursor:pointer;font-family:var(--sans);font-size:11px;font-weight:700;
+  letter-spacing:.07em;text-transform:uppercase;padding:9px 4px;border-radius:2px;
+  border:1px solid #7d6a45;background:rgba(255,248,226,.4);color:#5c4a32;
+}
+.diffrow button.on{background:linear-gradient(180deg,#f0cd7a,#c69a3c);color:#2a1c05;border-color:#5c4310;}
+
+/* lobby bits */
+.codebox{
+  display:flex;align-items:center;gap:9px;margin:10px 0 4px;padding:11px 12px;
+  border:1px dashed rgba(120,96,54,.55);border-radius:2px;background:rgba(255,248,226,.42);
+}
+.codebox .cc{font-family:var(--mono);font-size:24px;letter-spacing:.22em;font-weight:700;color:#2a1d10;
+  flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;}
+.codebox button{flex:0 0 auto;cursor:pointer;font-family:var(--sans);font-size:10.5px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;padding:8px 11px;border-radius:2px;
+  border:1px solid #7d6a45;background:rgba(255,248,226,.6);color:#33261a;}
+.joinrow{display:flex;gap:7px;margin-top:8px;}
+.joinrow input{
+  flex:1 1 auto;min-width:0;font-family:var(--mono);font-size:17px;letter-spacing:.2em;
+  text-transform:uppercase;padding:9px 10px;border-radius:2px;border:1px solid #7d6a45;
+  background:rgba(255,250,235,.75);color:#2a1d10;
+}
+.joinrow input:disabled{opacity:.45;}
+.joinrow button{flex:0 0 auto;min-width:92px;}
+#mlist{margin-top:7px;max-height:190px;overflow-y:auto;overscroll-behavior:contain;}
+.mrow{
+  display:flex;align-items:center;gap:9px;padding:8px 9px;margin-bottom:5px;cursor:pointer;
+  border:1px solid rgba(120,96,54,.34);border-radius:2px;background:rgba(255,248,226,.32);
+}
+.mrow:hover{background:rgba(255,248,226,.62);}
+.mrow .who{flex:1 1 auto;min-width:0;}
+.mrow .t1{font-family:var(--sans);font-size:12px;font-weight:700;color:#2a1d10;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mrow .t2{font-family:var(--sans);font-size:10px;color:#6b563a;}
+.badge{flex:0 0 auto;font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;padding:4px 7px;border-radius:2px;}
+.badge.you{background:#a97d24;color:#2a1c05;}
+.badge.them{background:rgba(120,96,54,.26);color:#5c4a32;}
+.badge.open{background:#2f6bb8;color:#eaf2ff;}
+.badge.done{background:rgba(60,46,30,.55);color:#e6d9bd;}
+.tiny{font-family:var(--sans);font-size:11px;color:#6b563a;line-height:1.45;}
+.spin{display:inline-block;width:9px;height:9px;border:2px solid rgba(120,96,54,.35);
+  border-top-color:#8a6f3e;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-1px;}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* result */
+.finaltab{display:grid;grid-template-columns:1fr auto auto;gap:4px 12px;margin:10px 0 2px;
+  font-family:var(--sans);font-size:12px;color:#3c2e1e;align-items:center;}
+.finaltab .hd{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#8a6f3e;}
+.finaltab .big{font-family:var(--ui);font-size:22px;font-weight:700;color:#2a1d10;line-height:1;}
+.finaltab .rw{display:contents;}
+.finaltab .nm{font-weight:700;}
+.finaltab .nm.w{color:#8c2f22;} .finaltab .nm.c{color:#1e4f8f;}
+.regsum{font-family:var(--sans);font-size:10.5px;color:#6b563a;margin-top:6px;line-height:1.5;}
+
+#toast{
+  position:fixed;z-index:30;left:50%;transform:translateX(-50%);
+  bottom:calc(var(--safeB) + 88px);pointer-events:none;
+  font-family:var(--sans);font-size:12px;letter-spacing:.03em;
+  background:rgba(16,13,9,.92);color:var(--parch);
+  border:1px solid rgba(237,223,189,.22);border-radius:2px;
+  padding:8px 14px;opacity:0;transition:opacity .25s ease;
+  max-width:90vw;text-align:center;
+}
+#toast.on{opacity:1;}
+
+@media (max-width:620px){ .side .sub .cols{display:none;} }
+@media (max-width:520px){
+  .card{padding:16px 15px 17px;}
+  .card h1{font-size:34px;}
+  .lede{font-size:13.5px;}
+  .seats{grid-template-columns:1fr;}
+  #topbar{left:calc(var(--safeL) + 46px);right:calc(var(--safeR) + 46px);}
+  .side{padding:5px 7px;}
+  .side .sc{font-size:20px;}
+  .side .nm{font-size:9px;letter-spacing:.09em;}
+  #mid{min-width:70px;padding:5px 6px;}
+  #midMain{font-size:12px;}
+  #midTop{font-size:8px;letter-spacing:.1em;}
+  .slot{width:40px;height:50px;} .slot canvas{width:40px;height:46px;}
+  .bbtn{height:36px;padding:0 9px;font-size:9.5px;margin-bottom:7px;}
+  #tally{gap:5px;font-size:8.5px;}
+  #tally .lbl{display:none;}
+}
+@media (max-width:390px){
+  .slot{width:36px;height:46px;} .slot canvas{width:36px;height:42px;}
+}
+@media (max-height:640px){
+  .card h1{font-size:32px;}
+  .lede{font-size:13px;margin-bottom:10px;}
+}
+</style>
+</head>
+<body>
+<canvas id="glass"></canvas>
+
+<div id="hud">
+  <div id="topbar" class="plate">
+    <div class="side l">
+      <div class="nm" id="nmWarm">The Warm Glazier</div>
+      <div class="sc" id="scWarm">0</div>
+      <div class="sub" id="subWarm"></div>
+      <div class="bolts" id="bqWarm"></div>
+    </div>
+    <div id="mid">
+      <div id="midTop">the bench</div>
+      <div id="midMain">&mdash;</div>
+      <div id="midSub"></div>
+    </div>
+    <div class="side r">
+      <div class="nm" id="nmCool">The Cool Glazier</div>
+      <div class="sc" id="scCool">0</div>
+      <div class="sub" id="subCool"></div>
+      <div class="bolts" id="bqCool"></div>
+    </div>
+  </div>
+  <div id="msg"></div>
+
+  <div id="bench" class="plate">
+    <div id="tally"></div>
+    <div id="row2">
+      <button class="bbtn" id="btnBolt" title="Loose a quarrel (B)">
+        <svg width="15" height="9" viewBox="0 0 15 9" aria-hidden="true">
+          <path d="M0 4.5 L4 4.5 M4 1 L4 8 L9 4.5 Z M9 4.5 L15 4.5" fill="currentColor" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
+        </svg>
+        <span id="boltLbl">Quarrel</span>
+      </button>
+      <div id="mkrow">
+        <button class="slot" id="sl0"><canvas width="92" height="104"></canvas><span class="num">1</span></button>
+        <button class="slot" id="sl1"><canvas width="92" height="104"></canvas><span class="num">2</span></button>
+        <button class="slot" id="sl2"><canvas width="92" height="104"></canvas><span class="num">3</span></button>
+        <button class="slot" id="sl3"><canvas width="92" height="104"></canvas><span class="num">4</span></button>
+        <button class="slot" id="sl4"><canvas width="92" height="104"></canvas><span class="num">5</span></button>
+      </div>
+      <button class="bbtn go" id="btnSet" disabled>Lead it in</button>
+    </div>
+  </div>
+</div>
+
+<div id="strip">
+  <span class="g"><kbd>1</kbd>&ndash;<kbd>5</kbd> glass</span>
+  <span class="sep">&middot;</span>
+  <span class="g"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> aim</span>
+  <span class="sep">&middot;</span>
+  <span class="g"><kbd>Enter</kbd> set</span>
+  <span class="sep">&middot;</span>
+  <span class="g"><kbd>B</kbd> quarrel</span>
+  <span class="sep opt">&middot;</span>
+  <span class="g opt"><kbd>H</kbd> controls</span>
+</div>
+
+<button id="tq" class="corner">?</button>
+<button id="mute" class="corner">&#9835;</button>
+<div id="toast"></div>
+
+<!-- ============================== START ============================== -->
+<div class="ov on" id="ovStart"><div class="card">
+  <div class="kicker">Two journeymen, one lancet, and the guild watching</div>
+  <h1><span class="dr">Q</span>uarrel</h1>
+  <div class="sub">a quarrel is a pane of glass &middot; and a crossbow bolt</div>
+  <div class="greet" id="greet"></div>
+  <p class="lede">You and your rival share one commission. Take a <b>quarry of glass</b> from the bench and
+    lead it into the window beside glass already set. Every unbroken run of your own colour is worth
+    <b>its size squared</b> &mdash; four panes joined score sixteen, four panes scattered score four.
+    You each carry <b>two bolts</b>. Loosing one shatters any pane but the boss, and the glass is gone
+    from the world. Fill the lancet; the guild counts the light.</p>
+
+  <div class="seats">
+    <div class="seat"><span class="sw" id="swWarm"></span>
+      <div><div class="nn" style="color:#8c2f22">The Warm Glazier</div>
+        <div class="dd">Ruby, amber, rose. Leads first.</div></div></div>
+    <div class="seat"><span class="sw" id="swCool"></span>
+      <div><div class="nn" style="color:#1e4f8f">The Cool Glazier</div>
+        <div class="dd">Cobalt, viridian, violet. Answers.</div></div></div>
+  </div>
+
+  <div class="sechead">Controls &mdash; the four you need</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd></div>
+    <div class="dd">Take a quarry from the bench <b>(or click it)</b></div>
+    <div class="kk"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd><kbd>WASD</kbd></div>
+    <div class="dd">Aim at a cell in the window <b>(or point with mouse / tap)</b></div>
+    <div class="kk"><kbd>Enter</kbd><kbd>Space</kbd></div>
+    <div class="dd">Confirm &mdash; press once to place the preview, again to set it</div>
+    <div class="kk"><kbd>B</kbd></div>
+    <div class="dd">Raise the crossbow, and lower it again</div>
+  </div>
+  <div class="sechead sec2">Everything else</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>H</kbd><kbd>?</kbd><kbd>P</kbd><kbd>Esc</kbd></div><div class="dd">Controls &amp; pause panel</div>
+    <div class="kk"><kbd>G</kbd></div><div class="dd">The full rules of the commission</div>
+    <div class="kk"><kbd>M</kbd></div><div class="dd">Mute the workshop</div>
+    <div class="kk"><kbd>R</kbd></div><div class="dd">Rematch / start over</div>
+  </div>
+  <div class="note">Nothing is set until you confirm &mdash; the window shows you the region you would
+    make and what it would be worth first. Press <b>H</b> or <b>?</b> any time to see these controls.</div>
+
+  <div class="modes">
+    <button class="go" id="btnOnline">Play a friend</button>
+    <button class="alt" id="btnAI">Vs the Rival</button>
+    <button class="alt" id="btnHot">Hotseat</button>
+  </div>
+  <div class="diffrow" id="diffRow">
+    <button data-d="0">Prentice</button>
+    <button data-d="1" class="on">Journeyman</button>
+    <button data-d="2">Master</button>
+  </div>
+  <div class="btnrow"><button class="alt" id="btnRules">Full rules</button></div>
+  <div class="note" id="startNote"></div>
+</div></div>
+
+<!-- ============================== LOBBY ============================== -->
+<div class="ov" id="ovLobby"><div class="card">
+  <div class="kicker">The guild hall</div>
+  <h2>Play a friend</h2>
+  <div class="greet" id="lobGreet"></div>
+
+  <div id="inviteWrap" style="display:none">
+    <div class="sechead" style="margin-top:2px">You followed an invite</div>
+    <div class="codebox">
+      <span class="cc" id="inviteCode">--------</span>
+      <button id="btnAccept">Join match</button>
+    </div>
+  </div>
+
+  <div class="sechead">Open a new commission</div>
+  <div class="btnrow" style="margin-top:0"><button class="go" id="btnCreate">Create match</button></div>
+
+  <div class="sechead">Take a seat at one</div>
+  <div class="joinrow">
+    <input id="joinInput" maxlength="8" placeholder="JOIN CODE" autocomplete="off" spellcheck="false">
+    <button class="alt" id="btnJoin">Join</button>
+  </div>
+
+  <div class="sechead">Your matches</div>
+  <div id="mlist"></div>
+
+  <div class="btnrow" style="margin-top:13px">
+    <button class="alt" id="btnLobAI">Vs the Rival</button>
+    <button class="alt" id="btnLobHot">Hotseat</button>
+    <button class="alt" id="btnLobBack">Back</button>
+  </div>
+</div></div>
+
+<!-- ============================== WAITING ============================ -->
+<div class="ov" id="ovWait"><div class="card">
+  <div class="kicker">The commission is opened</div>
+  <h2>Send this to your rival</h2>
+  <div class="codebox">
+    <span class="cc" id="waitCode">--------</span>
+    <button id="btnCopyCode">Copy</button>
+  </div>
+  <div class="note">Send the eight characters and they can take the second seat. You can also copy a
+    ready-made <b>invite link</b> for this match from <b>aimade.games/matches</b> &mdash; one tap and
+    your rival lands straight in the window.</div>
+  <div class="note" style="margin-top:9px"><span class="spin"></span> Waiting for the second glazier.
+    A match keeps for seven days and every move resets the clock, so nobody has to be here now.</div>
+  <div class="btnrow" style="margin-top:14px">
+    <button class="alt" id="btnWaitBack">Back to the hall</button>
+    <button class="alt" id="btnWaitLeave">Abandon it</button>
+  </div>
+</div></div>
+
+<!-- ============================ PAUSE / CONTROLS ===================== -->
+<div class="ov" id="ovPause"><div class="card">
+  <div class="kicker">Down tools</div>
+  <h2>Paused &mdash; Controls</h2>
+  <div class="sechead">The four you need</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd></div>
+    <div class="dd">Take one of the five quarries on the bench <b>(or click / tap it)</b></div>
+    <div class="kk"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd><kbd>WASD</kbd></div>
+    <div class="dd">Move the aim across the window <b>(or point with mouse / tap a cell)</b></div>
+    <div class="kk"><kbd>Enter</kbd><kbd>Space</kbd></div>
+    <div class="dd">Confirm. First press previews, second press sets it &mdash; on touch, tap the cell
+      twice or press <b>Lead it in</b></div>
+    <div class="kk"><kbd>B</kbd></div>
+    <div class="dd">Raise / lower the crossbow. Aimed at a pane, <b>Enter</b> looses the quarrel</div>
+  </div>
+  <div class="sechead sec2">Everything else</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>H</kbd><kbd>?</kbd></div><div class="dd">Open this panel at any time</div>
+    <div class="kk"><kbd>P</kbd><kbd>Esc</kbd></div><div class="dd">Pause and resume &mdash; <b>Esc</b> also cancels an aim</div>
+    <div class="kk"><kbd>G</kbd></div><div class="dd">The full rules</div>
+    <div class="kk"><kbd>M</kbd></div><div class="dd">Mute the workshop</div>
+    <div class="kk"><kbd>R</kbd></div><div class="dd">Rematch / start over</div>
+    <div class="kk"><kbd>Tab</kbd></div><div class="dd">Jump the aim to the next place you could lead glass</div>
+  </div>
+  <div class="note" id="pauseNote"></div>
+  <div class="btnrow" style="margin-top:14px">
+    <button class="go" id="btnResume">Back to work</button>
+    <button class="alt" id="btnPRules">Full rules</button>
+    <button class="alt" id="btnQuit">Leave the bench</button>
+  </div>
+</div></div>
+
+<!-- ============================== RULES ============================= -->
+<div class="ov" id="ovRules"><div class="card">
+  <div class="kicker">Articles of the commission</div>
+  <h2>The full rules</h2>
+  <div class="sechead" style="margin-top:4px">The window</div>
+  <div class="tiny">
+    <p style="margin:0 0 8px">Fifty-one diamond quarries in a pointed lancet. One <b>boss</b> of clear
+      grisaille is already leaded into the heart of it; the boss can never be shattered, and every
+      other pane grows outward from glass already set.</p>
+  </div>
+  <div class="sechead">Your turn &mdash; one of two things</div>
+  <div class="tiny">
+    <p style="margin:0 0 6px"><b>Glaze.</b> Take any one of the five quarries on the bench and lead it
+      into any empty cell that touches a glazed pane along an edge. The bench refills from the bag.</p>
+    <p style="margin:0 0 8px"><b>Loose a quarrel.</b> Spend one of your two bolts to shatter any single
+      glazed pane except the boss. That glass is destroyed &mdash; it does not go back in the bag &mdash;
+      and the cell is empty again. It costs your whole turn.</p>
+  </div>
+  <div class="sechead">The count</div>
+  <div class="tiny">
+    <p style="margin:0 0 8px">Every edge-joined run of one colour scores <b>its size squared</b>. Your
+      score is the sum over your three colours. <b>Grisaille scores for nobody</b> &mdash; it is a wall,
+      and a wall in the right place is worth more than a pane of your own.</p>
+  </div>
+  <div class="sechead">The end</div>
+  <div class="tiny">
+    <p style="margin:0 0 8px">The commission closes when the window is full, or when the bench is empty
+      at the start of a turn. There are <b>fifty-three quarries for fifty empty cells</b>: if all four
+      bolts fly between you, the window ends one light short and the guild will see the gap.
+      Highest score wins; if the scores are level, the most panes of your own colours; if still level,
+      the second glazier takes it. The <b>tithe</b> of one point to the first glazier is fixed
+      compensation for the second's last word &mdash; it is shown in the score and counted honestly.</p>
+  </div>
+  <div class="btnrow" style="margin-top:10px"><button class="go" id="btnRulesBack">Back</button></div>
+</div></div>
+
+<!-- ============================== RESULT ============================ -->
+<div class="ov" id="ovEnd"><div class="card">
+  <div class="kicker" id="endKick">The guild has counted the light</div>
+  <h2 id="endTitle">&mdash;</h2>
+  <p class="lede" id="endLede"></p>
+  <div class="finaltab" id="endTab"></div>
+  <div class="regsum" id="endRegs"></div>
+  <div class="btnrow" style="margin-top:15px">
+    <button class="go" id="btnAgain">Another commission</button>
+    <button class="alt" id="btnEndLobby">The guild hall</button>
+    <button class="alt" id="btnEndHome">Start screen</button>
+  </div>
+</div></div>
+
+<!-- aimade.games Arcade SDK -->
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+"use strict";
+/* =========================================================================
+   ==== BEGIN RULES ENGINE =================================================
+   QUARREL — pure, deterministic, dependency-free.
+
+   This exact block is what the headless balance harness runs under node,
+   what the Rival (AI) thinks with, and what BOTH online clients run to
+   reproduce one another's moves.  Nothing in here touches the DOM, the
+   clock, or Math.random.  Every shuffle comes from the per-match seed that
+   travels inside the match state, so two clients derive the same bag.
+   ========================================================================= */
+var RULES = (function(){
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ *  TUNED CONSTANTS  (see the balance report; do not change casually)   *
+ * ------------------------------------------------------------------ */
+var K = {
+  SCHEMA:    2,      /* state version — mismatched states are refused    */
+  ROWS:     13,      /* lattice rows, v = 0 .. 12                        */
+  HW:        4,      /* half width of the straight shaft, in half-units  */
+  BOSS_V:    6,      /* the boss pane sits at u = 0, v = 6               */
+  BOLTS:     2,      /* crossbow bolts per glazier per match             */
+  MARKET:    5,      /* face-up tiles                                    */
+  NCOL:      6,      /* coloured glass: 0,1,2 warm — 3,4,5 cool          */
+  CLR:       6,      /* grisaille (clear).  Scores for nobody.           */
+  PER_COLOR: 8,      /* 8 x 6 = 48 coloured tiles                        */
+  CLEARS:    5,      /* + 5 grisaille = 53 tiles for 50 empty cells      */
+  EMPTY:    -1,
+  HIST:      8,      /* moves kept in state for animated catch-up        */
+  /* the tithe: fixed compensation, measured by self-play and shown
+     honestly in the score plate.  [warm, cool].                        */
+  TITHE:   [1, 0]
+};
+
+var COLNAMES = ['Ruby','Amber','Rose','Cobalt','Viridian','Violet','Grisaille'];
+var SEATCOL  = [[0,1,2],[3,4,5]];
+var COLSEAT  = [0,0,0,1,1,1,-1];
+
+/* ------------------------------ geometry ---------------------------- *
+ *  A diamond-quarry lattice: a square grid turned 45 degrees, so every
+ *  cell is a rhombus.  We index by (u, v) where u is the horizontal
+ *  half-step and v the vertical half-step; u and v always share parity,
+ *  and the four edge-neighbours are (u+-1, v+-1).
+ * ------------------------------------------------------------------- */
+var GEOM = null;
+function geom(){
+  if(GEOM) return GEOM;
+  var cells = [], map = {}, v, u, hw;
+  for(v = 0; v < K.ROWS; v++){
+    hw = Math.min(v, K.HW);
+    if(((hw - v) % 2 + 2) % 2 !== 0) hw -= 1;   /* keep u parity = v parity */
+    for(u = -hw; u <= hw; u += 2){ map[u + ',' + v] = cells.length; cells.push({ u:u, v:v }); }
+  }
+  var n = cells.length, nb = [], i, c, k, key, j;
+  var D = [[-1,-1],[1,-1],[-1,1],[1,1]];
+  for(i = 0; i < n; i++){
+    c = cells[i]; var list = [];
+    for(k = 0; k < 4; k++){
+      key = (c.u + D[k][0]) + ',' + (c.v + D[k][1]);
+      j = map[key];
+      if(j !== undefined) list.push(j);
+    }
+    nb.push(list);
+  }
+  GEOM = { cells:cells, map:map, n:n, nb:nb, boss:map['0,' + K.BOSS_V] };
+  return GEOM;
+}
+
+var G0 = geom();
+var NC = G0.n;              /* 51 */
+var NB = G0.nb;
+var BOSS = G0.boss;
+var BAGN = K.NCOL * K.PER_COLOR + K.CLEARS;   /* 53 */
+
+/* ------------------------------ randomness -------------------------- */
+function mulberry32(a){
+  a = a >>> 0;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+var BAGMEMO = {};
+function bagFor(seed){
+  var key = '' + (seed >>> 0);
+  if(BAGMEMO[key]) return BAGMEMO[key];
+  var arr = [], c, i;
+  for(c = 0; c < K.NCOL; c++) for(i = 0; i < K.PER_COLOR; i++) arr.push(c);
+  for(i = 0; i < K.CLEARS; i++) arr.push(K.CLR);
+  var rnd = mulberry32(seed ^ 0x9E3779B9);
+  for(i = arr.length - 1; i > 0; i--){
+    var j = (rnd() * (i + 1)) | 0, t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  BAGMEMO[key] = arr;
+  if(Object.keys(BAGMEMO).length > 64) BAGMEMO = {};   /* never grows unbounded */
+  BAGMEMO[key] = arr;
+  return arr;
+}
+
+/* ------------------------------ position ---------------------------- */
+function create(seed){
+  seed = (seed >>> 0) || 1;
+  var bag = bagFor(seed);
+  var board = new Array(NC), i;
+  for(i = 0; i < NC; i++) board[i] = K.EMPTY;
+  board[BOSS] = K.CLR;
+  var mk = [];
+  for(i = 0; i < K.MARKET; i++) mk.push(i < bag.length ? bag[i] : K.EMPTY);
+  return {
+    seed: seed,
+    board: board,
+    market: mk,
+    cur: K.MARKET,
+    bolts: [K.BOLTS, K.BOLTS],
+    turn: 0,
+    n: 0,
+    over: false,
+    winner: -1,
+    last: null,
+    hist: []
+  };
+}
+function clone(p){
+  return {
+    seed: p.seed, board: p.board.slice(0), market: p.market.slice(0), cur: p.cur,
+    bolts: [p.bolts[0], p.bolts[1]], turn: p.turn, n: p.n, over: p.over,
+    winner: p.winner, last: p.last, hist: p.hist
+  };
+}
+
+/* ------------------------------ legality ---------------------------- */
+function hasGlazedNeighbour(board, c){
+  var nb = NB[c];
+  for(var i = 0; i < nb.length; i++) if(board[nb[i]] !== K.EMPTY) return true;
+  return false;
+}
+function canGlaze(p, cell){
+  if(p.over) return false;
+  if(cell < 0 || cell >= NC) return false;
+  if(p.board[cell] !== K.EMPTY) return false;
+  return hasGlazedNeighbour(p.board, cell);
+}
+function canBolt(p, cell){
+  if(p.over) return false;
+  if(cell < 0 || cell >= NC) return false;
+  if(cell === BOSS) return false;
+  if(p.board[cell] === K.EMPTY) return false;
+  return p.bolts[p.turn] > 0;
+}
+function marketCount(p){
+  var n = 0;
+  for(var i = 0; i < K.MARKET; i++) if(p.market[i] !== K.EMPTY) n++;
+  return n;
+}
+function emptyCount(board){
+  var n = 0;
+  for(var i = 0; i < NC; i++) if(board[i] === K.EMPTY) n++;
+  return n;
+}
+
+/* move packing: a(1 bit) | slot(3 bits) | cell(6 bits) */
+function packG(slot, cell){ return 4096 + (slot << 6) + cell; }
+function packB(cell){ return cell; }
+function mAct(m){ return m >= 4096 ? 1 : 0; }          /* 1 = glaze, 0 = bolt */
+function mSlot(m){ return (m >> 6) & 7; }
+function mCell(m){ return m & 63; }
+
+function genMoves(p, out, dedupe){
+  out.length = 0;
+  if(p.over) return out;
+  var i, c, seen = 0, val;
+  var anyTile = false;
+  for(i = 0; i < K.MARKET; i++) if(p.market[i] !== K.EMPTY) anyTile = true;
+  if(anyTile){
+    for(c = 0; c < NC; c++){
+      if(p.board[c] !== K.EMPTY) continue;
+      if(!hasGlazedNeighbour(p.board, c)) continue;
+      seen = 0;
+      for(i = 0; i < K.MARKET; i++){
+        val = p.market[i];
+        if(val === K.EMPTY) continue;
+        /* two market slots holding the same colour give the same position */
+        if(dedupe){ var bit = 1 << val; if(seen & bit) continue; seen |= bit; }
+        out.push(packG(i, c));
+      }
+    }
+  }
+  if(p.bolts[p.turn] > 0){
+    for(c = 0; c < NC; c++){
+      if(c === BOSS) continue;
+      if(p.board[c] === K.EMPTY) continue;
+      out.push(packB(c));
+    }
+  }
+  return out;
+}
+
+/* ------------------------------ apply ------------------------------- *
+ *  blind = true  -> do not draw the replacement tile from the bag.  The
+ *  AI searches blind so it never peeks at the shuffle order, which is
+ *  derivable from the seed but is not information a player would use.
+ * ------------------------------------------------------------------- */
+function apply(p, m, blind){
+  if(p.over) return null;
+  var seat = p.turn, cell = mCell(m), ev;
+  if(mAct(m) === 1){
+    var slot = mSlot(m), tile = p.market[slot];
+    if(tile === K.EMPTY) return null;
+    if(!canGlaze(p, cell)) return null;
+    p.board[cell] = tile;
+    if(blind) p.market[slot] = K.EMPTY;
+    else {
+      var bag = bagFor(p.seed);
+      p.market[slot] = (p.cur < bag.length) ? bag[p.cur] : K.EMPTY;
+      if(p.cur < bag.length) p.cur++;
+    }
+    ev = { kind:'glaze', seat:seat, cell:cell, tile:tile, slot:slot };
+  } else {
+    if(!canBolt(p, cell)) return null;
+    var lost = p.board[cell];
+    p.bolts[seat]--;
+    p.board[cell] = K.EMPTY;
+    ev = { kind:'bolt', seat:seat, cell:cell, tile:lost, slot:-1 };
+  }
+  p.turn = 1 - seat;
+  p.n++;
+  p.last = ev;
+  p.hist = p.hist.concat([encMove(m)]);
+  if(p.hist.length > K.HIST) p.hist = p.hist.slice(p.hist.length - K.HIST);
+  /* end of commission */
+  if(emptyCount(p.board) === 0 || marketCount(p) === 0){
+    p.over = true;
+    var sc = scores(p);
+    if(sc[0] > sc[1]) p.winner = 0;
+    else if(sc[1] > sc[0]) p.winner = 1;
+    else {
+      var pn = panes(p.board);
+      if(pn[0] > pn[1]) p.winner = 0;
+      else p.winner = 1;                 /* second-mover takes the tie */
+    }
+  }
+  return ev;
+}
+function applied(p, m, blind){
+  var q = clone(p);
+  var ev = apply(q, m, blind);
+  return ev ? q : null;
+}
+
+/* ------------------------------ analysis ---------------------------- *
+ *  One linear pass gives every region, its size, and a per-colour score.
+ *  The buffers are reused so the search does not churn the heap.
+ * ------------------------------------------------------------------- */
+var _reg  = new Int16Array(NC);
+var _next = new Int16Array(NC);
+var _rsz  = new Int16Array(NC + 2);
+var _rcol = new Int8Array(NC + 2);
+var _rhead= new Int16Array(NC + 2);
+var _stk  = new Int16Array(NC + 4);
+var _col  = new Int32Array(8);
+var AN = { col:_col, reg:_reg, sz:_rsz, rcol:_rcol, head:_rhead, next:_next, nr:0, empty:0 };
+
+function analyse(board){
+  var i, j, t, nr = 0, sp, x, y, nb, sz, head;
+  for(i = 0; i < NC; i++) _reg[i] = -1;
+  for(i = 0; i < 8; i++) _col[i] = 0;
+  var emp = 0;
+  for(i = 0; i < NC; i++){
+    t = board[i];
+    if(t === K.EMPTY){ emp++; continue; }
+    if(_reg[i] >= 0) continue;
+    var id = nr++;
+    sz = 0; sp = 0; head = -1;
+    _stk[sp++] = i; _reg[i] = id;
+    while(sp > 0){
+      x = _stk[--sp]; sz++;
+      _next[x] = head; head = x;
+      nb = NB[x];
+      for(j = 0; j < nb.length; j++){
+        y = nb[j];
+        if(board[y] === t && _reg[y] < 0){ _reg[y] = id; _stk[sp++] = y; }
+      }
+    }
+    _rsz[id] = sz; _rcol[id] = t; _rhead[id] = head;
+    _col[t] += sz * sz;
+  }
+  AN.nr = nr; AN.empty = emp;
+  return AN;
+}
+function seatScoreRaw(col, s){
+  var a = SEATCOL[s];
+  return col[a[0]] + col[a[1]] + col[a[2]];
+}
+function scores(p){
+  var an = analyse(p.board);
+  return [ seatScoreRaw(an.col, 0) + K.TITHE[0], seatScoreRaw(an.col, 1) + K.TITHE[1] ];
+}
+function rawScores(p){
+  var an = analyse(p.board);
+  return [ seatScoreRaw(an.col, 0), seatScoreRaw(an.col, 1) ];
+}
+function panes(board){
+  var a = [0, 0], i, t;
+  for(i = 0; i < NC; i++){ t = board[i]; if(t >= 0 && t < K.NCOL) a[COLSEAT[t]]++; }
+  return a;
+}
+
+/* region list for the renderer (allocates — never called inside search) */
+function regionList(board){
+  var an = analyse(board), out = [], i, x;
+  for(i = 0; i < an.nr; i++){
+    var cells = [];
+    for(x = an.head[i]; x >= 0; x = an.next[x]) cells.push(x);
+    out.push({ id:i, color:an.rcol[i], size:an.sz[i], cells:cells, pts:an.sz[i] * an.sz[i] });
+  }
+  return out;
+}
+function regionAt(board, cell){
+  if(cell < 0 || board[cell] === K.EMPTY) return null;
+  var an = analyse(board), id = an.reg[cell], cells = [], x;
+  for(x = an.head[id]; x >= 0; x = an.next[x]) cells.push(x);
+  return { id:id, color:an.rcol[id], size:an.sz[id], cells:cells, pts:an.sz[id] * an.sz[id] };
+}
+
+/* ------------------- articulation: what one bolt costs --------------- *
+ *  For every pane of a seat we want the exact score loss if it shattered.
+ *  A single Tarjan pass per region gives all of them at once: removing an
+ *  articulation point leaves the cut sub-trees plus whatever remains.
+ * ------------------------------------------------------------------- */
+var _disc = new Int16Array(NC), _low = new Int16Array(NC), _par = new Int16Array(NC);
+var _szs  = new Int16Array(NC), _cutS = new Int16Array(NC), _cutQ = new Int32Array(NC);
+var _tv   = new Int16Array(NC + 4), _ti = new Int16Array(NC + 4);
+
+function regionSplitLoss(board, head, n, best2){
+  /* fills best2 = [bestLoss, bestCell]; returns bestLoss */
+  var x;
+  for(x = head; x >= 0; x = _next[x]){ _disc[x] = -1; _cutS[x] = 0; _cutQ[x] = 0; _szs[x] = 1; }
+  var timer = 0, sp = 0, root = head, t = board[head];
+  _par[root] = -1; _disc[root] = 0; _low[root] = 0; timer = 1;
+  _tv[0] = root; _ti[0] = 0; sp = 1;
+  while(sp > 0){
+    var v = _tv[sp - 1], ii = _ti[sp - 1], nb = NB[v];
+    if(ii < nb.length){
+      _ti[sp - 1] = ii + 1;
+      var w = nb[ii];
+      if(board[w] !== t) continue;
+      if(_disc[w] < 0){
+        _par[w] = v; _disc[w] = timer; _low[w] = timer; timer++;
+        _tv[sp] = w; _ti[sp] = 0; sp++;
+      } else if(w !== _par[v]){
+        if(_disc[w] < _low[v]) _low[v] = _disc[w];
+      }
+    } else {
+      sp--;
+      var pv = _par[v];
+      if(pv >= 0){
+        if(_low[v] < _low[pv]) _low[pv] = _low[v];
+        _szs[pv] += _szs[v];
+        if(_low[v] >= _disc[pv]){ _cutS[pv] += _szs[v]; _cutQ[pv] += _szs[v] * _szs[v]; }
+      }
+    }
+  }
+  var bl = -1, bc = -1, nn = n * n;
+  for(x = head; x >= 0; x = _next[x]){
+    var rest = n - 1 - _cutS[x];
+    var loss = nn - _cutQ[x] - rest * rest;
+    if(loss > bl){ bl = loss; bc = x; }
+  }
+  best2[0] = bl; best2[1] = bc;
+  return bl;
+}
+var _b2 = [0, 0];
+/* worst single bolt the other side could land on `seat` right now */
+function boltThreat(board, an, seat){
+  var i, worst = 0;
+  for(i = 0; i < an.nr; i++){
+    var c = an.rcol[i];
+    if(c >= K.NCOL) continue;
+    if(COLSEAT[c] !== seat) continue;
+    var n = an.sz[i];
+    if(n === 1){ if(1 > worst) worst = 1; continue; }
+    /* the boss can never be shattered, but it is grisaille so it is never
+       inside a coloured region — no special case needed here. */
+    var l = regionSplitLoss(board, an.head[i], n, _b2);
+    if(l > worst) worst = l;
+  }
+  return worst;
+}
+/* the exact best bolt for `seat` to loose right now: [gain, cell] */
+function bestBolt(p, seat){
+  var board = p.board, an = analyse(board), i, bg = -1e9, bc = -1;
+  var opp = 1 - seat;
+  for(i = 0; i < an.nr; i++){
+    var c = an.rcol[i], n = an.sz[i];
+    if(c >= K.NCOL) continue;
+    var mine = (COLSEAT[c] === seat);
+    if(n === 1){
+      var only = an.head[i];
+      if(only === BOSS) continue;
+      var g1 = mine ? -1 : 1;
+      if(g1 > bg){ bg = g1; bc = only; }
+      continue;
+    }
+    var l = regionSplitLoss(board, an.head[i], n, _b2);
+    var g = mine ? -l : l;
+    if(_b2[1] !== BOSS && g > bg){ bg = g; bc = _b2[1]; }
+  }
+  return [bg, bc];
+}
+
+/* ------------------------------ bag tally --------------------------- *
+ *  Counts (not order) of what is left in the bag.  Public information —
+ *  the HUD shows it, so the Rival is welcome to it too.
+ * ------------------------------------------------------------------- */
+function bagTally(p){
+  var bag = bagFor(p.seed), t = [0,0,0,0,0,0,0], i;
+  for(i = p.cur; i < bag.length; i++) t[bag[i]]++;
+  return t;
+}
+function supplyOf(p){
+  var t = bagTally(p), i;
+  for(i = 0; i < K.MARKET; i++) if(p.market[i] !== K.EMPTY) t[p.market[i]]++;
+  return t;
+}
+
+/* ------------------------------ encode ------------------------------ */
+var CH = '0123456789abcdefghijklmnopqrstuvwxyz';
+function c2(n){ return CH[(n / 36) | 0] + CH[n % 36]; }
+function d2(s){ return CH.indexOf(s[0]) * 36 + CH.indexOf(s[1]); }
+function encMove(m){
+  if(mAct(m) === 1) return 'g' + c2(mCell(m)) + CH[mSlot(m)];
+  return 'b' + c2(mCell(m)) + '-';
+}
+function decMove(s){
+  var cell = d2(s.substr(1, 2));
+  if(s[0] === 'g') return packG(CH.indexOf(s[3]), cell);
+  return packB(cell);
+}
+function encode(p){
+  var b = '', m = '', i;
+  for(i = 0; i < NC; i++) b += (p.board[i] === K.EMPTY) ? '.' : ('' + p.board[i]);
+  for(i = 0; i < K.MARKET; i++) m += (p.market[i] === K.EMPTY) ? '.' : ('' + p.market[i]);
+  return {
+    v: K.SCHEMA, s: p.seed, b: b, m: m, k: p.cur,
+    o: '' + p.bolts[0] + p.bolts[1], t: p.turn, n: p.n,
+    f: p.over ? 1 : 0, w: p.winner, h: p.hist.join('')
+  };
+}
+function decode(st){
+  if(!st || st.v !== K.SCHEMA) return null;
+  if(typeof st.b !== 'string' || st.b.length !== NC) return null;
+  if(typeof st.m !== 'string' || st.m.length !== K.MARKET) return null;
+  var p = create(st.s >>> 0), i, ch;
+  for(i = 0; i < NC; i++){ ch = st.b[i]; p.board[i] = (ch === '.') ? K.EMPTY : (ch.charCodeAt(0) - 48); }
+  for(i = 0; i < K.MARKET; i++){ ch = st.m[i]; p.market[i] = (ch === '.') ? K.EMPTY : (ch.charCodeAt(0) - 48); }
+  p.cur = st.k | 0;
+  p.bolts = [(st.o.charCodeAt(0) - 48) | 0, (st.o.charCodeAt(1) - 48) | 0];
+  p.turn = st.t | 0; p.n = st.n | 0; p.over = !!st.f;
+  p.winner = (typeof st.w === 'number') ? st.w : -1;
+  p.hist = [];
+  if(typeof st.h === 'string') for(i = 0; i + 4 <= st.h.length; i += 4) p.hist.push(st.h.substr(i, 4));
+  p.last = p.hist.length ? evOf(p, p.hist[p.hist.length - 1]) : null;
+  return p;
+}
+function evOf(p, code){
+  var m = decMove(code), cell = mCell(m);
+  return { kind: mAct(m) === 1 ? 'glaze' : 'bolt', seat: 1 - p.turn, cell: cell,
+           tile: p.board[cell], slot: mAct(m) === 1 ? mSlot(m) : -1 };
+}
+function hash(p){
+  var s = JSON.stringify(encode(p)), h = 2166136261 >>> 0, i;
+  for(i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+
+/* ==================================================================== *
+ *                            THE RIVAL                                  *
+ *  Level 0 Prentice   — greedy on immediate points, shy of the bow.     *
+ *  Level 1 Journeyman — full positional evaluation, one ply.            *
+ *  Level 2 Master     — two ply (my move, your best answer) over a      *
+ *                       pruned candidate set, with bolt-threat maths.   *
+ * ==================================================================== */
+var W = {
+  GROW:    0.62,   /* value of places I can still grow into            */
+  THREAT:  0.55,   /* fear of the bolt the rival still holds            */
+  MYBOLT:  0.30,   /* worth of the bolt I still hold                    */
+  KEEP:    2.60,   /* option value of an unspent bolt                   */
+  KEEPR:  12.0,    /* ...which is worth most while the window is open   */
+  REPR:   18.0,    /* damage is only permanent once the glass runs low  */
+  SUP:     4.0,    /* colour scarcity softening                         */
+  TOPW:  [1, 0.72, 0.48, 0.28]
+};
+
+var _fv = [];
+function growth(p, an, seat, sup){
+  /* the best few merges this seat could still make, weighted by whether
+     the glass for them actually exists any more */
+  var cols = SEATCOL[seat], i, c, k, cell, nb, j, y;
+  _fv.length = 0;
+  for(cell = 0; cell < NC; cell++){
+    if(p.board[cell] !== K.EMPTY) continue;
+    nb = NB[cell];
+    var glazed = false;
+    for(j = 0; j < nb.length; j++) if(p.board[nb[j]] !== K.EMPTY){ glazed = true; break; }
+    if(!glazed) continue;
+    var bestv = 0;
+    for(k = 0; k < 3; k++){
+      c = cols[k];
+      var avail = sup[c];
+      if(avail <= 0) continue;
+      var sum = 0, sq = 0, r0 = -1, r1 = -1, r2 = -1;
+      for(j = 0; j < nb.length; j++){
+        y = nb[j];
+        if(p.board[y] !== c) continue;
+        var rid = an.reg[y];
+        if(rid === r0 || rid === r1 || rid === r2) continue;
+        if(r0 < 0) r0 = rid; else if(r1 < 0) r1 = rid; else r2 = rid;
+        sum += an.sz[rid]; sq += an.sz[rid] * an.sz[rid];
+      }
+      var val = (sum + 1) * (sum + 1) - sq;
+      var scarce = avail >= 2 ? 1 : 0.55;
+      val *= scarce;
+      if(val > bestv) bestv = val;
+    }
+    if(bestv > 0) _fv.push(bestv);
+  }
+  _fv.sort(function(a, b){ return b - a; });
+  var tot = 0;
+  for(i = 0; i < W.TOPW.length && i < _fv.length; i++) tot += _fv[i] * W.TOPW[i];
+  return tot;
+}
+
+function evaluate(p, me, level){
+  var opp = 1 - me;
+  var an = analyse(p.board);
+  var sMe = seatScoreRaw(an.col, me) + K.TITHE[me];
+  var sOp = seatScoreRaw(an.col, opp) + K.TITHE[opp];
+  var v = sMe - sOp;
+  if(p.over) return v * 1000;
+  if(level === 0) {
+    /* the prentice barely looks past the points on the bench */
+    return v + 0.18 * (growth(p, an, me, supplyOf(p)) - growth(p, an, opp, supplyOf(p)));
+  }
+  var sup = supplyOf(p);
+  var tiles = 0, i;
+  for(i = 0; i < 7; i++) tiles += sup[i];
+  var room = Math.min(an.empty, tiles);
+  var gscale = W.GROW * Math.min(1, room / W.SUP);
+  v += gscale * (growth(p, an, me, sup) - growth(p, an, opp, sup));
+  /* a shattered pane only really hurts once there is no glass left to
+     mend it with, so both bolt terms sharpen as the bag empties */
+  var repair = 0.42 + 0.58 * (1 - Math.min(1, room / W.REPR));
+  if(p.bolts[opp] > 0) v -= W.THREAT * repair * boltThreat(p.board, an, me);
+  if(p.bolts[me] > 0)  v += W.MYBOLT * repair * boltThreat(p.board, an, opp);
+  /* and an unspent bolt is worth most while the window is still open */
+  v += W.KEEP * (p.bolts[me] - p.bolts[opp]) * (0.5 + room / W.KEEPR);
+  return v;
+}
+
+var _mv = [], _mv2 = [], _cand = [];
+function aiMove(p, level, rnd){
+  if(p.over) return -1;
+  var me = p.turn;
+  genMoves(p, _mv, true);
+  if(!_mv.length) return -1;
+  var i, m, q, sc, n = _mv.length;
+  _cand.length = 0;
+  for(i = 0; i < n; i++){
+    m = _mv[i];
+    q = applied(p, m, true);
+    if(!q) continue;
+    sc = evaluate(q, me, level);
+    if(level === 0 && mAct(m) === 0) sc -= 9;      /* the prentice hates spending a bolt */
+    _cand.push([sc, m]);
+  }
+  if(!_cand.length) return -1;
+  _cand.sort(function(a, b){ return b[0] - a[0]; });
+
+  if(level <= 1){
+    if(level === 0 && rnd){
+      /* a prentice's hand wanders across the near-equal choices */
+      var span = Math.min(3, _cand.length), pick = 0;
+      if(rnd() < 0.34) pick = (rnd() * span) | 0;
+      return _cand[pick][1];
+    }
+    return _cand[0][1];
+  }
+
+  /* ---- Master: two ply.  Look at the best handful, and for each ask
+     what the rival's sharpest answer would be. ---- */
+  var top = Math.min(9, _cand.length);
+  var bestScore = -1e18, bestMove = _cand[0][1];
+  for(i = 0; i < top; i++){
+    m = _cand[i][1];
+    q = applied(p, m, true);
+    if(!q){ continue; }
+    var val;
+    if(q.over) val = evaluate(q, me, level);
+    else {
+      genMoves(q, _mv2, true);
+      var j, worst = 1e18, cnt = 0;
+      /* rank the rival's replies cheaply, then read the sharpest dozen */
+      var reps = [];
+      for(j = 0; j < _mv2.length; j++){
+        var r = applied(q, _mv2[j], true);
+        if(!r) continue;
+        var an2 = analyse(r.board);
+        var quick = (seatScoreRaw(an2.col, 1 - me) - seatScoreRaw(an2.col, me));
+        reps.push([quick, _mv2[j]]);
+      }
+      reps.sort(function(a, b){ return b[0] - a[0]; });
+      var lim = Math.min(12, reps.length);
+      for(j = 0; j < lim; j++){
+        var r2 = applied(q, reps[j][1], true);
+        if(!r2) continue;
+        var e = evaluate(r2, me, level);
+        if(e < worst) worst = e;
+        cnt++;
+      }
+      val = cnt ? worst : evaluate(q, me, level);
+    }
+    /* a whisker of preference for the move that already looked best */
+    val += (top - i) * 0.001;
+    if(val > bestScore){ bestScore = val; bestMove = m; }
+  }
+  return bestMove;
+}
+
+/* ------------------------- preview helpers -------------------------- */
+function previewGlaze(p, cell, tile){
+  var before = rawScores(p);
+  var b = p.board.slice(0); b[cell] = tile;
+  var an = analyse(b);
+  var after = [seatScoreRaw(an.col, 0), seatScoreRaw(an.col, 1)];
+  return { d0: after[0] - before[0], d1: after[1] - before[1],
+           region: (tile < K.NCOL) ? regionAtBoard(b, cell) : null };
+}
+function previewBolt(p, cell){
+  var before = rawScores(p);
+  var b = p.board.slice(0); b[cell] = K.EMPTY;
+  var an = analyse(b);
+  var after = [seatScoreRaw(an.col, 0), seatScoreRaw(an.col, 1)];
+  var pieces = 0, i;
+  var tile = p.board[cell];
+  if(tile >= 0 && tile < K.NCOL){
+    var seen = {};
+    var nb = NB[cell];
+    for(i = 0; i < nb.length; i++){
+      if(b[nb[i]] === tile){ var id = an.reg[nb[i]]; if(!seen[id]){ seen[id] = 1; pieces++; } }
+    }
+  }
+  return { d0: after[0] - before[0], d1: after[1] - before[1], pieces: pieces };
+}
+function regionAtBoard(b, cell){
+  var an = analyse(b), id = an.reg[cell], cells = [], x;
+  for(x = an.head[id]; x >= 0; x = an.next[x]) cells.push(x);
+  return { color: an.rcol[id], size: an.sz[id], cells: cells, pts: an.sz[id] * an.sz[id] };
+}
+
+return {
+  K:K, NC:NC, NB:NB, BOSS:BOSS, BAGN:BAGN, CELLS:G0.cells, COLNAMES:COLNAMES,
+  SEATCOL:SEATCOL, COLSEAT:COLSEAT,
+  create:create, clone:clone, apply:apply, applied:applied,
+  canGlaze:canGlaze, canBolt:canBolt, genMoves:genMoves,
+  packG:packG, packB:packB, mAct:mAct, mSlot:mSlot, mCell:mCell,
+  encMove:encMove, decMove:decMove,
+  scores:scores, rawScores:rawScores, panes:panes,
+  regionList:regionList, regionAt:regionAt, regionAtBoard:regionAtBoard,
+  boltThreat:boltThreat, bestBolt:bestBolt, analyse:analyse,
+  bagTally:bagTally, supplyOf:supplyOf, marketCount:marketCount, emptyCount:emptyCount,
+  encode:encode, decode:decode, hash:hash, evaluate:evaluate, aiMove:aiMove,
+  previewGlaze:previewGlaze, previewBolt:previewBolt, bagFor:bagFor, mulberry32:mulberry32,
+  W:W
+};
+})();
+/* ==== END RULES ENGINE ================================================= */
+/* =========================================================================
+   QUARREL — presentation, input, sound and the arcade bridge.
+   The rules engine above is pure; everything below is the workshop it is
+   played in.  Every arcade call is guarded, so the local modes are
+   identical whether the SDK is present, absent, or the player is a guest.
+   ========================================================================= */
+var R = RULES;
+var K = R.K;
+
+/* ------------------------------ helpers ----------------------------- */
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+  return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
+function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+function lerp(a, b, t){ return a + (b - a) * t; }
+function ease(t){ return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; }
+function easeOut(t){ return 1 - Math.pow(1 - t, 3); }
+function easeBack(t){ var c = 1.7; return 1 + (c+1)*Math.pow(t-1,3) + c*Math.pow(t-1,2); }
+function bind(id, fn){ var e = $(id); if(e) e.addEventListener('click', function(ev){ ev.preventDefault(); fn(ev); }); }
+var TOAST_T = 0;
+function toast(msg, ms){
+  var t = $('toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(TOAST_T); TOAST_T = setTimeout(function(){ t.classList.remove('on'); }, ms || 2400);
+}
+
+/* ============================== ARCADE ==============================
+   Guarded so the game plays identically when the SDK is missing, the host
+   is offline, or the player is signed out.  Local modes never touch it. */
+var AR = { a:null, online:false, guest:true, writes:false, name:'', user:'', pending:null, ready:false };
+function arcadeBoot(cb){
+  var done = false, to = null;
+  function finish(a){
+    if(done) return; done = true; if(to) clearTimeout(to);
+    AR.a = a || null;
+    try{
+      if(a){
+        AR.online = !!a.online;
+        AR.guest  = !(a.player && a.player.isGuest === false);
+        AR.name   = (a.player && (a.player.displayName || a.player.username)) || '';
+        AR.user   = (a.player && a.player.username) || '';
+        AR.writes = !!(a.capabilities && a.capabilities.features && a.capabilities.features.writes);
+        AR.pending= (a.matches && a.matches.pendingCode) || null;
+      }
+    }catch(e){}
+    AR.ready = true;
+    try{ cb(); }catch(e){}
+  }
+  to = setTimeout(function(){ finish(null); }, 4500);
+  try{
+    if(typeof Arcade !== 'undefined' && Arcade && Arcade.ready){
+      var p = Arcade.ready();
+      if(p && typeof p.then === 'function') p.then(function(a){ finish(a); }, function(){ finish(null); });
+      else finish(null);
+    } else finish(null);
+  }catch(e){ finish(null); }
+}
+/* every matches.* call funnels through here and always resolves */
+function mcall(name, args){
+  return new Promise(function(res){
+    try{
+      var m = AR.a && AR.a.matches;
+      if(!m || typeof m[name] !== 'function')
+        return res({ ok:false, reason:'UNAVAILABLE', message:'The guild hall is not reachable from here.' });
+      var p = m[name].apply(m, args || []);
+      if(p && typeof p.then === 'function')
+        p.then(res, function(){ res({ ok:false, reason:'UNAVAILABLE', message:'That did not reach the arcade.' }); });
+      else res(p || { ok:false, reason:'UNAVAILABLE' });
+    }catch(e){ res({ ok:false, reason:'UNAVAILABLE', message:'That did not reach the arcade.' }); }
+  });
+}
+var UNLOCKED = {};
+function unlock(slug){
+  if(UNLOCKED[slug]) return;
+  UNLOCKED[slug] = 1;
+  try{
+    if(AR.a && AR.a.achievements && AR.a.achievements.unlock){
+      var p = AR.a.achievements.unlock(slug);
+      if(p && typeof p.then === 'function') p.then(function(){}, function(){});
+    }
+  }catch(e){}
+}
+function submitScore(n, meta){
+  try{
+    if(typeof n !== 'number' || !isFinite(n)) return;
+    if(AR.a && AR.a.scores && AR.a.scores.submit){
+      var p = AR.a.scores.submit(Math.max(0, Math.round(n)), meta || {});
+      if(p && typeof p.then === 'function') p.then(function(){}, function(){});
+    }
+  }catch(e){}
+}
+
+/* ============================== CANVAS ==============================
+   RETINA / DPR RULE 2: the CSS box is pinned by the stylesheet (and
+   restated here); the backing store is sized separately.  When the frame
+   rate drops only the BACKING STORE shrinks — never the on-screen box. */
+var cv = $('glass'), ctx = cv.getContext('2d', { alpha:false });
+var VW = 1, VH = 1, DPR = 1, RES = 1, lowT = 0, hiT = 0;
+function PXR(){ return DPR * RES; }
+function mkOff(){ var c = document.createElement('canvas'); return { c:c, x:c.getContext('2d') }; }
+var BG = mkOff(), WIN = mkOff(), GLOW = mkOff();
+
+function sizeOff(o){
+  o.c.width  = Math.max(1, Math.round(VW * PXR()));
+  o.c.height = Math.max(1, Math.round(VH * PXR()));
+  o.x.setTransform(PXR(), 0, 0, PXR(), 0, 0);
+}
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  VW  = Math.max(1, window.innerWidth);
+  VH  = Math.max(1, window.innerHeight);
+  cv.width  = Math.max(1, Math.round(VW * PXR()));
+  cv.height = Math.max(1, Math.round(VH * PXR()));
+  cv.style.width = '100%'; cv.style.height = '100%';
+  ctx.setTransform(PXR(), 0, 0, PXR(), 0, 0);
+  sizeOff(BG); sizeOff(WIN);
+  layout();
+  bakeBg();
+  bakeWindow();
+  placeMsg();
+  drawSlots();
+}
+function resTick(dt){
+  var f = 1 / Math.max(0.001, dt);
+  if(f < 44){ lowT += dt; hiT = 0; } else if(f > 56){ hiT += dt; lowT = 0; } else { lowT *= 0.9; hiT *= 0.9; }
+  if(lowT > 1.4 && RES > 0.62){ RES = Math.max(0.62, RES - 0.19); lowT = 0; resize(); }
+  else if(hiT > 4.5 && RES < 1){ RES = Math.min(1, RES + 0.19); hiT = 0; resize(); }
+}
+window.addEventListener('resize', function(){ resize(); });
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 160); });
+
+/* ============================== PALETTE ============================= */
+var GLASS = [
+  { key:'ruby',     nm:'Ruby',      base:'#9d1a2b', hi:'#e85a6c', lo:'#460711', rim:'#ff9aa6', f:261.63 },
+  { key:'amber',    nm:'Amber',     base:'#bd7a10', hi:'#ffd071', lo:'#5a3302', rim:'#ffe3a8', f:311.13 },
+  { key:'rose',     nm:'Rose',      base:'#a63a70', hi:'#f28cba', lo:'#48122f', rim:'#ffc0dc', f:349.23 },
+  { key:'cobalt',   nm:'Cobalt',    base:'#1b4694', hi:'#5f97e9', lo:'#071b46', rim:'#a6c9ff', f:392.00 },
+  { key:'viridian', nm:'Viridian',  base:'#0f6b52', hi:'#4fc89d', lo:'#022a1f', rim:'#96ebcc', f:466.16 },
+  { key:'violet',   nm:'Violet',    base:'#553094', hi:'#a37ce9', lo:'#200e44', rim:'#cfb6ff', f:523.25 },
+  { key:'clear',    nm:'Grisaille', base:'#9aa79c', hi:'#e9efe3', lo:'#5a6259', rim:'#f4f8f0', f:587.33 }
+];
+var SEATNM = ['The Warm Glazier','The Cool Glazier'];
+var SEATHEX = ['#8c2f22','#1e4f8f'];
+var SEATRIM = ['#ff9c72','#8fc4ff'];
+var DIFFNM = ['Prentice','Journeyman','Master'];
+
+/* stable per-pane grain: same cell always mottles the same way */
+function grain(i, t, k){
+  var h = (i * 73856093) ^ (t * 19349663) ^ (k * 83492791);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/* ============================== LAYOUT ============================== *
+ *  The lattice: cell (u,v) sits at (cx + u*s, y0 + v*s) and is a rhombus
+ *  with half-diagonals s.  The stone lancet is a true pointed arch drawn
+ *  just outside it.
+ * ------------------------------------------------------------------- */
+var LAY = { s:20, cx:0, y0:0, A:0, H:0, Rr:0, spring:0, sill:0, fw:0, apex:0 };
+function layout(){
+  var tb = $('topbar').getBoundingClientRect();
+  var bb = $('bench').getBoundingClientRect();
+  var topY = (tb.height > 4 ? tb.bottom : 74) + 18;
+  var botY = VH - (bb.height > 4 ? bb.top : (VH - 118)) + 10;
+  var availH = Math.max(140, VH - topY - botY);
+  var availW = Math.max(140, VW - 22);
+  var s = Math.min(availW / 13.6, availH / 18.5);
+  s = Math.max(7, s);
+  LAY.s = s;
+  LAY.cx = Math.round(VW / 2);
+  LAY.A = 5.35 * s;          /* arch springing half-width                */
+  LAY.H = 6.20 * s;          /* rise from springing to the point         */
+  LAY.fw = 1.30 * s;         /* thickness of the stone band              */
+  LAY.Rr = (LAY.H * LAY.H + LAY.A * LAY.A) / (2 * LAY.A);
+  var midY = topY + availH / 2;
+  LAY.y0 = midY - 6.35 * s;
+  LAY.spring = LAY.y0 + 4.6 * s;
+  LAY.apex = LAY.spring - LAY.H;
+  LAY.sill = LAY.y0 + 13.5 * s;
+}
+function cellX(i){ return LAY.cx + R.CELLS[i].u * LAY.s; }
+function cellY(i){ return LAY.y0 + R.CELLS[i].v * LAY.s; }
+function cellAt(px, py){
+  /* nearest cell whose rhombus contains the point (|dx|/s + |dy|/s <= 1) */
+  var s = LAY.s, best = -1, bd = 1e9;
+  for(var i = 0; i < R.NC; i++){
+    var dx = Math.abs(px - cellX(i)) / s, dy = Math.abs(py - cellY(i)) / s;
+    var d = dx + dy;
+    if(d <= 1.0 && d < bd){ bd = d; best = i; }
+  }
+  return best;
+}
+function rhombus(x, x2, px, py, s){
+  x.moveTo(px, py - s); x.lineTo(px + s, py); x.lineTo(px, py + s); x.lineTo(px - s, py); x.closePath();
+}
+function pathRhombus(x, px, py, s){
+  x.moveTo(px, py - s); x.lineTo(px + s, py); x.lineTo(px, py + s); x.lineTo(px - s, py); x.closePath();
+}
+function archPath(x, A, H, spring, bottom){
+  var cx = LAY.cx, Rr = (H*H + A*A) / (2*A);
+  var th = Math.atan2(H, Rr - A);
+  x.beginPath();
+  x.moveTo(cx - A, bottom);
+  x.lineTo(cx - A, spring);
+  x.arc(cx + Rr - A, spring, Rr, Math.PI, Math.PI + th, false);
+  x.arc(cx - Rr + A, spring, Rr, -th, 0, false);
+  x.lineTo(cx + A, bottom);
+  x.closePath();
+}
+
+/* ============================= PANE PAINT =========================== */
+function paintGlass(x, px, py, s, tile, idx, alpha){
+  var g = GLASS[tile];
+  x.save();
+  x.beginPath(); pathRhombus(x, px, py, s * 0.985); x.clip();
+  x.globalAlpha = alpha;
+
+  var lg = x.createLinearGradient(px - s, py - s, px + s, py + s);
+  lg.addColorStop(0, g.hi); lg.addColorStop(0.26, g.base);
+  lg.addColorStop(0.80, g.base); lg.addColorStop(1, g.lo);
+  x.fillStyle = lg;
+  x.fillRect(px - s, py - s, s * 2, s * 2);
+
+  /* seeded mottle: three soft pools of thicker and thinner metal */
+  for(var b = 0; b < 3; b++){
+    var a1 = grain(idx, tile, b * 3 + 1), a2 = grain(idx, tile, b * 3 + 2), a3 = grain(idx, tile, b * 3 + 3);
+    var bx = px + (a1 - 0.5) * s * 1.25, by = py + (a2 - 0.5) * s * 1.25;
+    var br = s * (0.32 + a3 * 0.55);
+    var rg = x.createRadialGradient(bx, by, 0, bx, by, br);
+    var up = a1 > 0.5;
+    rg.addColorStop(0, up ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.26)');
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = rg; x.fillRect(px - s, py - s, s * 2, s * 2);
+  }
+  /* reamy streaks — the drawn-out lines of hand-blown glass */
+  x.globalAlpha = alpha * 0.34;
+  x.strokeStyle = g.rim; x.lineWidth = Math.max(0.6, s * 0.055);
+  for(var r2 = 0; r2 < 2; r2++){
+    var t0 = grain(idx, tile, 20 + r2), t1 = grain(idx, tile, 30 + r2);
+    x.beginPath();
+    x.moveTo(px - s, py + (t0 - 0.5) * s * 1.5);
+    x.quadraticCurveTo(px, py + (t1 - 0.5) * s * 1.9, px + s, py + (t0 - 0.5) * s * 1.2);
+    x.stroke();
+  }
+  /* specular sheen off the upper-left facet */
+  x.globalAlpha = alpha * 0.34;
+  var sg = x.createLinearGradient(px - s, py - s, px + s * 0.2, py + s * 0.2);
+  sg.addColorStop(0, 'rgba(255,255,255,0.40)');
+  sg.addColorStop(0.45, 'rgba(255,255,255,0.04)');
+  sg.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = sg; x.fillRect(px - s, py - s, s * 2, s * 2);
+  x.restore();
+}
+function paintEmpty(x, px, py, s, idx, alpha){
+  x.save();
+  x.beginPath(); pathRhombus(x, px, py, s * 0.985); x.clip();
+  x.globalAlpha = alpha;
+  var lg = x.createLinearGradient(px - s, py - s, px + s, py + s);
+  lg.addColorStop(0, '#241d14'); lg.addColorStop(0.5, '#15100b'); lg.addColorStop(1, '#0b0806');
+  x.fillStyle = lg; x.fillRect(px - s, py - s, s * 2, s * 2);
+  /* the glazier's chalk cartoon on the bench board underneath */
+  x.globalAlpha = alpha * 0.11;
+  x.strokeStyle = '#cbb98f'; x.lineWidth = Math.max(0.5, s * 0.030);
+  x.beginPath();
+  x.moveTo(px - s * 0.42, py); x.lineTo(px + s * 0.42, py);
+  x.moveTo(px, py - s * 0.42); x.lineTo(px, py + s * 0.42);
+  x.stroke();
+  x.restore();
+}
+function paintBossMark(x, px, py, s, alpha){
+  /* the boss pane carries a painted quatrefoil in brown enamel */
+  x.save();
+  x.globalAlpha = alpha * 0.62;
+  x.strokeStyle = '#3a2a17'; x.lineWidth = Math.max(0.8, s * 0.075);
+  var rr = s * 0.30;
+  for(var k = 0; k < 4; k++){
+    var a = Math.PI / 2 * k + Math.PI / 4;
+    x.beginPath();
+    x.arc(px + Math.cos(a) * rr * 0.85, py + Math.sin(a) * rr * 0.85, rr * 0.62, 0, 6.2832);
+    x.stroke();
+  }
+  x.beginPath(); x.arc(px, py, rr * 0.30, 0, 6.2832);
+  x.fillStyle = 'rgba(58,42,23,0.75)'; x.fill();
+  x.restore();
+}
+
+/* ============================== BAKE ================================ */
+function bakeBg(){
+  var x = BG.x;
+  x.setTransform(PXR(), 0, 0, PXR(), 0, 0);
+  x.clearRect(0, 0, VW, VH);
+  var g = x.createLinearGradient(0, 0, 0, VH);
+  g.addColorStop(0, '#0e0c0b'); g.addColorStop(0.45, '#171310'); g.addColorStop(1, '#080706');
+  x.fillStyle = g; x.fillRect(0, 0, VW, VH);
+  /* the chapel wall: coursed ashlar, barely there */
+  x.strokeStyle = 'rgba(255,232,190,0.030)'; x.lineWidth = 1;
+  var h = Math.max(26, LAY.s * 1.55), row = 0;
+  for(var y = -h; y < VH + h; y += h, row++){
+    x.beginPath(); x.moveTo(0, Math.round(y) + 0.5); x.lineTo(VW, Math.round(y) + 0.5); x.stroke();
+    var off = (row % 2) ? h * 1.1 : 0;
+    for(var px = off - h * 2.2; px < VW + h * 2.2; px += h * 2.2){
+      x.beginPath(); x.moveTo(Math.round(px) + 0.5, y); x.lineTo(Math.round(px) + 0.5, y + h); x.stroke();
+    }
+  }
+  /* the light the window throws back into the room */
+  var cxw = LAY.cx, cyw = (LAY.apex + LAY.sill) / 2;
+  var pg = x.createRadialGradient(cxw, cyw, LAY.A * 0.6, cxw, cyw, Math.max(VW, VH) * 0.68);
+  pg.addColorStop(0, 'rgba(255,222,166,0.15)');
+  pg.addColorStop(0.34, 'rgba(226,182,124,0.085)');
+  pg.addColorStop(1, 'rgba(120,86,48,0)');
+  x.fillStyle = pg; x.fillRect(0, 0, VW, VH);
+  /* the pool it casts on the floor below the sill */
+  var fg = x.createRadialGradient(cxw, LAY.sill + LAY.fw * 5, LAY.s, cxw, LAY.sill + LAY.fw * 5, LAY.A * 2.6);
+  fg.addColorStop(0, 'rgba(255,216,158,0.13)'); fg.addColorStop(1, 'rgba(255,200,140,0)');
+  x.fillStyle = fg;
+  x.fillRect(0, LAY.sill, VW, VH - LAY.sill);
+  /* the halo the lancet wears — baked, because a full-screen additive
+     gradient every frame is the single most expensive thing a 2D canvas
+     can be asked to do */
+  x.save();
+  x.globalCompositeOperation = 'lighter';
+  var rr0 = Math.max(LAY.A * 2.4, LAY.H * 2.2);
+  var bg0 = x.createRadialGradient(cxw, cyw, LAY.A * 0.35, cxw, cyw, rr0);
+  bg0.addColorStop(0, 'rgba(255,226,168,0.13)');
+  bg0.addColorStop(0.5, 'rgba(255,206,140,0.042)');
+  bg0.addColorStop(1, 'rgba(255,190,110,0)');
+  x.fillStyle = bg0; x.fillRect(0, 0, VW, VH);
+  x.restore();
+  /* pooled shadow at the edges of the room.  The vignette lives here too:
+     out at the edges the window image is transparent anyway, and over the
+     glass itself the falloff is near zero. */
+  var vg = x.createRadialGradient(VW/2, VH*0.42, Math.min(VW,VH)*0.12, VW/2, VH*0.42, Math.max(VW,VH)*0.80);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.78)');
+  x.fillStyle = vg; x.fillRect(0, 0, VW, VH);
+}
+
+var BAKE_EX = -1;
+var LIT = [];          /* cells that currently hold glass — what the light shines through */
+function bakeWindow(exclude){
+  BAKE_EX = (exclude === undefined) ? BAKE_EX : exclude;
+  var ex = BAKE_EX;
+  var x = WIN.x, s = LAY.s, i, k;
+  x.setTransform(PXR(), 0, 0, PXR(), 0, 0);
+  x.clearRect(0, 0, VW, VH);
+
+  /* ---- the lancet, cut from one block of limestone ---- */
+  x.save();
+  archPath(x, LAY.A + LAY.fw, LAY.H + LAY.fw * 1.15, LAY.spring, LAY.sill + LAY.fw * 1.2);
+  var sg = x.createLinearGradient(LAY.cx - LAY.A * 1.4, LAY.apex, LAY.cx + LAY.A * 1.4, LAY.sill);
+  sg.addColorStop(0, '#7e7360'); sg.addColorStop(0.30, '#60584a');
+  sg.addColorStop(0.66, '#453f34'); sg.addColorStop(1, '#2a2620');
+  x.fillStyle = sg; x.fill();
+  x.save(); x.clip();
+  /* voussoir joints radiating from the springing line */
+  x.strokeStyle = 'rgba(22,18,13,0.42)'; x.lineWidth = Math.max(1, s * 0.05);
+  for(k = 0; k <= 11; k++){
+    var ang = Math.PI * (k / 11);
+    var jx = LAY.cx - Math.cos(ang) * (LAY.A + LAY.fw * 1.4);
+    var jy = LAY.spring - Math.sin(ang) * (LAY.H + LAY.fw * 1.4);
+    x.beginPath(); x.moveTo(LAY.cx, LAY.spring + LAY.H * 0.05); x.lineTo(jx, jy); x.stroke();
+  }
+  var jn = Math.max(2, Math.round((LAY.sill - LAY.spring) / (s * 2.2)));
+  for(k = 1; k < jn; k++){
+    var jy2 = LAY.spring + (LAY.sill - LAY.spring) * (k / jn);
+    x.beginPath();
+    x.moveTo(LAY.cx - LAY.A - LAY.fw, jy2); x.lineTo(LAY.cx - LAY.A + LAY.fw * 0.1, jy2);
+    x.moveTo(LAY.cx + LAY.A - LAY.fw * 0.1, jy2); x.lineTo(LAY.cx + LAY.A + LAY.fw, jy2);
+    x.stroke();
+  }
+  /* weathering */
+  x.globalAlpha = 0.15;
+  for(k = 0; k < 110; k++){
+    var gx = LAY.cx + (grain(k, 5, 1) - 0.5) * (LAY.A + LAY.fw) * 2.2;
+    var gy = LAY.apex - LAY.fw + grain(k, 5, 2) * (LAY.sill - LAY.apex + LAY.fw * 3);
+    x.fillStyle = grain(k, 5, 3) > 0.5 ? '#c2b599' : '#221e17';
+    x.fillRect(gx, gy, s * (0.1 + grain(k, 5, 4) * 0.55), s * 0.09);
+  }
+  x.restore();
+  /* the chamfer that catches the room light */
+  x.globalAlpha = 1;
+  x.strokeStyle = 'rgba(236,220,186,0.22)'; x.lineWidth = Math.max(1, s * 0.075);
+  archPath(x, LAY.A + LAY.fw * 0.62, LAY.H + LAY.fw * 0.72, LAY.spring, LAY.sill + LAY.fw);
+  x.stroke();
+  x.restore();
+
+  /* the sill slab */
+  x.save();
+  var syT = LAY.sill + LAY.fw * 0.12, syB = LAY.sill + LAY.fw * 1.15;
+  var slg = x.createLinearGradient(0, syT, 0, syB);
+  slg.addColorStop(0, '#8c8069'); slg.addColorStop(0.34, '#5f5648'); slg.addColorStop(1, '#26221c');
+  x.fillStyle = slg;
+  x.beginPath();
+  x.moveTo(LAY.cx - LAY.A - LAY.fw * 1.25, syT);
+  x.lineTo(LAY.cx + LAY.A + LAY.fw * 1.25, syT);
+  x.lineTo(LAY.cx + LAY.A + LAY.fw * 0.95, syB);
+  x.lineTo(LAY.cx - LAY.A - LAY.fw * 0.95, syB);
+  x.closePath(); x.fill();
+  x.strokeStyle = 'rgba(0,0,0,0.45)'; x.lineWidth = 1; x.stroke();
+  x.restore();
+
+  /* ---- the rebate: a stepped opening cut to the quarry lattice ----
+     the mason cuts the stone to the glazier's outline, so there is no
+     dead space between the arch and the diamonds. ---- */
+  x.save();
+  x.beginPath();
+  for(i = 0; i < R.NC; i++) pathRhombus(x, cellX(i), cellY(i), s * 1.30);
+  x.fillStyle = '#0a0806'; x.fill();
+  /* a shallow chamfer where the stone meets the glass */
+  x.strokeStyle = 'rgba(206,190,158,0.16)'; x.lineWidth = Math.max(1, s * 0.10);
+  x.stroke();
+  x.restore();
+
+  /* ---- the glass ---- */
+  var pos = G.pos;
+  LIT.length = 0;
+  for(i = 0; i < R.NC; i++){
+    var t = pos ? pos.board[i] : K.EMPTY;
+    if(i === ex){ paintEmpty(x, cellX(i), cellY(i), s, i, 1); continue; }
+    if(t === K.EMPTY) paintEmpty(x, cellX(i), cellY(i), s, i, 1);
+    else {
+      paintGlass(x, cellX(i), cellY(i), s, t, i, 1);
+      /* how much daylight this pane stands in — baked, so the colour of the
+         glass survives instead of being washed white every frame */
+      var dxl = (cellX(i) - LAY.cx) / (LAY.A * 2.1);
+      var dyl = (cellY(i) - (LAY.spring - LAY.H * 0.30)) / (LAY.A * 2.4);
+      var lf = clamp(1 - Math.sqrt(dxl * dxl + dyl * dyl), 0, 1);
+      washCell(x, cellX(i), cellY(i), s, 0.05 + 0.16 * lf);
+      if(i === R.BOSS) paintBossMark(x, cellX(i), cellY(i), s, 1);
+      LIT.push(i);
+    }
+  }
+
+  /* ---- the lead cames ---- */
+  var lw = Math.max(1.1, s * 0.135);
+  x.save();
+  x.lineJoin = 'round'; x.lineCap = 'round';
+  x.strokeStyle = 'rgba(214,202,176,0.14)'; x.lineWidth = lw;
+  x.beginPath();
+  for(i = 0; i < R.NC; i++) pathRhombus(x, cellX(i) - lw * 0.35, cellY(i) - lw * 0.35, s);
+  x.stroke();
+  x.strokeStyle = '#161820'; x.lineWidth = lw;
+  x.beginPath();
+  for(i = 0; i < R.NC; i++) pathRhombus(x, cellX(i), cellY(i), s);
+  x.stroke();
+  x.strokeStyle = 'rgba(158,158,168,0.30)'; x.lineWidth = Math.max(0.5, lw * 0.26);
+  x.beginPath();
+  for(i = 0; i < R.NC; i++) pathRhombus(x, cellX(i), cellY(i), s);
+  x.stroke();
+  x.restore();
+
+  bakeGlow();
+
+  /* ---- the border came around the whole light ---- */
+  x.save();
+  x.lineJoin = 'round'; x.lineCap = 'round';
+  x.strokeStyle = '#0e1014'; x.lineWidth = Math.max(2, s * 0.34);
+  x.beginPath(); tracePerimeter(x);
+  x.stroke();
+  x.strokeStyle = 'rgba(196,186,164,0.22)'; x.lineWidth = Math.max(0.6, s * 0.07);
+  x.beginPath(); tracePerimeter(x);
+  x.stroke();
+  x.restore();
+}
+var PERIM = null;
+function tracePerimeter(x){
+  var s = LAY.s;
+  var D = [[-1,-1],[1,-1],[-1,1],[1,1]];
+  for(var i = 0; i < R.NC; i++){
+    var c = R.CELLS[i], px = cellX(i), py = cellY(i);
+    var nb = R.NB[i];
+    for(var k = 0; k < 4; k++){
+      var u = c.u + D[k][0], v = c.v + D[k][1], found = false;
+      for(var j = 0; j < nb.length; j++){
+        var n = R.CELLS[nb[j]];
+        if(n.u === u && n.v === v){ found = true; break; }
+      }
+      if(found) continue;
+      if(k === 0){ x.moveTo(px, py - s); x.lineTo(px - s, py); }
+      else if(k === 1){ x.moveTo(px, py - s); x.lineTo(px + s, py); }
+      else if(k === 2){ x.moveTo(px - s, py); x.lineTo(px, py + s); }
+      else { x.moveTo(px + s, py); x.lineTo(px, py + s); }
+    }
+  }
+}
+
+/* ============================== AUDIO =============================== */
+var AU = { ctx:null, muted:false, master:null, ok:false };
+function auInit(){
+  if(AU.ctx || AU.muted) return;
+  try{
+    var C = window.AudioContext || window.webkitAudioContext;
+    if(!C) return;
+    AU.ctx = new C();
+    AU.master = AU.ctx.createGain();
+    AU.master.gain.value = 0.85;
+    AU.master.connect(AU.ctx.destination);
+    AU.ok = true;
+  }catch(e){ AU.ok = false; }
+}
+function auOn(){ if(!AU.ok || AU.muted || !AU.ctx) return false;
+  if(AU.ctx.state === 'suspended'){ try{ AU.ctx.resume(); }catch(e){} } return true; }
+function noiseBuf(dur){
+  var c = AU.ctx, n = Math.max(1, (c.sampleRate * dur) | 0), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+  for(var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  return b;
+}
+function sfxTap(vol){
+  if(!auOn()) return;
+  var c = AU.ctx, t = c.currentTime;
+  var src = c.createBufferSource(); src.buffer = noiseBuf(0.05);
+  var bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 1.6;
+  var g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime((vol || 0.16), t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  src.connect(bp); bp.connect(g); g.connect(AU.master); src.start(t); src.stop(t + 0.06);
+}
+function sfxGlass(tile){
+  if(!auOn()) return;
+  var c = AU.ctx, t = c.currentTime, f = GLASS[tile].f;
+  var g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.16, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+  g.connect(AU.master);
+  var parts = [[1, 1], [2.76, 0.42], [5.4, 0.18], [8.9, 0.08]];
+  for(var i = 0; i < parts.length; i++){
+    var o = c.createOscillator(); o.type = i === 0 ? 'sine' : 'sine';
+    o.frequency.value = f * parts[i][0] * (1 + (Math.random() - 0.5) * 0.004);
+    var gg = c.createGain(); gg.gain.value = parts[i][1];
+    gg.gain.setValueAtTime(parts[i][1], t);
+    gg.gain.exponentialRampToValueAtTime(0.0001, t + 0.4 + 1.1 / (i + 1));
+    o.connect(gg); gg.connect(g); o.start(t); o.stop(t + 1.6);
+  }
+}
+function sfxWhoosh(){
+  if(!auOn()) return;
+  var c = AU.ctx, t = c.currentTime;
+  var src = c.createBufferSource(); src.buffer = noiseBuf(0.3);
+  var bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 3.2;
+  bp.frequency.setValueAtTime(500, t); bp.frequency.exponentialRampToValueAtTime(3600, t + 0.24);
+  var g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.10, t + 0.09);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+  src.connect(bp); bp.connect(g); g.connect(AU.master); src.start(t); src.stop(t + 0.32);
+}
+function sfxShatter(tile){
+  if(!auOn()) return;
+  var c = AU.ctx, t = c.currentTime, f = GLASS[tile === undefined ? 6 : tile].f;
+  /* the crash: broadband burst swept down through a resonant throat */
+  var src = c.createBufferSource(); src.buffer = noiseBuf(0.9);
+  var bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.1;
+  bp.frequency.setValueAtTime(6200, t); bp.frequency.exponentialRampToValueAtTime(700, t + 0.55);
+  var g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.30, t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+  src.connect(bp); bp.connect(g); g.connect(AU.master); src.start(t); src.stop(t + 0.9);
+  /* and the bell of the broken pane, in its own colour */
+  for(var i = 0; i < 6; i++){
+    var o = c.createOscillator(); o.type = 'triangle';
+    o.frequency.value = f * (2 + i * 1.37) * (1 + (Math.random() - 0.5) * 0.05);
+    var gg = c.createGain();
+    var v = 0.055 / (1 + i * 0.55);
+    gg.gain.setValueAtTime(0.0001, t + i * 0.006);
+    gg.gain.exponentialRampToValueAtTime(v, t + i * 0.006 + 0.005);
+    gg.gain.exponentialRampToValueAtTime(0.0001, t + 0.35 + Math.random() * 0.4);
+    o.connect(gg); gg.connect(AU.master); o.start(t + i * 0.006); o.stop(t + 0.9);
+  }
+  /* the thud of the bolt in the lead */
+  var lo = c.createOscillator(); lo.type = 'sine';
+  lo.frequency.setValueAtTime(150, t); lo.frequency.exponentialRampToValueAtTime(48, t + 0.22);
+  var lg = c.createGain();
+  lg.gain.setValueAtTime(0.20, t); lg.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  lo.connect(lg); lg.connect(AU.master); lo.start(t); lo.stop(t + 0.32);
+}
+function sfxClick(){
+  if(!auOn()) return;
+  var c = AU.ctx, t = c.currentTime;
+  var o = c.createOscillator(); o.type = 'square'; o.frequency.value = 1500;
+  var g = c.createGain(); g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.035, t + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+  o.connect(g); g.connect(AU.master); o.start(t); o.stop(t + 0.06);
+}
+function sfxOrgan(win){
+  if(!auOn()) return;
+  var c = AU.ctx, t = c.currentTime;
+  var root = win ? 130.81 : 116.54;
+  var chord = win ? [1, 1.5, 2, 2.5, 3, 4] : [1, 1.1892, 1.5, 2, 2.378];
+  var g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.20, t + 0.55);
+  g.gain.setValueAtTime(0.20, t + 2.1);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
+  g.connect(AU.master);
+  for(var i = 0; i < chord.length; i++){
+    for(var d = 0; d < 2; d++){
+      var o = c.createOscillator();
+      o.type = (i % 2) ? 'triangle' : 'sawtooth';
+      o.frequency.value = root * chord[i] * (1 + (d ? 0.004 : -0.004));
+      var gg = c.createGain(); gg.gain.value = 0.12 / (1 + i * 0.5);
+      var lp = c.createBiquadFilter(); lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(500, t); lp.frequency.linearRampToValueAtTime(2600, t + 1.6);
+      o.connect(gg); gg.connect(lp); lp.connect(g); o.start(t); o.stop(t + 3.8);
+    }
+  }
+}
+
+/* ============================== STATE =============================== */
+var G = {
+  screen:'start',          /* start | lobby | wait | play */
+  mode:'ai',               /* ai | hot | online */
+  diff:1,
+  pos:null,
+  mySeat:0,
+  oppName:'',
+  paused:false,
+  match:null, matchId:null, unwatch:null, deferred:null, sending:false,
+  resultShown:false, scored:false,
+  dispScore:[0,0],
+  revenge:[false,false],
+  boltsUsed:[0,0],
+  aiTimer:0, aiThinking:false, gen:0,
+  shake:0, flood:0, floodT:0,
+  hint:null
+};
+var SEL = { slot:-1, cell:-1, mode:'glaze' };
+var CUR = { cell:-1, drift:1 };
+var HOVER = -1;
+var ANIM = null;
+var QUE = [];
+var PART = [];
+
+function seatName(s){
+  if(G.mode === 'online' && G.match && G.match.players){
+    for(var i = 0; i < G.match.players.length; i++){
+      var p = G.match.players[i]; if(!p) continue;
+      var sq = (typeof p.seat === 'number') ? p.seat : i;
+      if(sq === s){
+        var pl = p.player || p;
+        var n = pl.username || pl.displayName;
+        if(n) return n;
+      }
+    }
+  }
+  if(G.mode === 'ai') return s === G.mySeat ? 'You' : ((VW < 520 ? 'Rival · ' : 'The Rival · ') + DIFFNM[G.diff]);
+  return VW < 520 ? (s === 0 ? 'Warm Glazier' : 'Cool Glazier') : SEATNM[s];
+}
+
+/* ============================== HUD ================================= */
+function placeMsg(){
+  var tb = $('topbar').getBoundingClientRect();
+  $('msg').style.top = (tb.bottom + 7) + 'px';
+}
+function tallyRow(){
+  if(!G.pos) return '';
+  var t = R.supplyOf(G.pos), out = '<span class="lbl">still to come</span>', i;
+  for(i = 0; i < 7; i++){
+    out += '<span class="tl"><i style="background:' + GLASS[i].base + '"></i><b>' + t[i] + '</b></span>';
+  }
+  return out;
+}
+function boltPips(seat){
+  var left = G.pos ? G.pos.bolts[seat] : K.BOLTS, out = '';
+  for(var i = 0; i < K.BOLTS; i++) out += '<span class="bq' + (i < left ? '' : ' spent') + '"></span>';
+  return out;
+}
+function syncHud(){
+  var on = (G.screen === 'play' && G.pos);
+  $('hud').classList.toggle('on', !!on);
+  $('strip').classList.toggle('on', !!on && !G.paused);
+  $('tq').classList.toggle('on', !!on);
+  $('mute').classList.add('on');
+  if(!on) return;
+
+  $('nmWarm').textContent = seatName(0);
+  $('nmCool').textContent = seatName(1);
+  var sc = R.scores(G.pos);
+  $('scWarm').textContent = Math.round(G.dispScore[0]);
+  $('scCool').textContent = Math.round(G.dispScore[1]);
+  $('subWarm').innerHTML = '<span class="cols">ruby &middot; amber &middot; rose</span>' +
+    (K.TITHE[0] ? '<span class="ti">tithe +' + K.TITHE[0] + '</span>' : '');
+  $('subCool').innerHTML = '<span class="cols">cobalt &middot; viridian &middot; violet</span>' +
+    (K.TITHE[1] ? '<span class="ti">tithe +' + K.TITHE[1] + '</span>' : '');
+  $('bqWarm').innerHTML = boltPips(0);
+  $('bqCool').innerHTML = boltPips(1);
+  $('tally').innerHTML = tallyRow();
+  placeMsg();
+
+  var tb = $('topbar');
+  tb.classList.toggle('turnwarm', G.pos.turn === 0);
+  tb.classList.toggle('turncool', G.pos.turn === 1);
+
+  var mine = myTurn();
+  if(G.pos.over){
+    $('midTop').textContent = 'the commission';
+    $('midMain').textContent = 'Closed';
+    $('midSub').textContent = '';
+  } else if(G.mode === 'hot'){
+    $('midTop').textContent = 'to lead';
+    $('midMain').textContent = G.pos.turn === 0 ? 'Warm' : 'Cool';
+    $('midSub').textContent = 'turn ' + (G.pos.n + 1);
+  } else {
+    $('midTop').textContent = mine ? 'your move' : 'waiting on';
+    $('midMain').textContent = mine ? 'Lead glass' : (G.mode === 'ai' ? 'The Rival' : shortName(seatName(1 - G.mySeat)));
+    $('midSub').textContent = 'turn ' + (G.pos.n + 1);
+  }
+
+  /* the bench */
+  var open = inputOpen();
+  for(var i = 0; i < 5; i++){
+    var b = $('sl' + i), tile = G.pos.market[i];
+    b.classList.toggle('gone', tile === K.EMPTY);
+    b.classList.toggle('sel', SEL.mode === 'glaze' && SEL.slot === i);
+    b.disabled = !open || tile === K.EMPTY;
+  }
+  var bb = $('btnBolt');
+  bb.disabled = !open || G.pos.bolts[G.pos.turn] <= 0;
+  bb.classList.toggle('armed', SEL.mode === 'bolt');
+  $('boltLbl').textContent = SEL.mode === 'bolt' ? 'Lower bow' : ('Quarrel ×' + G.pos.bolts[G.pos.turn]);
+  var set = $('btnSet');
+  var ready = open && commitReady();
+  set.disabled = !ready;
+  set.textContent = SEL.mode === 'bolt' ? 'Loose it' : 'Lead it in';
+  drawSlots();
+  syncMsg();
+}
+function shortName(n){ return n && n.length > 12 ? n.slice(0, 11) + '…' : (n || 'Rival'); }
+function syncMsg(){
+  var m = $('msg'), txt = '';
+  if(!G.pos || G.screen !== 'play'){ m.classList.remove('on'); return; }
+  if(G.pos.over) txt = '';
+  else if(ANIM || QUE.length) txt = '';
+  else if(!myTurn()){
+    if(G.mode === 'ai') txt = G.aiThinking ? 'The Rival studies the light…' : 'The Rival takes a turn';
+    else if(G.mode === 'online') txt = 'Waiting on ' + seatName(1 - G.mySeat) + ' — you can close this and come back';
+  }
+  else if(SEL.mode === 'bolt'){
+    txt = SEL.cell >= 0 ? 'Confirm to loose the quarrel' : 'Choose a pane to shatter — any but the boss';
+  }
+  else if(SEL.slot < 0) txt = 'Take a quarry from the bench (1–5)';
+  else if(SEL.cell < 0) txt = 'Choose an empty cell touching glass already set';
+  else txt = 'Confirm to lead it in';
+  if(G.hint) txt = G.hint;
+  m.textContent = txt;
+  m.classList.toggle('on', !!txt);
+}
+function drawSlots(){
+  if(!G.pos) return;
+  for(var i = 0; i < 5; i++){
+    var b = $('sl' + i), c = b.firstChild;
+    /* the stylesheet owns the CSS size of the swatch; we only match the
+       backing store to it, exactly as with the main canvas */
+    var w = c.clientWidth || 46, h = c.clientHeight || 52;
+    var nw = Math.max(1, Math.round(w * DPR)), nh = Math.max(1, Math.round(h * DPR));
+    if(c.width !== nw || c.height !== nh){ c.width = nw; c.height = nh; }
+    var x = c.getContext('2d');
+    x.setTransform(DPR, 0, 0, DPR, 0, 0);
+    x.clearRect(0, 0, w, h);
+    var tile = G.pos.market[i];
+    var s = Math.min(w, h) * 0.42;
+    var px = w / 2, py = (h - 8) / 2;
+    /* a lead-lined tray: the glass is read against dark, the same way it is
+       read in the window, not against the parchment of the bench */
+    var trayH = h - 8;
+    x.save();
+    x.beginPath();
+    if(x.roundRect) x.roundRect(1, 1, w - 2, trayH - 1, 3); else x.rect(1, 1, w - 2, trayH - 1);
+    var tg = x.createLinearGradient(0, 0, 0, trayH);
+    tg.addColorStop(0, '#191510'); tg.addColorStop(1, '#0a0806');
+    x.fillStyle = tg; x.fill();
+    x.strokeStyle = 'rgba(44,33,22,0.7)'; x.lineWidth = 1; x.stroke();
+    x.restore();
+    if(tile === K.EMPTY){
+      x.strokeStyle = 'rgba(200,186,150,0.22)'; x.lineWidth = 1;
+      x.setLineDash([3, 3]);
+      x.beginPath(); pathRhombus(x, px, py, s); x.stroke();
+      x.setLineDash([]);
+      continue;
+    }
+    paintGlass(x, px, py, s, tile, 900 + i * 7 + tile, 1);
+    washCell(x, px, py, s, 0.24);
+    x.strokeStyle = '#12141a'; x.lineWidth = Math.max(1.4, s * 0.14); x.lineJoin = 'round';
+    x.beginPath(); pathRhombus(x, px, py, s); x.stroke();
+    /* a seat tick so you can read at a glance whose colour it is */
+    var seat = R.COLSEAT[tile];
+    x.fillStyle = (seat >= 0) ? SEATHEX[seat] : 'rgba(180,170,145,0.5)';
+    x.fillRect(px - 7, trayH - 4, 14, 2.5);
+  }
+}
+
+/* ============================== TURN LOGIC ========================== */
+function myTurn(){
+  if(!G.pos || G.pos.over) return false;
+  if(G.mode === 'hot') return true;
+  return G.pos.turn === G.mySeat;
+}
+function inputOpen(){
+  if(G.screen !== 'play' || !G.pos || G.paused) return false;
+  if(ANIM || QUE.length) return false;
+  if(G.pos.over) return false;
+  if(G.mode === 'ai' && G.pos.turn !== G.mySeat) return false;
+  if(G.mode === 'online'){
+    if(G.sending) return false;
+    if(G.match && typeof G.match.yourMoveNeeded === 'boolean' && !G.match.yourMoveNeeded) return false;
+    if(G.pos.turn !== G.mySeat) return false;
+  }
+  return true;
+}
+function commitReady(){
+  if(!G.pos || SEL.cell < 0) return false;
+  if(SEL.mode === 'bolt') return R.canBolt(G.pos, SEL.cell);
+  return SEL.slot >= 0 && G.pos.market[SEL.slot] !== K.EMPTY && R.canGlaze(G.pos, SEL.cell);
+}
+function clearSel(keepSlot){
+  SEL.cell = -1;
+  if(!keepSlot){ SEL.slot = -1; SEL.mode = 'glaze'; }
+}
+function pickSlot(i){
+  if(!inputOpen()) return;
+  if(G.pos.market[i] === K.EMPTY) return;
+  SEL.mode = 'glaze';
+  SEL.slot = (SEL.slot === i) ? -1 : i;
+  if(SEL.slot < 0) SEL.cell = -1;
+  else if(SEL.cell >= 0 && !R.canGlaze(G.pos, SEL.cell)) SEL.cell = -1;
+  sfxClick(); syncHud();
+}
+function toggleBolt(){
+  if(!inputOpen()) return;
+  if(SEL.mode === 'bolt'){ SEL.mode = 'glaze'; SEL.cell = -1; }
+  else {
+    if(G.pos.bolts[G.pos.turn] <= 0){ toast('No bolts left in your quiver.', 2200); return; }
+    SEL.mode = 'bolt'; SEL.slot = -1; SEL.cell = -1;
+  }
+  sfxClick(); syncHud();
+}
+function aimAt(cell){
+  if(!inputOpen()) return false;
+  if(cell < 0) return false;
+  if(SEL.mode === 'bolt'){
+    if(!R.canBolt(G.pos, cell)) return false;
+  } else {
+    if(SEL.slot < 0){
+      /* aiming before taking glass: take the first usable quarry for them */
+      for(var i = 0; i < 5; i++) if(G.pos.market[i] !== K.EMPTY){ SEL.slot = i; break; }
+      if(SEL.slot < 0) return false;
+    }
+    if(!R.canGlaze(G.pos, cell)) return false;
+  }
+  if(SEL.cell !== cell){ SEL.cell = cell; sfxTap(0.09); syncHud(); return true; }
+  return false;
+}
+function tryCommit(){
+  if(!inputOpen() || !commitReady()) return;
+  var m;
+  if(SEL.mode === 'bolt'){
+    m = R.packB(SEL.cell);
+    var pv = R.previewBolt(G.pos, SEL.cell);
+    var tile = G.pos.board[SEL.cell];
+    if(pv.pieces >= 3 && R.COLSEAT[tile] === (1 - G.pos.turn)) G.revenge[G.pos.turn] = true;
+  } else {
+    m = R.packG(SEL.slot, SEL.cell);
+  }
+  clearSel();
+  pushMove(m, true);
+}
+
+function pushMove(m, mine){
+  if(mine && G.mode === 'online'){
+    G.sending = true;
+    sendMove(m);
+  }
+  QUE.push(m);
+  pumpQueue();
+}
+function pumpQueue(){
+  if(ANIM) return;
+  if(!QUE.length){ afterQueue(); return; }
+  var m = QUE.shift();
+  var seat = G.pos.turn;
+  var ev = R.apply(G.pos, m, false);
+  if(!ev){ QUE.length = 0; afterQueue(); return; }
+  if(ev.kind === 'bolt') G.boltsUsed[seat]++;
+  startAnim(ev, QUE.length > 0);
+  syncHud();
+}
+function startAnim(ev, brisk){
+  bakeWindow(ev.cell);
+  ANIM = {
+    kind: ev.kind, cell: ev.cell, tile: ev.tile, seat: ev.seat,
+    t: 0, dur: ev.kind === 'glaze' ? (brisk ? 0.46 : 0.72) : (brisk ? 0.72 : 1.05),
+    brisk: !!brisk, taps: 0, burst: false, whoosh: false
+  };
+  if(ev.kind === 'bolt') sfxWhoosh();
+  syncMsg();
+}
+function afterQueue(){
+  bakeWindow(-1);
+  syncHud();
+  if(!G.pos) return;
+  if(G.deferred){ var d = G.deferred; G.deferred = null; applyMatch(d, true); return; }
+  if(G.pos.over){ endMatch(); return; }
+  if(G.mode === 'ai' && G.pos.turn !== G.mySeat) scheduleAI();
+}
+function scheduleAI(){
+  G.aiThinking = true; syncMsg();
+  G.aiTimer = setTimeout(function(){
+    G.aiTimer = 0;
+    if(!G.pos || G.pos.over || G.screen !== 'play') { G.aiThinking = false; return; }
+    if(G.pos.turn === G.mySeat){ G.aiThinking = false; return; }
+    var m = R.aiMove(G.pos, G.diff, Math.random);
+    G.aiThinking = false;
+    if(m < 0){ return; }
+    pushMove(m, false);
+  }, 430 + Math.random() * 320);
+}
+
+/* ============================== START A GAME ======================== */
+function freshSeed(){ return ((Math.random() * 4294967296) >>> 0) || 1; }
+function beginLocal(mode, diff){
+  stopWatch();
+  if(G.aiTimer){ clearTimeout(G.aiTimer); G.aiTimer = 0; }
+  G.gen++;
+  G.mode = mode; if(diff !== undefined) G.diff = diff;
+  G.matchId = null; G.match = null; G.deferred = null; G.sending = false;
+  G.mySeat = 0; G.paused = false; G.resultShown = false; G.scored = false;
+  G.revenge = [false, false]; G.boltsUsed = [0, 0]; G.aiThinking = false;
+  G.pos = R.create(freshSeed());
+  G.dispScore = R.scores(G.pos).slice(0);
+  G.hint = null;
+  QUE.length = 0; PART.length = 0; ANIM = null;
+  clearSel(); CUR.cell = R.BOSS; HOVER = -1;
+  G.screen = 'play';
+  hideAll(); layout(); bakeWindow(-1); placeMsg(); syncHud();
+  auInit();
+  if(G.mode === 'ai' && G.pos.turn !== G.mySeat) scheduleAI();
+}
+
+/* ============================== END ================================= */
+function endMatch(){
+  if(G.resultShown) return;
+  G.resultShown = true;
+  var sc = R.scores(G.pos);
+  var win = G.pos.winner;
+  var credit = (G.mode === 'hot') ? win : G.mySeat;
+  G.flood = 1; G.floodT = 0;
+  setTimeout(function(){ sfxOrgan(G.mode === 'hot' ? true : (win === credit)); }, 260);
+
+  /* --- achievements --- */
+  var regs = R.regionList(G.pos.board), i, best = 0;
+  for(i = 0; i < regs.length; i++){
+    if(regs[i].color < K.NCOL && R.COLSEAT[regs[i].color] === credit && regs[i].size > best) best = regs[i].size;
+  }
+  if(win === credit){
+    if(G.mode === 'online') unlock('first-light');
+    if(G.boltsUsed[credit] === 0) unlock('unbroken');
+    if(G.revenge[credit]) unlock('glaziers-revenge');
+    if(G.mode === 'ai' && G.diff === 2) unlock('masters-eye');
+    if(!G.scored){ G.scored = true; submitScore(sc[credit], { mode:G.mode, turns:G.pos.n, best:best }); }
+  }
+  if(best >= 10) unlock('great-rose');
+
+  /* --- the report --- */
+  var names = [seatName(0), seatName(1)];
+  var pn = R.panes(G.pos.board);
+  var mineWon = (win === credit);
+  $('endKick').textContent = 'The guild has counted the light';
+  if(G.mode === 'hot'){
+    $('endTitle').textContent = names[win] + ' takes the commission';
+  } else {
+    $('endTitle').textContent = mineWon ? 'The commission is yours' : 'The commission goes to your rival';
+  }
+  var holes = R.emptyCount(G.pos.board);
+  var lede;
+  if(holes > 0) lede = 'The bench ran empty with ' + holes + ' light' + (holes > 1 ? 's' : '') +
+    ' still unglazed — four bolts flew, and the guild will see the gap.';
+  else lede = 'Every quarry leaded, every came soldered. The window is finished.';
+  if(Math.abs(sc[0] - sc[1]) <= 2) lede += ' It came down to a hand’s breadth.';
+  $('endLede').textContent = lede;
+
+  var rows = '<div class="hd">Glazier</div><div class="hd">Panes</div><div class="hd">Light</div>';
+  for(i = 0; i < 2; i++){
+    rows += '<div class="nm ' + (i === 0 ? 'w' : 'c') + '">' + esc(names[i]) + (i === win ? ' ✓' : '') + '</div>' +
+            '<div>' + pn[i] + '</div>' +
+            '<div class="big">' + sc[i] + '</div>';
+  }
+  $('endTab').innerHTML = rows;
+
+  /* what actually earned the points */
+  var byseat = [[], []];
+  for(i = 0; i < regs.length; i++){
+    var rg = regs[i]; if(rg.color >= K.NCOL) continue;
+    byseat[R.COLSEAT[rg.color]].push(rg);
+  }
+  var lines = [];
+  for(i = 0; i < 2; i++){
+    byseat[i].sort(function(a, b){ return b.size - a.size; });
+    var top = byseat[i].slice(0, 3).map(function(rg){
+      return GLASS[rg.color].nm.toLowerCase() + ' ' + rg.size + ' → ' + rg.pts;
+    }).join(', ');
+    lines.push('<b>' + esc(names[i]) + '</b>: ' + (top || 'nothing joined') +
+      (K.TITHE[i] ? ' &middot; tithe +' + K.TITHE[i] : ''));
+  }
+  $('endRegs').innerHTML = lines.join('<br>');
+  $('btnEndLobby').style.display = (G.mode === 'online' || (!AR.guest && AR.online)) ? '' : 'none';
+  $('btnAgain').textContent = G.mode === 'online' ? 'New commission' : 'Another commission';
+  setTimeout(function(){ show('ovEnd'); }, 1150);
+}
+
+/* ============================== OVERLAYS ============================ */
+var OVS = ['ovStart','ovLobby','ovWait','ovPause','ovRules','ovEnd'];
+function hideAll(){ for(var i = 0; i < OVS.length; i++) $(OVS[i]).classList.remove('on'); }
+function show(id){ hideAll(); $(id).classList.add('on'); }
+function anyOv(){ for(var i = 0; i < OVS.length; i++) if($(OVS[i]).classList.contains('on')) return true; return false; }
+function openPause(){
+  if(G.screen !== 'play'){ show('ovPause'); $('pauseNote').innerHTML = ''; return; }
+  G.paused = true;
+  var n = '';
+  if(G.mode === 'online') n = 'This is an asynchronous match — nothing is on a clock. Close the tab and come back whenever.';
+  else if(G.mode === 'ai') n = 'Playing the Rival at <b>' + DIFFNM[G.diff] + '</b>.';
+  else n = 'Hotseat: pass the screen when the bench says so.';
+  $('pauseNote').innerHTML = n;
+  show('ovPause'); syncHud();
+}
+function closePause(){
+  G.paused = false;
+  if(G.screen === 'play') hideAll();
+  syncHud();
+}
+function togglePause(){
+  if($('ovPause').classList.contains('on')) closePause();
+  else if($('ovRules').classList.contains('on')) { $('ovRules').classList.remove('on'); if(G.paused) show('ovPause'); }
+  else openPause();
+}
+function goHome(){
+  stopWatch();
+  if(G.aiTimer){ clearTimeout(G.aiTimer); G.aiTimer = 0; }
+  G.screen = 'start'; G.paused = false; G.pos = null; G.match = null; G.matchId = null;
+  ANIM = null; QUE.length = 0; PART.length = 0;
+  show('ovStart'); syncHud();
+}
+
+/* ============================== ONLINE ============================== */
+function stopWatch(){ if(G.unwatch){ try{ G.unwatch(); }catch(e){} G.unwatch = null; } }
+function startWatch(){
+  stopWatch();
+  if(!G.matchId) return;
+  try{
+    if(AR.a && AR.a.matches && typeof AR.a.matches.watch === 'function')
+      G.unwatch = AR.a.matches.watch(G.matchId, function(m){ if(m) applyMatch(m, true); });
+  }catch(e){}
+}
+function seatOf(m){
+  if(typeof m.yourSeat === 'number') return m.yourSeat;
+  if(typeof m.seat === 'number') return m.seat;
+  if(m.players && AR.user){
+    for(var i = 0; i < m.players.length; i++){
+      var p = m.players[i]; if(!p) continue;
+      var pl = p.player || p;
+      if(pl.username === AR.user) return (typeof p.seat === 'number') ? p.seat : i;
+    }
+  }
+  return 0;
+}
+function codeOf(m){ return m.joinCode || m.code || ''; }
+
+function applyMatch(m, live){
+  if(!m) return;
+  /* a resolution on screen owns the board until it finishes — including
+     the echo of our own move arriving back through the watch */
+  if((ANIM || QUE.length) && G.screen === 'play'){ G.deferred = m; G.match = m; return; }
+  G.match = m; G.matchId = m.id || G.matchId;
+  G.mySeat = seatOf(m);
+  G.mode = 'online';
+
+  if(m.status === 'open'){
+    G.screen = 'wait';
+    $('waitCode').textContent = codeOf(m) || '—';
+    show('ovWait'); syncHud(); return;
+  }
+  if(m.status === 'abandoned'){ toast('That commission was abandoned.', 3200); openLobby(); return; }
+
+  var st = m.state;
+  if(!st || st.v !== K.SCHEMA){
+    if(st) toast('That match was opened with another version of Quarrel.', 4000);
+    return;
+  }
+  var fresh = (G.screen !== 'play' || !G.pos || G.pos.seed !== (st.s >>> 0));
+  if(fresh){
+    var np = R.decode(st);
+    if(!np){ toast('That match state could not be read.', 3200); return; }
+    G.pos = np;
+    G.dispScore = R.scores(G.pos).slice(0);
+    G.screen = 'play'; G.paused = false; G.resultShown = false; G.scored = false;
+    G.revenge = [false, false]; G.boltsUsed = [K.BOLTS - np.bolts[0], K.BOLTS - np.bolts[1]];
+    G.sending = false; G.aiThinking = false; G.gen++;
+    ANIM = null; QUE.length = 0; PART.length = 0;
+    clearSel(); CUR.cell = R.BOSS; HOVER = -1;
+    hideAll(); layout(); bakeWindow(-1); placeMsg(); syncHud();
+    startWatch();
+    if(m.status === 'finished' || G.pos.over) endMatch();
+    return;
+  }
+  if(st.n === G.pos.n){
+    G.sending = false;
+    if((m.status === 'finished' || G.pos.over) && !G.resultShown) endMatch();
+    syncHud(); return;
+  }
+  if(st.n > G.pos.n && live && replayInto(st)){
+    G.sending = false;
+    pumpQueue();
+    return;
+  }
+  /* anything else — trust the server and snap */
+  var q = R.decode(st);
+  if(q){
+    G.pos = q; G.dispScore = R.scores(q).slice(0);
+    G.boltsUsed = [K.BOLTS - q.bolts[0], K.BOLTS - q.bolts[1]];
+    G.sending = false; clearSel(); bakeWindow(-1);
+    if((m.status === 'finished' || G.pos.over) && !G.resultShown) endMatch();
+  }
+  syncHud();
+}
+/* replay the moves we missed through OUR OWN engine, so the board never
+   silently swaps — and only if the result matches the server byte for byte */
+function replayInto(st){
+  var d = st.n - G.pos.n;
+  if(d <= 0 || d > K.HIST) return false;
+  if(typeof st.h !== 'string' || st.h.length < 4 * d) return false;
+  var moves = [], i;
+  for(i = st.h.length - 4 * d; i + 4 <= st.h.length; i += 4) moves.push(R.decMove(st.h.substr(i, 4)));
+  if(moves.length !== d) return false;
+  var trial = R.clone(G.pos);
+  for(i = 0; i < moves.length; i++) if(!R.apply(trial, moves[i], false)) return false;
+  var e = R.encode(trial);
+  if(e.b !== st.b || e.m !== st.m || e.n !== st.n || e.o !== st.o) return false;
+  for(i = 0; i < moves.length; i++) QUE.push(moves[i]);
+  clearSel();
+  return true;
+}
+function sendMove(m){
+  if(!G.matchId){ G.sending = false; return; }
+  /* work out the state this move produces without disturbing the board */
+  var trial = R.clone(G.pos);
+  var ev = R.apply(trial, m, false);
+  if(!ev){ G.sending = false; return; }
+  var over = trial.over;
+  var payload = {
+    turn: (G.match && typeof G.match.turn === 'number') ? G.match.turn : G.pos.n,
+    move: { a: R.mAct(m), k: R.mSlot(m), c: R.mCell(m) },
+    state: R.encode(trial),
+    status: over ? 'finished' : 'active',
+    nextSeat: 1 - G.mySeat
+  };
+  if(over){
+    var sc = R.scores(trial);
+    payload.result = { winner: trial.winner, scores: [sc[0], sc[1]] };
+  }
+  mcall('move', [G.matchId, payload]).then(function(r){
+    G.sending = false;
+    if(r && r.ok){ if(r.match) G.match = r.match; syncHud(); return; }
+    if(r && r.reason === 'CONFLICT'){ toast('The window moved on — resyncing.', 3000); resync(); }
+    else if(r && r.reason === 'SIGNED_OUT'){ toast('Sign in on aimade.games to play a friend.', 3600); }
+    else toast((r && r.message) || 'That move did not reach the arcade.', 3400);
+  });
+}
+function resync(){
+  if(!G.matchId) return;
+  mcall('get', [G.matchId, {}]).then(function(r){
+    if(r && r.ok && r.match){
+      /* discard any half-made local aim; the server is the record */
+      ANIM = null; QUE.length = 0; PART.length = 0; G.deferred = null;
+      clearSel(); G.sending = false; G.pos = null; G.screen = 'lobby'; G.resultShown = false;
+      applyMatch(r.match, false);
+    } else toast((r && r.message) || 'Could not reach that match.', 3200);
+  });
+}
+function refreshMatch(){
+  if(G.mode !== 'online' || !G.matchId || ANIM || QUE.length) return;
+  mcall('get', [G.matchId, {}]).then(function(r){ if(r && r.ok && r.match) applyMatch(r.match, true); });
+}
+
+/* ============================== LOBBY =============================== */
+function offlineNow(){ return AR.guest || !AR.online; }
+function openLobby(){
+  stopWatch();
+  if(G.aiTimer){ clearTimeout(G.aiTimer); G.aiTimer = 0; }
+  G.screen = 'lobby'; G.mode = 'online'; G.pos = null; G.match = null; G.matchId = null;
+  ANIM = null; QUE.length = 0; PART.length = 0;
+  var off = offlineNow();
+  $('lobGreet').innerHTML = off
+    ? 'Playing a friend needs an account on <b>aimade.games</b>. <b>Vs the Rival</b> and <b>Hotseat</b> are right here and need nothing.'
+    : ('Signed in as <b>' + esc(AR.name || AR.user) + '</b>. A commission keeps for seven days and every move resets the clock, so neither of you has to be here at once.');
+  $('btnCreate').disabled = off;
+  $('btnJoin').disabled = off;
+  $('joinInput').disabled = off;
+  var iw = $('inviteWrap');
+  if(AR.pending && !off){ iw.style.display = 'block'; $('inviteCode').textContent = AR.pending; }
+  else iw.style.display = 'none';
+  show('ovLobby'); syncHud();
+  loadMatchList();
+}
+function loadMatchList(){
+  var el = $('mlist');
+  if(offlineNow()){
+    el.innerHTML = '<div class="tiny">Sign in at <b>aimade.games</b> to keep commissions running across days — the site lists them all, with a badge on the ones waiting on you.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="tiny"><span class="spin"></span> Reading the guild book…</div>';
+  mcall('list', [{ status:'active' }]).then(function(r){
+    if(!r || !r.ok){ el.innerHTML = '<div class="tiny">' + esc((r && r.message) || 'Could not read your matches.') + '</div>'; return; }
+    var active = r.matches || [];
+    mcall('list', [{ status:'open' }]).then(function(r2){
+      var open = (r2 && r2.ok && r2.matches) || [];
+      var all = open.concat(active);
+      if(!all.length){
+        el.innerHTML = '<div class="tiny">No commissions yet. Create one and send the code to a friend.</div>';
+        return;
+      }
+      el.innerHTML = '';
+      all.slice(0, 14).forEach(function(m){
+        var mine = seatOf(m), opp = 'Waiting for a rival';
+        if(m.status !== 'open' && m.players){
+          for(var i = 0; i < m.players.length; i++){
+            var p = m.players[i]; if(!p) continue;
+            var sq = (typeof p.seat === 'number') ? p.seat : i;
+            var pl = p.player || p;
+            if(sq !== mine) opp = pl.username || pl.displayName || 'Rival';
+          }
+        }
+        var badge = (m.status === 'open') ? '<span class="badge open">Open</span>'
+          : (m.status === 'finished' ? '<span class="badge done">Done</span>'
+          : (m.yourMoveNeeded ? '<span class="badge you">Your move</span>' : '<span class="badge them">Their move</span>'));
+        var d = document.createElement('div'); d.className = 'mrow';
+        d.innerHTML = '<div class="who"><div class="t1">' + esc(opp) + '</div><div class="t2">' +
+          (m.status === 'open' ? ('code ' + esc(codeOf(m))) : ('turn ' + ((m.turn != null) ? m.turn + 1 : '?'))) +
+          '</div></div>' + badge;
+        d.onclick = function(){ enterMatch(m.id); };
+        el.appendChild(d);
+      });
+    });
+  });
+}
+function enterMatch(id){
+  G.matchId = id; G.pos = null; G.screen = 'lobby';
+  toast('Opening the commission…', 1400);
+  mcall('get', [id, {}]).then(function(r){
+    if(r && r.ok && r.match){ G.resultShown = false; G.scored = false; applyMatch(r.match, false); startWatch(); }
+    else toast((r && r.message) || 'Could not open that match.', 3200);
+  });
+}
+function createMatch(){
+  if(offlineNow()){ toast('Sign in at aimade.games to play a friend.', 3200); return; }
+  $('btnCreate').disabled = true;
+  var p = R.create(freshSeed());
+  mcall('create', [{ maxPlayers:2, mode:'alternating', state:R.encode(p) }]).then(function(r){
+    $('btnCreate').disabled = false;
+    if(!r || !r.ok){ toast((r && r.message) || 'Could not open a commission.', 3600); return; }
+    G.matchId = r.match.id; G.mySeat = 0; G.resultShown = false; G.scored = false;
+    G.revenge = [false, false]; G.boltsUsed = [0, 0]; G.pos = null;
+    applyMatch(r.match, false);
+    startWatch();
+  });
+}
+function joinWith(code){
+  code = (code || '').trim().toUpperCase();
+  if(code.length !== 8){ toast('A join code is eight characters.', 2600); return; }
+  if(offlineNow()){ toast('Sign in at aimade.games to play a friend.', 3200); return; }
+  toast('Taking the second seat…', 1800);
+  mcall('join', [code]).then(function(r){
+    if(!r || !r.ok){ toast((r && r.message) || 'That code did not open a seat.', 3600); return; }
+    G.matchId = r.match.id; G.resultShown = false; G.scored = false;
+    G.revenge = [false, false]; G.boltsUsed = [0, 0]; G.pos = null;
+    applyMatch(r.match, false);
+    startWatch();
+  });
+}
+function copyText(t, label){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ toast(label + ' copied.', 1900); },
+                                           function(){ toast(label + ': ' + t, 4200); });
+      return;
+    }
+  }catch(e){}
+  toast(label + ': ' + t, 4200);
+}
+
+/* ============================== INPUT =============================== */
+var TOUCH = false;
+function markTouch(){
+  if(TOUCH) return;
+  TOUCH = true; document.body.classList.add('touch'); syncHud();
+}
+try{ if(window.matchMedia && window.matchMedia('(pointer:coarse)').matches) markTouch(); }catch(e){}
+window.addEventListener('touchstart', markTouch, { passive:true });
+
+function ptCell(e){
+  var r = cv.getBoundingClientRect();
+  return cellAt(e.clientX - r.left, e.clientY - r.top);
+}
+cv.addEventListener('pointermove', function(e){
+  if(e.pointerType === 'touch') return;
+  var c = ptCell(e);
+  if(c !== HOVER){ HOVER = c; }
+});
+cv.addEventListener('pointerleave', function(){ HOVER = -1; });
+cv.addEventListener('pointerdown', function(e){
+  auInit();
+  if(anyOv()) return;
+  if(e.pointerType === 'touch') markTouch();
+  var c = ptCell(e);
+  HOVER = c;
+  if(c < 0) return;
+  if(!inputOpen()) return;
+  CUR.cell = c;
+  if(SEL.cell === c && commitReady()){ tryCommit(); return; }
+  if(!aimAt(c)){
+    /* tapping a pane you cannot use just reads it out */
+    if(G.pos.board[c] !== K.EMPTY && SEL.mode !== 'bolt'){ SEL.cell = -1; syncHud(); }
+  }
+});
+
+/* ---- keyboard: four primary keys, everything else secondary ---- */
+function legalCell(c){
+  if(c < 0) return false;
+  return SEL.mode === 'bolt' ? R.canBolt(G.pos, c) : R.canGlaze(G.pos, c);
+}
+function moveCursor(dx, dy){
+  if(!G.pos) return;
+  if(CUR.cell < 0) CUR.cell = R.BOSS;
+  var c = R.CELLS[CUR.cell], u = c.u, v = c.v, i;
+  if(dx !== 0){
+    CUR.drift = dx > 0 ? 1 : -1;
+    var tu = u + 2 * dx;
+    var t = findCell(tu, v);
+    if(t < 0) t = findCell(u + 1 * dx, v + 1) >= 0 ? findCell(u + 1 * dx, v + 1) : findCell(u + 1 * dx, v - 1);
+    if(t >= 0) CUR.cell = t;
+  } else {
+    var dir = dy > 0 ? 1 : -1;
+    for(var step = 1; step <= 3; step++){
+      var vv = v + dir * step;
+      var a = findCell(u + CUR.drift, vv), b = findCell(u - CUR.drift, vv);
+      var t2 = (a >= 0) ? a : b;
+      if(step > 1){ t2 = nearestInRow(u, vv); }
+      if(t2 >= 0){ CUR.cell = t2; break; }
+    }
+  }
+  HOVER = CUR.cell;
+  if(SEL.cell >= 0 && SEL.cell !== CUR.cell) { SEL.cell = -1; syncHud(); }
+}
+function findCell(u, v){
+  for(var i = 0; i < R.NC; i++){ var c = R.CELLS[i]; if(c.u === u && c.v === v) return i; }
+  return -1;
+}
+function nearestInRow(u, v){
+  var best = -1, bd = 1e9;
+  for(var i = 0; i < R.NC; i++){
+    var c = R.CELLS[i]; if(c.v !== v) continue;
+    var d = Math.abs(c.u - u);
+    if(d < bd){ bd = d; best = i; }
+  }
+  return best;
+}
+function nextLegal(){
+  if(!G.pos) return;
+  var start = CUR.cell < 0 ? 0 : CUR.cell;
+  for(var k = 1; k <= R.NC; k++){
+    var c = (start + k) % R.NC;
+    if(legalCell(c)){ CUR.cell = c; HOVER = c; SEL.cell = -1; syncHud(); return; }
+  }
+}
+window.addEventListener('keydown', function(e){
+  var k = e.key;
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  var tag = (e.target && e.target.tagName) || '';
+  if(tag === 'INPUT'){
+    if(k === 'Enter'){ e.preventDefault(); joinWith($('joinInput').value); }
+    return;
+  }
+  auInit();
+  var lower = k.length === 1 ? k.toLowerCase() : k;
+
+  if(lower === 'h' || k === '?' || k === '/'){ e.preventDefault(); togglePause(); return; }
+  if(lower === 'p'){ e.preventDefault(); togglePause(); return; }
+  if(k === 'Escape'){
+    e.preventDefault();
+    if($('ovRules').classList.contains('on')){ $('ovRules').classList.remove('on'); if(G.paused) show('ovPause'); return; }
+    if($('ovPause').classList.contains('on')){ closePause(); return; }
+    if(G.screen === 'play' && (SEL.cell >= 0 || SEL.slot >= 0 || SEL.mode === 'bolt')){ clearSel(); syncHud(); return; }
+    if(G.screen === 'play'){ openPause(); return; }
+    return;
+  }
+  if(lower === 'm'){ e.preventDefault(); toggleMute(); return; }
+  if(lower === 'g'){ e.preventDefault();
+    if($('ovRules').classList.contains('on')){ $('ovRules').classList.remove('on'); if(G.paused) show('ovPause'); else if(G.screen === 'play') hideAll(); }
+    else show('ovRules');
+    return; }
+  if(lower === 'r'){
+    e.preventDefault();
+    if(G.screen === 'play' && G.mode !== 'online'){ beginLocal(G.mode, G.diff); }
+    else if(G.screen === 'play' && G.mode === 'online'){ toast('Online commissions are not restarted — finish it or abandon it.', 3200); }
+    return;
+  }
+  if(anyOv()){
+    if(k === 'Enter' && $('ovStart').classList.contains('on')){ e.preventDefault(); startDefault(); }
+    return;
+  }
+  if(G.screen !== 'play') return;
+
+  if(k >= '1' && k <= '5'){ e.preventDefault(); pickSlot(+k - 1); return; }
+  if(lower === 'b'){ e.preventDefault(); toggleBolt(); return; }
+  if(k === 'Tab'){ e.preventDefault(); nextLegal(); return; }
+  if(k === 'ArrowLeft' || lower === 'a'){ e.preventDefault(); moveCursor(-1, 0); return; }
+  if(k === 'ArrowRight' || lower === 'd'){ e.preventDefault(); moveCursor(1, 0); return; }
+  if(k === 'ArrowUp' || lower === 'w'){ e.preventDefault(); moveCursor(0, -1); return; }
+  if(k === 'ArrowDown' || lower === 's'){ e.preventDefault(); moveCursor(0, 1); return; }
+  if(k === 'Enter' || k === ' '){
+    e.preventDefault();
+    if(!inputOpen()) return;
+    if(SEL.cell >= 0 && SEL.cell === CUR.cell && commitReady()){ tryCommit(); return; }
+    aimAt(CUR.cell);
+    return;
+  }
+});
+function toggleMute(){
+  AU.muted = !AU.muted;
+  if(AU.master) try{ AU.master.gain.value = AU.muted ? 0 : 0.85; }catch(e){}
+  $('mute').innerHTML = AU.muted ? '&#9834;' : '&#9835;';
+  $('mute').style.opacity = AU.muted ? '0.5' : '1';
+  toast(AU.muted ? 'Workshop muted.' : 'Workshop unmuted.', 1400);
+}
+function startDefault(){
+  if(!offlineNow()) openLobby(); else beginLocal('ai', G.diff);
+}
+
+/* ============================== RENDER ============================== */
+function regionEdges(x, cells){
+  var s = LAY.s, set = {}, i;
+  for(i = 0; i < cells.length; i++) set[cells[i]] = 1;
+  var D = [[-1,-1],[1,-1],[-1,1],[1,1]];
+  for(i = 0; i < cells.length; i++){
+    var ci = cells[i], c = R.CELLS[ci], px = cellX(ci), py = cellY(ci), nb = R.NB[ci];
+    for(var k = 0; k < 4; k++){
+      var u = c.u + D[k][0], v = c.v + D[k][1], nbi = -1;
+      for(var j = 0; j < nb.length; j++){ var n = R.CELLS[nb[j]]; if(n.u === u && n.v === v){ nbi = nb[j]; break; } }
+      if(nbi >= 0 && set[nbi]) continue;
+      if(k === 0){ x.moveTo(px, py - s); x.lineTo(px - s, py); }
+      else if(k === 1){ x.moveTo(px, py - s); x.lineTo(px + s, py); }
+      else if(k === 2){ x.moveTo(px - s, py); x.lineTo(px, py + s); }
+      else { x.moveTo(px + s, py); x.lineTo(px, py + s); }
+    }
+  }
+}
+function centroid(cells){
+  var sx = 0, sy = 0;
+  for(var i = 0; i < cells.length; i++){ sx += cellX(cells[i]); sy += cellY(cells[i]); }
+  return { x: sx / cells.length, y: sy / cells.length };
+}
+function badge(x, px, py, text, fg, bg){
+  x.save();
+  x.font = '700 ' + Math.max(10, Math.round(LAY.s * 0.62)) + 'px ' +
+    "'Palatino Linotype','Book Antiqua',Palatino,Georgia,serif";
+  var w = x.measureText(text).width + 14, h = Math.max(17, LAY.s * 0.95);
+  x.globalAlpha = 0.96;
+  x.fillStyle = bg || 'rgba(238,224,190,0.94)';
+  x.strokeStyle = 'rgba(20,15,8,0.7)'; x.lineWidth = 1;
+  var rx = px - w / 2, ry = py - h / 2;
+  x.beginPath();
+  if(x.roundRect) x.roundRect(rx, ry, w, h, 3);
+  else x.rect(rx, ry, w, h);
+  x.fill(); x.stroke();
+  x.fillStyle = fg || '#2c2116';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(text, px, py + 0.5);
+  x.restore();
+}
+
+function washCell(x, px, py, s, a){
+  x.save();
+  x.beginPath(); pathRhombus(x, px, py, s * 0.90); x.clip();
+  x.globalCompositeOperation = 'lighter';
+  var g = x.createRadialGradient(px - s * 0.3, py - s * 0.3, 0, px, py, s * 1.5);
+  g.addColorStop(0, 'rgba(255,246,222,' + a + ')');
+  g.addColorStop(1, 'rgba(240,196,132,' + (a * 0.45) + ')');
+  x.fillStyle = g; x.fillRect(px - s, py - s, s * 2, s * 2);
+  x.restore();
+}
+/* The daylight only reaches the room through glass that is actually leaded
+   in — so the light is clipped to the glazed panes.  Unglazed cells stay
+   dark, which is also how you read the board at a glance.  It is baked
+   whenever the board changes and then simply breathed over the frame. */
+function bakeGlow(){
+  /* only as big as the window it lights — an additive blit of the whole
+     viewport every frame is not worth the two pixels it would add */
+  var s = LAY.s, i;
+  var gx0 = Math.floor(LAY.cx - LAY.A - LAY.fw * 2);
+  var gy0 = Math.floor(LAY.apex - LAY.fw * 2);
+  var gw = Math.ceil((LAY.A + LAY.fw * 2) * 2) + 2;
+  var gh = Math.ceil(LAY.sill - LAY.apex + LAY.fw * 4) + 2;
+  LAY.gx = gx0; LAY.gy = gy0; LAY.gw = gw; LAY.gh = gh;
+  GLOW.c.width = Math.max(1, Math.round(gw * PXR()));
+  GLOW.c.height = Math.max(1, Math.round(gh * PXR()));
+  var x = GLOW.x;
+  x.setTransform(PXR(), 0, 0, PXR(), -gx0 * PXR(), -gy0 * PXR());
+  x.clearRect(gx0, gy0, gw, gh);
+  if(!LIT.length) return;
+  x.save();
+  x.beginPath();
+  for(i = 0; i < LIT.length; i++) pathRhombus(x, cellX(LIT[i]), cellY(LIT[i]), s * 0.90);
+  x.clip();
+  var gx = LAY.cx, gy = LAY.spring - LAY.H * 0.28;
+  var g = x.createRadialGradient(gx, gy, s * 0.4, gx, gy, LAY.A * 2.6);
+  g.addColorStop(0, 'rgba(255,248,226,1)');
+  g.addColorStop(0.42, 'rgba(255,226,176,0.70)');
+  g.addColorStop(1, 'rgba(228,172,106,0.36)');
+  x.fillStyle = g;
+  x.fillRect(LAY.cx - LAY.A - LAY.fw * 2, LAY.apex - LAY.fw * 2,
+             (LAY.A + LAY.fw * 2) * 2, LAY.sill - LAY.apex + LAY.fw * 4);
+  x.restore();
+}
+function drawLight(x, tsec){
+  if(!LIT.length) return;
+  var flood = G.flood ? clamp(G.floodT / 1.7, 0, 0.9) : 0;
+  var breathe = 0.95 + Math.sin(tsec * 0.55) * 0.045 + Math.sin(tsec * 1.31) * 0.012;
+  x.save();
+  x.globalCompositeOperation = 'lighter';
+  x.globalAlpha = clamp((0.10 + flood * 0.17) * breathe, 0, 1);
+  x.drawImage(GLOW.c, LAY.gx, LAY.gy, LAY.gw, LAY.gh);
+  x.restore();
+}
+/* Only the moment of completion is drawn live — the standing halo is in
+   the baked background. */
+function drawFlood(x, tsec){
+  if(!G.flood) return;
+  var flood = clamp(G.floodT / 1.7, 0, 0.9);
+  if(flood <= 0.01) return;
+  x.save();
+  x.globalCompositeOperation = 'lighter';
+  var cxx = LAY.cx, cyy = (LAY.apex + LAY.sill) / 2;
+  var rr = Math.max(LAY.A * 2.4, LAY.H * 2.2) * (1 + flood * 0.55);
+  var g = x.createRadialGradient(cxx, cyy, LAY.A * 0.35, cxx, cyy, rr);
+  var a = flood * 0.20;
+  g.addColorStop(0, 'rgba(255,226,168,' + a.toFixed(3) + ')');
+  g.addColorStop(0.5, 'rgba(255,206,140,' + (a * 0.32).toFixed(3) + ')');
+  g.addColorStop(1, 'rgba(255,190,110,0)');
+  x.fillStyle = g; x.fillRect(0, 0, VW, VH);
+  x.globalAlpha = flood * 0.17;
+  for(var i = 0; i < 7; i++){
+    var a2 = -Math.PI / 2 + (i - 3) * 0.20 + Math.sin(tsec * 0.3 + i) * 0.02;
+    var len = Math.max(VW, VH) * 1.3;
+    x.beginPath();
+    x.moveTo(cxx, cyy);
+    x.lineTo(cxx + Math.cos(a2 + 0.055) * len, cyy - Math.sin(a2 + 0.055) * len);
+    x.lineTo(cxx + Math.cos(a2 - 0.055) * len, cyy - Math.sin(a2 - 0.055) * len);
+    x.closePath();
+    var rg = x.createLinearGradient(cxx, cyy, cxx, cyy + len);
+    rg.addColorStop(0, 'rgba(255,238,200,0.5)'); rg.addColorStop(1, 'rgba(255,220,160,0)');
+    x.fillStyle = rg; x.fill();
+  }
+  x.restore();
+}
+var MOTES = [];
+function initMotes(){
+  MOTES.length = 0;
+  for(var i = 0; i < 22; i++) MOTES.push({ x:Math.random(), y:Math.random(), s:0.3 + Math.random(), p:Math.random() * 6.28 });
+}
+initMotes();
+function drawMotes(x, tsec){
+  x.save();
+  x.globalCompositeOperation = 'lighter';
+  for(var i = 0; i < MOTES.length; i++){
+    var m = MOTES[i];
+    var px = LAY.cx + (m.x - 0.5) * LAY.A * 3.1 + Math.sin(tsec * 0.31 + m.p) * LAY.s * 1.2;
+    var py = LAY.apex + ((m.y + tsec * 0.012 * m.s) % 1) * (LAY.sill - LAY.apex + LAY.s * 6);
+    var a = 0.16 * (0.4 + 0.6 * Math.sin(tsec * 0.9 + m.p) * 0.5 + 0.5);
+    x.fillStyle = 'rgba(255,236,200,' + a.toFixed(3) + ')';
+    x.beginPath(); x.arc(px, py, LAY.s * 0.055 * m.s + 0.5, 0, 6.2832); x.fill();
+  }
+  x.restore();
+}
+
+function drawAnim(x, tsec){
+  if(!ANIM) return;
+  var a = ANIM, s = LAY.s, px = cellX(a.cell), py = cellY(a.cell), u = clamp(a.t / a.dur, 0, 1);
+  if(a.kind === 'glaze'){
+    /* the glazier taps the came home, three times, then the pane rings */
+    var g = easeBack(clamp(u / 0.62, 0, 1));
+    var scale = 0.24 + 0.76 * g;
+    var alpha = clamp(u / 0.22, 0, 1);
+    x.save();
+    x.translate(px, py); x.scale(scale, scale); x.translate(-px, -py);
+    paintGlass(x, px, py, s, a.tile, a.cell, alpha);
+    washCell(x, px, py, s, 0.24 * alpha);
+    x.restore();
+    if(u > 0.55){
+      var fl = 1 - clamp((u - 0.55) / 0.45, 0, 1);
+      x.save();
+      x.globalCompositeOperation = 'lighter';
+      x.globalAlpha = fl * 0.75;
+      x.strokeStyle = GLASS[a.tile].rim; x.lineWidth = Math.max(1.2, s * 0.16);
+      x.beginPath(); pathRhombus(x, px, py, s * (1 + (1 - fl) * 0.10)); x.stroke();
+      x.restore();
+    }
+    /* the taps: little sparks at the came */
+    for(var k = 0; k < 3; k++){
+      var tt = 0.06 + k * 0.10;
+      if(u > tt && u < tt + 0.10){
+        var f2 = 1 - (u - tt) / 0.10;
+        x.save(); x.globalAlpha = f2 * 0.8; x.globalCompositeOperation = 'lighter';
+        x.fillStyle = '#ffe9c0';
+        var ang = -2.2 + k * 1.5;
+        x.beginPath();
+        x.arc(px + Math.cos(ang) * s * 0.85, py + Math.sin(ang) * s * 0.85, s * 0.12 * f2 + 0.5, 0, 6.2832);
+        x.fill(); x.restore();
+      }
+    }
+  } else {
+    /* the quarrel: flight, strike, crack, burst */
+    var flightEnd = 0.30;
+    if(u < flightEnd){
+      var fu = u / flightEnd;
+      paintGlass(x, px, py, s, a.tile, a.cell, 1);
+      washCell(x, px, py, s, 0.24);
+      var fromX = a.seat === 0 ? -LAY.s * 6 : VW + LAY.s * 6;
+      var fromY = py - LAY.s * 5;
+      var bx = lerp(fromX, px, easeOut(fu)), by = lerp(fromY, py, easeOut(fu));
+      x.save();
+      var ang2 = Math.atan2(py - fromY, px - fromX);
+      x.translate(bx, by); x.rotate(ang2);
+      x.fillStyle = '#e8dcc2';
+      x.fillRect(-s * 1.5, -s * 0.045, s * 1.5, s * 0.09);
+      x.fillStyle = SEATHEX[a.seat];
+      x.beginPath(); x.moveTo(s * 0.30, 0); x.lineTo(-s * 0.16, -s * 0.16); x.lineTo(-s * 0.16, s * 0.16); x.closePath(); x.fill();
+      x.fillStyle = 'rgba(240,232,210,0.9)';
+      x.beginPath(); x.moveTo(-s * 1.5, 0); x.lineTo(-s * 1.05, -s * 0.20); x.lineTo(-s * 0.95, 0); x.lineTo(-s * 1.05, s * 0.20); x.closePath(); x.fill();
+      x.restore();
+    } else if(u < 0.44){
+      var cu = (u - flightEnd) / 0.14;
+      paintGlass(x, px, py, s, a.tile, a.cell, 1);
+      washCell(x, px, py, s, 0.24);
+      x.save();
+      x.globalAlpha = clamp(cu * 1.4, 0, 1);
+      x.strokeStyle = 'rgba(255,255,255,0.92)'; x.lineWidth = Math.max(0.8, s * 0.05);
+      x.lineCap = 'round';
+      for(var q = 0; q < 7; q++){
+        var aa = grain(a.cell, q, 41) * 6.2832;
+        var ln = s * (0.5 + grain(a.cell, q, 42) * 0.6) * cu;
+        x.beginPath(); x.moveTo(px, py);
+        x.lineTo(px + Math.cos(aa) * ln, py + Math.sin(aa) * ln * 0.8); x.stroke();
+      }
+      x.restore();
+    } else {
+      /* the hole flares with the light behind it, then settles to bare board */
+      var hu = clamp((u - 0.44) / 0.5, 0, 1);
+      x.save();
+      x.globalCompositeOperation = 'lighter';
+      x.globalAlpha = (1 - hu) * 0.55;
+      x.fillStyle = '#fff4dd';
+      x.beginPath(); pathRhombus(x, px, py, s * 0.99); x.fill();
+      x.restore();
+      paintEmpty(x, px, py, s, a.cell, hu);
+    }
+  }
+}
+
+function drawSelection(x, tsec){
+  if(G.screen !== 'play' || !G.pos || ANIM || QUE.length) return;
+  var s = LAY.s;
+  var open = inputOpen();
+  var aim = (open && SEL.cell >= 0) ? SEL.cell : -1;
+  var look = aim >= 0 ? aim : ((HOVER >= 0) ? HOVER : (open && !TOUCH ? CUR.cell : -1));
+
+  /* the cell cursor */
+  if(open && CUR.cell >= 0 && !TOUCH){
+    var pulse = 0.4 + 0.25 * Math.sin(tsec * 4.2);
+    x.save();
+    x.strokeStyle = 'rgba(255,236,196,' + pulse.toFixed(3) + ')';
+    x.lineWidth = Math.max(1, s * 0.07);
+    x.setLineDash([s * 0.28, s * 0.22]);
+    x.beginPath(); pathRhombus(x, cellX(CUR.cell), cellY(CUR.cell), s * 0.80); x.stroke();
+    x.restore();
+  }
+
+  /* legal-move ghosting once glass is in hand */
+  if(open && (SEL.mode === 'bolt' || SEL.slot >= 0)){
+    x.save();
+    x.globalAlpha = 0.20 + 0.07 * Math.sin(tsec * 2.4);
+    x.strokeStyle = SEL.mode === 'bolt' ? '#ff9c7a' : '#ffe6b4';
+    x.lineWidth = Math.max(0.8, s * 0.05);
+    x.beginPath();
+    for(var i = 0; i < R.NC; i++){
+      if(i === aim) continue;
+      if(SEL.mode === 'bolt' ? R.canBolt(G.pos, i) : R.canGlaze(G.pos, i)) pathRhombus(x, cellX(i), cellY(i), s * 0.62);
+    }
+    x.stroke();
+    x.restore();
+  }
+
+  if(look < 0) return;
+
+  /* --- previewing a placement --- */
+  if(aim >= 0 && SEL.mode === 'glaze' && SEL.slot >= 0){
+    var tile = G.pos.market[SEL.slot];
+    var pv = R.previewGlaze(G.pos, aim, tile);
+    var wob = 0.965 + 0.035 * Math.sin(tsec * 3.4);
+    x.save(); x.globalAlpha = 0.82;
+    paintGlass(x, cellX(aim), cellY(aim), s * wob, tile, aim, 1);
+    washCell(x, cellX(aim), cellY(aim), s * wob, 0.22);
+    x.restore();
+    x.save();
+    x.strokeStyle = '#fff2d4'; x.lineWidth = Math.max(1.2, s * 0.10);
+    x.setLineDash([s * 0.4, s * 0.28]); x.lineDashOffset = -tsec * s * 1.6;
+    x.beginPath(); pathRhombus(x, cellX(aim), cellY(aim), s * 0.94); x.stroke();
+    x.restore();
+    if(pv.region){
+      x.save();
+      x.strokeStyle = GLASS[tile].rim; x.lineWidth = Math.max(1.4, s * 0.13);
+      x.lineJoin = 'round'; x.lineCap = 'round';
+      x.globalAlpha = 0.85; x.shadowColor = GLASS[tile].rim; x.shadowBlur = s * 0.5;
+      x.beginPath(); regionEdges(x, pv.region.cells); x.stroke();
+      x.restore();
+      var ct = centroid(pv.region.cells);
+      badge(x, ct.x, ct.y - s * 1.35, pv.region.size + ' × ' + pv.region.size + ' = ' + pv.region.pts, '#2c2116');
+    }
+    var d = G.pos.turn === 0 ? pv.d0 : pv.d1;
+    var od = G.pos.turn === 0 ? pv.d1 : pv.d0;
+    var txt = (d >= 0 ? '+' : '') + d + ' you';
+    if(od !== 0) txt += '   ' + (od >= 0 ? '+' : '') + od + ' them';
+    badge(x, cellX(aim), cellY(aim) + s * 1.9, txt,
+      d > 0 ? '#1f5a30' : '#6b2018', 'rgba(238,224,190,0.95)');
+    return;
+  }
+  /* --- previewing a shatter --- */
+  if(aim >= 0 && SEL.mode === 'bolt'){
+    var pb = R.previewBolt(G.pos, aim);
+    x.save();
+    x.globalAlpha = 0.55 + 0.25 * Math.sin(tsec * 6);
+    x.strokeStyle = '#ff8a66'; x.lineWidth = Math.max(1.4, s * 0.12);
+    x.beginPath(); pathRhombus(x, cellX(aim), cellY(aim), s * 0.9); x.stroke();
+    x.globalAlpha = 0.85;
+    x.lineWidth = Math.max(0.8, s * 0.05);
+    var cxp = cellX(aim), cyp = cellY(aim);
+    x.beginPath();
+    x.moveTo(cxp - s * 1.3, cyp); x.lineTo(cxp - s * 0.5, cyp);
+    x.moveTo(cxp + s * 0.5, cyp); x.lineTo(cxp + s * 1.3, cyp);
+    x.moveTo(cxp, cyp - s * 1.3); x.lineTo(cxp, cyp - s * 0.5);
+    x.moveTo(cxp, cyp + s * 0.5); x.lineTo(cxp, cyp + s * 1.3);
+    x.stroke();
+    x.restore();
+    var tl = G.pos.board[aim];
+    var reg = R.regionAt(G.pos.board, aim);
+    if(reg && reg.color < K.NCOL){
+      x.save();
+      x.strokeStyle = '#ffb59a'; x.lineWidth = Math.max(1.2, s * 0.10);
+      x.globalAlpha = 0.7; x.lineJoin = 'round';
+      x.beginPath(); regionEdges(x, reg.cells); x.stroke();
+      x.restore();
+    }
+    var dd = G.pos.turn === 0 ? pb.d1 : pb.d0;
+    var dm = G.pos.turn === 0 ? pb.d0 : pb.d1;
+    var t2 = 'costs them ' + (-dd) + (pb.pieces >= 2 ? '  • splits into ' + pb.pieces : '');
+    if(dm !== 0) t2 = 'costs you ' + (-dm) + (dd ? ', them ' + (-dd) : '');
+    badge(x, cxp, cyp + s * 1.9, t2, '#6b2018', 'rgba(240,214,200,0.95)');
+    return;
+  }
+  /* --- just looking: read out the region under the pointer --- */
+  if(look >= 0 && G.pos.board[look] !== K.EMPTY){
+    var rg2 = R.regionAt(G.pos.board, look);
+    if(rg2){
+      var col = rg2.color < K.NCOL ? GLASS[rg2.color].rim : '#e9efe3';
+      x.save();
+      x.strokeStyle = col; x.lineWidth = Math.max(1.2, s * 0.10);
+      x.globalAlpha = 0.62; x.lineJoin = 'round'; x.lineCap = 'round';
+      x.beginPath(); regionEdges(x, rg2.cells); x.stroke();
+      x.restore();
+      var c2 = centroid(rg2.cells);
+      var lbl = rg2.color < K.NCOL
+        ? (GLASS[rg2.color].nm + ' ' + rg2.size + ' → ' + rg2.pts)
+        : (look === R.BOSS ? 'the boss — no score, never breaks' : 'grisaille — no score');
+      badge(x, c2.x, c2.y - s * 1.35, lbl, '#2c2116');
+    }
+  }
+}
+
+/* ------------------------------ particles --------------------------- */
+function burst(cell, tile){
+  var px = cellX(cell), py = cellY(cell), s = LAY.s;
+  var n = 22;
+  for(var i = 0; i < n; i++){
+    var a = (i / n) * 6.2832 + Math.random() * 0.4;
+    var sp = s * (2.6 + Math.random() * 6.2);
+    PART.push({
+      x:px + (Math.random() - 0.5) * s * 0.6, y:py + (Math.random() - 0.5) * s * 0.6,
+      vx:Math.cos(a) * sp, vy:Math.sin(a) * sp - s * 2.2,
+      rot:Math.random() * 6.28, vr:(Math.random() - 0.5) * 14,
+      sz:s * (0.10 + Math.random() * 0.24), life:0, max:0.75 + Math.random() * 0.85,
+      tile:tile
+    });
+  }
+  for(i = 0; i < 10; i++){
+    var a2 = Math.random() * 6.2832, sp2 = s * (1 + Math.random() * 3);
+    PART.push({ x:px, y:py, vx:Math.cos(a2) * sp2, vy:Math.sin(a2) * sp2 - s,
+      rot:0, vr:0, sz:s * 0.05, life:0, max:0.35 + Math.random() * 0.3, tile:-1 });
+  }
+}
+function stepParts(dt){
+  for(var i = PART.length - 1; i >= 0; i--){
+    var p = PART[i];
+    p.life += dt;
+    if(p.life >= p.max){ PART.splice(i, 1); continue; }
+    p.vy += LAY.s * 26 * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+    p.vx *= (1 - 1.1 * dt);
+  }
+}
+function drawParts(x){
+  for(var i = 0; i < PART.length; i++){
+    var p = PART[i], f = 1 - p.life / p.max;
+    x.save();
+    if(p.tile < 0){
+      x.globalCompositeOperation = 'lighter';
+      x.globalAlpha = f * 0.8;
+      x.fillStyle = '#fff0d0';
+      x.beginPath(); x.arc(p.x, p.y, p.sz * (1 + (1 - f) * 2), 0, 6.2832); x.fill();
+    } else {
+      x.globalAlpha = Math.min(1, f * 1.4);
+      x.translate(p.x, p.y); x.rotate(p.rot);
+      var g = GLASS[p.tile];
+      x.fillStyle = g.base;
+      x.beginPath();
+      x.moveTo(0, -p.sz); x.lineTo(p.sz * 0.7, p.sz * 0.4); x.lineTo(-p.sz * 0.55, p.sz * 0.8); x.closePath();
+      x.fill();
+      x.strokeStyle = g.rim; x.lineWidth = Math.max(0.4, p.sz * 0.16); x.globalAlpha = f * 0.8;
+      x.stroke();
+    }
+    x.restore();
+  }
+}
+
+/* ------------------------------ main loop --------------------------- */
+var lastT = 0, tsec = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  var t = now / 1000;
+  var dt = lastT ? Math.min(0.05, t - lastT) : 0.016;
+  lastT = t; tsec += dt;
+  resTick(dt);
+
+  /* animation clock */
+  if(ANIM){
+    var prev = ANIM.t;
+    ANIM.t += dt;
+    var a = ANIM, dur = a.dur, u = a.t / dur, pu = prev / dur;
+    if(a.kind === 'glaze'){
+      for(var k = 0; k < 3; k++){
+        var tt = 0.06 + k * 0.10;
+        if(pu < tt && u >= tt) sfxTap(0.13);
+      }
+      if(pu < 0.30 && u >= 0.30) sfxGlass(a.tile);
+    } else {
+      if(pu < 0.44 && u >= 0.44){
+        burst(a.cell, a.tile);
+        sfxShatter(a.tile);
+        G.shake = 1;
+      }
+    }
+    if(a.t >= dur){ ANIM = null; pumpQueue(); }
+  }
+  stepParts(dt);
+  if(G.shake > 0) G.shake = Math.max(0, G.shake - dt * 3.6);
+  if(G.flood) G.floodT += dt;
+
+  /* score ticker */
+  if(G.pos){
+    var sc = R.scores(G.pos);
+    for(var i = 0; i < 2; i++){
+      var d = sc[i] - G.dispScore[i];
+      if(Math.abs(d) > 0.4){ G.dispScore[i] += d * Math.min(1, dt * 7); if(G.screen === 'play'){ $('scWarm').textContent = Math.round(G.dispScore[0]); $('scCool').textContent = Math.round(G.dispScore[1]); } }
+      else if(G.dispScore[i] !== sc[i]){ G.dispScore[i] = sc[i]; $('scWarm').textContent = Math.round(G.dispScore[0]); $('scCool').textContent = Math.round(G.dispScore[1]); }
+    }
+  }
+
+  render();
+}
+function render(){
+  var x = ctx;
+  x.setTransform(PXR(), 0, 0, PXR(), 0, 0);
+  if(G.shake > 0){
+    var sh = G.shake * G.shake * LAY.s * 0.35;
+    x.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+  }
+  x.drawImage(BG.c, 0, 0, VW, VH);
+  if(!G.pos && G.screen === 'start'){ /* the demo window still draws */ }
+  x.drawImage(WIN.c, 0, 0, VW, VH);
+  drawLight(x, tsec);
+  drawMotes(x, tsec);
+  drawAnim(x, tsec);
+  if(!G.paused) drawSelection(x, tsec);
+  drawParts(x);
+  drawFlood(x, tsec);
+}
+
+/* ============================== BUTTONS ============================= */
+for(var _i = 0; _i < 5; _i++)(function(i){ bind('sl' + i, function(){ pickSlot(i); }); })(_i);
+bind('btnBolt', function(){ toggleBolt(); });
+bind('btnSet', function(){ tryCommit(); });
+bind('btnOnline', function(){ openLobby(); });
+bind('btnAI', function(){ beginLocal('ai', G.diff); });
+bind('btnHot', function(){ beginLocal('hot'); });
+bind('btnLobAI', function(){ beginLocal('ai', G.diff); });
+bind('btnLobHot', function(){ beginLocal('hot'); });
+bind('btnLobBack', function(){ goHome(); });
+bind('btnRules', function(){ show('ovRules'); });
+bind('btnPRules', function(){ show('ovRules'); });
+bind('btnRulesBack', function(){ if(G.paused) show('ovPause'); else if(G.screen === 'play') hideAll(); else if(G.screen === 'lobby') show('ovLobby'); else show('ovStart'); });
+bind('btnResume', function(){ closePause(); });
+bind('btnQuit', function(){ G.paused = false; if(G.mode === 'online') openLobby(); else goHome(); });
+bind('btnCreate', function(){ createMatch(); });
+bind('btnJoin', function(){ joinWith($('joinInput').value); });
+bind('btnAccept', function(){ joinWith(AR.pending || ''); });
+bind('btnCopyCode', function(){ copyText($('waitCode').textContent, 'Join code'); });
+bind('btnWaitBack', function(){ openLobby(); });
+bind('btnWaitLeave', function(){
+  if(!G.matchId){ openLobby(); return; }
+  mcall('leave', [G.matchId]).then(function(){ toast('Commission abandoned.', 2200); openLobby(); });
+});
+bind('btnAgain', function(){
+  if(G.mode === 'online'){ openLobby(); return; }
+  beginLocal(G.mode, G.diff);
+});
+bind('btnEndLobby', function(){ openLobby(); });
+bind('btnEndHome', function(){ goHome(); });
+bind('tq', function(){ openPause(); });
+bind('mute', function(){ auInit(); toggleMute(); });
+(function(){
+  var row = $('diffRow');
+  row.addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if(!b || !b.dataset || b.dataset.d === undefined) return;
+    G.diff = +b.dataset.d;
+    var bs = row.getElementsByTagName('button');
+    for(var i = 0; i < bs.length; i++) bs[i].classList.toggle('on', +bs[i].dataset.d === G.diff);
+    sfxClick();
+  });
+})();
+$('joinInput').addEventListener('input', function(){
+  this.value = this.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 8);
+});
+
+/* the watch pauses itself when hidden; on the way back we re-read */
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible'){
+    if(G.mode === 'online' && G.screen === 'play') refreshMatch();
+    else if(G.mode === 'online' && G.screen === 'wait' && G.matchId) refreshMatch();
+    if(G.screen === 'lobby') loadMatchList();
+  }
+});
+window.addEventListener('focus', function(){
+  if(G.mode === 'online' && G.matchId && (G.screen === 'play' || G.screen === 'wait')) refreshMatch();
+});
+
+/* --------------------------- start-screen swatches ------------------ */
+(function(){
+  var w = $('swWarm'), c = $('swCool');
+  for(var i = 0; i < 3; i++) w.innerHTML += '<i style="background:' + GLASS[i].base + '"></i>';
+  for(i = 3; i < 6; i++) c.innerHTML += '<i style="background:' + GLASS[i].base + '"></i>';
+})();
+
+/* ============================== TEST HOOKS ========================== *
+ *  Used by the playwright pass; harmless in play.                      */
+window.__Q = {
+  rules: R,
+  state: function(){ return G; },
+  sel: function(){ return SEL; },
+  cur: function(){ return CUR; },
+  lay: function(){ return LAY; },
+  anim: function(){ return { anim:ANIM, queue:QUE.length, parts:PART.length }; },
+  inputOpen: inputOpen,
+  begin: beginLocal,
+  pickSlot: pickSlot,
+  aimAt: function(c){ CUR.cell = c; return aimAt(c); },
+  commit: tryCommit,
+  toggleBolt: toggleBolt,
+  cellPos: function(i){ return { x:cellX(i), y:cellY(i) }; },
+  cellAt: cellAt,
+  legalGlaze: function(){ var a = []; for(var i = 0; i < R.NC; i++) if(R.canGlaze(G.pos, i)) a.push(i); return a; },
+  legalBolt: function(){ var a = []; for(var i = 0; i < R.NC; i++) if(R.canBolt(G.pos, i)) a.push(i); return a; },
+  autoplay: function(n){
+    /* drive the local seat(s) with the engine — used to reach a result screen */
+    var k = 0, guard = 0, gen = G.gen;
+    function step(){
+      if(gen !== G.gen) return;
+      if(k >= (n || 200) || guard++ > 20000) return;
+      if(!G.pos || G.pos.over || ANIM || QUE.length){ setTimeout(step, 50); return; }
+      if(!inputOpen()){ setTimeout(step, 50); return; }
+      var m = R.aiMove(G.pos, 0, Math.random);
+      if(m < 0) return;
+      k++;
+      SEL.cell = -1; SEL.slot = -1; SEL.mode = 'glaze';
+      pushMove(m, G.mode === 'online');
+      setTimeout(step, 30);
+    }
+    step();
+  },
+  canvasFit: function(){
+    var b = cv.getBoundingClientRect();
+    return { cssW:Math.round(b.width), cssH:Math.round(b.height), winW:window.innerWidth, winH:window.innerHeight,
+             fits: Math.round(b.width) === window.innerWidth && Math.round(b.height) === window.innerHeight,
+             bw:cv.width, bh:cv.height, dpr:DPR, res:RES };
+  },
+  applyMatch: applyMatch,
+  arcade: function(){ return AR; },
+  muted: function(){ return AU.muted; }
+};
+
+/* ============================== BOOT ================================ */
+resize();
+syncHud();
+/* the start screen still shows a window: a small demonstration pattern */
+(function(){
+  var demo = R.create(20260829);
+  var rnd = R.mulberry32(4242);
+  for(var i = 0; i < 26; i++){
+    var m = R.aiMove(demo, 1, rnd);
+    if(m < 0) break;
+    if(R.mAct(m) === 0) continue;      /* the demo never breaks anything */
+    R.apply(demo, m, false);
+  }
+  G.pos = demo;
+  G.dispScore = R.scores(demo).slice(0);
+  bakeWindow(-1);
+  G.pos = null;
+})();
+requestAnimationFrame(frame);
+
+arcadeBoot(function(){
+  var g = $('greet');
+  if(!AR.guest && AR.name){
+    g.innerHTML = 'Hi, <b>' + esc(AR.name) + '</b> — the bench is yours. Commissions keep for seven days; ' +
+      'aimade.games/matches badges the ones waiting on you.';
+  } else if(AR.online){
+    g.innerHTML = 'Playing as a guest. <b>Vs the Rival</b> and <b>Hotseat</b> work straight away; sign in to play a friend across days.';
+  } else {
+    g.innerHTML = 'Playing offline. <b>Vs the Rival</b> and <b>Hotseat</b> work here and now; a match against a friend needs the arcade.';
+  }
+  var off = offlineNow();
+  $('btnOnline').className = off ? 'alt' : 'go';
+  $('btnAI').className     = off ? 'go' : 'alt';
+  $('startNote').innerHTML = off
+    ? 'Playing a friend needs an account on aimade.games. Everything else on this screen plays right now.'
+    : '';
+  if(AR.pending && !off){
+    $('startNote').innerHTML = '<b>You followed an invite.</b> Open &ldquo;Play a friend&rdquo; — the code is waiting for one tap.';
+    toast('You have an invite — open “Play a friend”.', 4200);
+  }
+  syncHud();
+});
+</script>
+</body>
+</html>
