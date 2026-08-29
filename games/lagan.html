@@ -1,0 +1,3257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="color-scheme" content="dark">
+<title>LAGAN — a sealed-orders salvage duel</title>
+<style>
+:root{
+  --sea0:#08181d; --sea1:#0d262c; --sea2:#12333a; --sea3:#1a4650;
+  --ink:#06171b; --ink2:#0a2228;
+  --parch:#d8c39c; --parch2:#bda173; --parchink:#4a3520;
+  --amber:#f0b45a; --amber2:#ffd9a0; --amberdim:#8c6a38;
+  --foam:#dbe8e5; --mute:#8fa9a8; --mute2:#5e7a7c;
+  --red:#d0553f; --red2:#f08466; --redink:#4a1c14;
+  --gold:#e3b04a; --gold2:#f8da8c; --goldink:#4a3812;
+  --ok:#79c39a; --bad:#e0705c;
+  --serif:Georgia,'Iowan Old Style','Times New Roman',Times,serif;
+  --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--sea0);
+  color:var(--foam);font-family:var(--serif);overscroll-behavior:none;touch-action:manipulation}
+body{-webkit-user-select:none;user-select:none;-webkit-font-smoothing:antialiased}
+canvas#cv{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+
+/* ---------- shared chrome ---------- */
+.chip{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+  padding:2px 5px;border:1px solid rgba(219,232,229,.28);border-radius:3px;background:rgba(8,24,29,.45)}
+.btn{font-family:var(--serif);font-size:15px;letter-spacing:.02em;color:var(--amber2);
+  background:linear-gradient(180deg,rgba(31,72,80,.92),rgba(13,38,44,.94));
+  border:1px solid rgba(240,180,90,.42);border-radius:5px;padding:11px 16px;cursor:pointer;
+  transition:transform .09s ease,box-shadow .12s ease,border-color .12s ease,background .12s ease;
+  box-shadow:0 2px 0 rgba(0,0,0,.35),inset 0 1px 0 rgba(240,180,90,.13)}
+.btn:hover:not(:disabled){border-color:rgba(255,217,160,.85);transform:translateY(-1px);
+  box-shadow:0 4px 10px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,217,160,.2)}
+.btn:active:not(:disabled){transform:translateY(1px);box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.big{font-size:18px;padding:14px 22px;font-variant:small-caps;letter-spacing:.08em}
+.btn.prime{background:linear-gradient(180deg,rgba(240,180,90,.95),rgba(184,124,48,.95));
+  color:#251603;border-color:rgba(255,224,175,.9);font-weight:600;
+  text-shadow:0 1px 0 rgba(255,232,190,.5)}
+.btn.prime:hover:not(:disabled){box-shadow:0 4px 14px rgba(240,180,90,.35)}
+.btn.ghost{background:rgba(10,34,40,.6);color:var(--foam);border-color:rgba(143,169,168,.35)}
+.btn.tiny{font-size:12px;padding:6px 10px}
+.btn.danger{border-color:rgba(224,112,92,.6);color:var(--bad)}
+h1,h2,h3{margin:0;font-weight:600}
+.sc{font-variant:small-caps;letter-spacing:.1em}
+.rule{height:1px;background:linear-gradient(90deg,transparent,rgba(240,180,90,.35),transparent);margin:10px 0}
+.mono{font-family:var(--mono)}
+.dim{color:var(--mute)}
+.tiny{font-size:11px}
+
+/* ---------- UI overlay (non-blocking) ---------- */
+#ui{position:fixed;inset:0;z-index:10;pointer-events:none;display:flex;flex-direction:column}
+#ui>*{pointer-events:auto}
+#ui>#spacer,#ui>#botstack,#ui>#statusband{pointer-events:none}
+#botstack #orderpanel.on{pointer-events:auto}
+
+/* HUD top */
+#hud{display:none;padding:calc(6px + var(--sat)) calc(8px + var(--sar)) 6px calc(8px + var(--sal));
+  background:linear-gradient(180deg,rgba(6,23,27,.92),rgba(6,23,27,.55) 70%,transparent);
+  gap:8px;align-items:flex-start}
+#hud.on{display:flex}
+.crewcard{flex:1 1 0;min-width:0;border:1px solid rgba(143,169,168,.22);border-radius:5px;
+  padding:5px 8px;background:rgba(9,29,35,.66);position:relative;overflow:hidden}
+.crewcard.me{border-color:rgba(240,180,90,.5)}
+.crewcard.turnwait::after{content:'';position:absolute;inset:0;border-radius:4px;
+  box-shadow:inset 0 0 0 2px rgba(240,180,90,.45);animation:pulseWait 1.6s ease-in-out infinite;pointer-events:none}
+@keyframes pulseWait{0%,100%{opacity:.25}50%{opacity:.95}}
+.crewname{font-size:12px;letter-spacing:.09em;font-variant:small-caps;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.crewname .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
+.crewrow{display:flex;align-items:baseline;gap:7px;margin-top:1px;min-width:0}
+.crewtot{font-family:var(--mono);font-size:20px;line-height:1;font-weight:700}
+.crewsub{font-size:10px;letter-spacing:.05em;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;min-width:0;flex:1 1 auto}
+.bankstrip{display:flex;gap:2px;flex-wrap:wrap;margin-top:3px;min-height:12px}
+.bcrate{font-family:var(--mono);font-size:9px;line-height:11px;min-width:12px;text-align:center;
+  border-radius:2px;padding:0 2px;background:rgba(0,0,0,.3);border:1px solid currentColor;opacity:.9}
+#tidebox{flex:0 0 auto;text-align:center;padding:4px 9px;border:1px solid rgba(240,180,90,.3);
+  border-radius:5px;background:rgba(9,29,35,.7)}
+#tidenum{font-family:var(--mono);font-size:19px;line-height:1;color:var(--amber2);font-weight:700}
+#tidelbl{font-size:9px;letter-spacing:.14em;color:var(--mute);text-transform:uppercase}
+#hudbtns{display:flex;flex-direction:column;gap:4px;flex:0 0 auto}
+.iconbtn{width:30px;height:30px;border-radius:5px;border:1px solid rgba(143,169,168,.3);
+  background:rgba(9,29,35,.75);color:var(--foam);font-size:13px;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;font-family:var(--serif)}
+.iconbtn:hover{border-color:rgba(240,180,90,.7);color:var(--amber2)}
+
+#spacer{flex:1 1 auto;pointer-events:none}
+
+/* status banner (whose move) */
+#statusband{display:none;align-self:center;margin-bottom:6px;padding:5px 14px;border-radius:20px;
+  font-size:12.5px;letter-spacing:.05em;background:rgba(6,23,27,.86);
+  border:1px solid rgba(240,180,90,.35);color:var(--amber2);max-width:92vw;text-align:center}
+#statusband.on{display:block}
+#statusband.warn{border-color:rgba(224,112,92,.5);color:var(--bad)}
+
+/* bottom stack — order panel + hint strip, collision-free by construction */
+#botstack{display:flex;flex-direction:column;width:100%}
+#orderpanel{display:none;background:linear-gradient(0deg,rgba(6,23,27,.96),rgba(6,23,27,.72));
+  border-top:1px solid rgba(240,180,90,.22);padding:7px calc(9px + var(--sar)) 7px calc(9px + var(--sal))}
+#orderpanel.on{display:block}
+.oprow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.opseg{display:flex;align-items:center;gap:6px;min-width:0}
+.oplbl{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute)}
+#pips{display:flex;gap:3px}
+.pip{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--amber);background:transparent;
+  transition:background .15s ease,transform .15s ease}
+.pip.used{background:var(--amber);transform:scale(.82)}
+.pip.bonus{border-color:var(--red2)}
+.pip.bonus.used{background:var(--red2)}
+#breakbar{display:flex;gap:3px;flex-wrap:wrap;align-items:center;max-width:100%}
+.bkc{font-family:var(--mono);font-size:12px;min-width:22px;height:22px;border-radius:3px;
+  border:1px solid rgba(240,180,90,.4);background:rgba(9,29,35,.8);color:var(--amber2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .12s ease;padding:0 3px}
+.bkc:hover{border-color:var(--amber2);transform:translateY(-1px)}
+.bkc.armed{background:linear-gradient(180deg,var(--red2),var(--red));color:#2a0e08;
+  border-color:#ffb9a4;box-shadow:0 0 10px rgba(224,112,92,.5);font-weight:700}
+.bkc.none{opacity:.5;cursor:default}
+#opright{margin-left:auto;display:flex;gap:7px;align-items:center}
+#hintstrip{font-family:var(--mono);font-size:10.5px;opacity:.6;pointer-events:none;
+  padding:3px calc(9px + var(--sar)) calc(3px + var(--sab)) calc(9px + var(--sal));
+  background:rgba(6,23,27,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:none;letter-spacing:.02em;color:var(--foam)}
+#hintstrip.on{display:block}
+#hintstrip kbd{font-family:var(--mono);border:1px solid rgba(219,232,229,.3);border-radius:2px;
+  padding:0 3px;background:rgba(0,0,0,.25);margin:0 1px}
+#orderpanel.on+#hintstrip{border-top:1px solid rgba(143,169,168,.12)}
+body.touchmode #hintstrip{display:none!important}
+
+/* ---------- full-screen overlays ---------- */
+.ovl{position:fixed;inset:0;z-index:30;display:none;overflow:auto;
+  padding:calc(14px + var(--sat)) calc(14px + var(--sar)) calc(14px + var(--sab)) calc(14px + var(--sal));
+  background:radial-gradient(125% 95% at 50% 20%,rgba(17,56,64,.84),rgba(4,14,17,.94) 74%);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.ovl.on{display:flex;align-items:flex-start;justify-content:center}
+.panel{width:100%;max-width:620px;margin:auto;background:rgba(7,25,30,.94);
+  border:1px solid rgba(240,180,90,.28);border-radius:9px;padding:18px 18px 20px;
+  box-shadow:0 18px 60px rgba(0,0,0,.6)}
+.panel.wide{max-width:760px}
+.ptitle{font-size:23px;letter-spacing:.16em;color:var(--amber2);font-variant:small-caps;text-align:center}
+.psub{text-align:center;font-size:12.5px;color:var(--mute);margin-top:3px;font-style:italic}
+.col{display:flex;flex-direction:column;gap:9px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+@media (max-width:520px){.grid2{grid-template-columns:1fr}}
+.sect{border:1px solid rgba(143,169,168,.2);border-radius:6px;padding:11px 12px;background:rgba(6,23,27,.5)}
+.sect h3{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--amber);margin-bottom:7px}
+.kv{display:flex;gap:9px;align-items:baseline;font-size:13px;padding:2.5px 0;line-height:1.35}
+.kv b{flex:0 0 108px;font-family:var(--mono);font-size:11px;color:var(--amber2);font-weight:500}
+@media (max-width:430px){.kv b{flex:0 0 92px;font-size:10px}.kv{font-size:12px}}
+.note{font-size:12px;color:var(--mute);line-height:1.5}
+.err{color:var(--bad);font-size:12.5px;min-height:16px;text-align:center}
+input.code{font-family:var(--mono);font-size:19px;letter-spacing:.24em;text-transform:uppercase;
+  text-align:center;width:100%;padding:10px;border-radius:5px;color:var(--amber2);
+  border:1px solid rgba(240,180,90,.4);background:rgba(4,16,19,.85);outline:none}
+input.code:focus{border-color:var(--amber2);box-shadow:0 0 0 2px rgba(240,180,90,.18)}
+.codebig{font-family:var(--mono);font-size:clamp(22px,7vw,34px);letter-spacing:.2em;color:var(--amber2);
+  text-align:center;padding:9px;border:1px dashed rgba(240,180,90,.5);border-radius:6px;
+  background:rgba(4,16,19,.7);cursor:pointer;word-break:break-all}
+.codebig:hover{background:rgba(240,180,90,.1)}
+.mlist{display:flex;flex-direction:column;gap:6px;max-height:34vh;overflow:auto}
+.mrow{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:5px;cursor:pointer;
+  border:1px solid rgba(143,169,168,.2);background:rgba(6,23,27,.55);transition:all .12s ease}
+.mrow:hover{border-color:rgba(240,180,90,.6);background:rgba(23,69,76,.5)}
+.mrow .t{flex:1 1 auto;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{font-family:var(--mono);font-size:9.5px;padding:2px 6px;border-radius:9px;white-space:nowrap;
+  border:1px solid currentColor}
+.badge.you{color:#2a1a02;background:var(--amber);border-color:var(--amber)}
+.badge.them{color:var(--mute);}
+.badge.open{color:var(--ok)}
+.badge.fin{color:var(--mute2)}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(240,180,90,.25);
+  border-top-color:var(--amber2);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* start screen extras */
+#startArt{text-align:center;margin-bottom:2px}
+#startArt .big{font-size:clamp(38px,13vw,72px);letter-spacing:.3em;color:var(--amber2);
+  font-variant:small-caps;line-height:1;text-shadow:0 0 26px rgba(240,180,90,.28)}
+#startArt .tag{font-size:12.5px;color:var(--mute);font-style:italic;letter-spacing:.07em;margin-top:5px}
+.ctrlgroup{border-left:2px solid var(--amber);padding-left:11px}
+.ctrlgroup.sec{border-left-color:rgba(143,169,168,.4)}
+#greet{position:fixed;top:calc(6px + var(--sat));right:calc(9px + var(--sar));z-index:40;
+  font-size:11.5px;color:var(--mute);pointer-events:none;text-align:right;max-width:44vw;
+  text-shadow:0 1px 3px #000}
+
+/* handoff */
+#handoff .panel{max-width:460px;text-align:center}
+#hoCrew{font-size:clamp(26px,9vw,44px);letter-spacing:.14em;font-variant:small-caps;margin:6px 0}
+#hoEyes{font-size:44px;margin:8px 0;letter-spacing:.1em}
+
+/* reveal skip hint — lives inside the bottom stack so it can never overlap */
+#skiphint{text-align:center;font-size:11px;color:var(--amber2);pointer-events:none;display:none;
+  letter-spacing:.08em;padding:5px 8px 4px;background:linear-gradient(0deg,rgba(6,23,27,.8),transparent)}
+#skiphint.on{display:block}
+.ovl.solid{background:linear-gradient(180deg,#0a2229,#061419 60%,#040f13);backdrop-filter:none;
+  -webkit-backdrop-filter:none}
+
+/* result */
+.rescols{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:start}
+.rescol{padding:9px;border-radius:6px;border:1px solid rgba(143,169,168,.22);background:rgba(6,23,27,.5)}
+.rescol.win{border-color:rgba(240,180,90,.6);box-shadow:0 0 22px rgba(240,180,90,.14)}
+.rescrates{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.rescrates .c{font-family:var(--mono);font-size:11px;min-width:17px;height:19px;border-radius:2px;
+  display:flex;align-items:center;justify-content:center;border:1px solid currentColor;background:rgba(0,0,0,.28)}
+.restot{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1}
+#resverdict{text-align:center;font-size:clamp(22px,7vw,34px);letter-spacing:.16em;font-variant:small-caps}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + var(--sab));z-index:45;
+  background:rgba(6,23,27,.94);border:1px solid rgba(240,180,90,.5);color:var(--amber2);
+  padding:8px 14px;border-radius:6px;font-size:12.5px;opacity:0;transition:opacity .25s ease;
+  pointer-events:none;max-width:88vw;text-align:center}
+#toast.on{opacity:1}
+#ach{position:fixed;left:50%;transform:translateX(-50%);top:calc(52px + var(--sat));z-index:46;
+  background:linear-gradient(180deg,rgba(240,180,90,.96),rgba(184,124,48,.96));color:#231402;
+  padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;letter-spacing:.05em;
+  opacity:0;transition:opacity .3s ease,transform .3s ease;pointer-events:none;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);white-space:nowrap}
+#ach.on{opacity:1;transform:translateX(-50%) translateY(4px)}
+.scrollpad{padding-bottom:6px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="ui">
+  <div id="hud">
+    <div class="crewcard" id="cardA">
+      <div class="crewname" id="nameA"><span class="dot"></span><span></span></div>
+      <div class="crewrow"><span class="crewtot" id="totA">0</span><span class="crewsub dim" id="subA"></span></div>
+      <div class="bankstrip" id="bankA"></div>
+    </div>
+    <div id="tidebox"><div id="tidenum">1</div><div id="tidelbl">tide</div></div>
+    <div class="crewcard" id="cardB">
+      <div class="crewname" id="nameB"><span class="dot"></span><span></span></div>
+      <div class="crewrow"><span class="crewtot" id="totB">0</span><span class="crewsub dim" id="subB"></span></div>
+      <div class="bankstrip" id="bankB"></div>
+    </div>
+    <div id="hudbtns">
+      <button class="iconbtn" id="btnHelp" title="Controls (H)" aria-label="Controls">?</button>
+      <button class="iconbtn" id="btnMute" title="Mute (M)" aria-label="Mute">♪</button>
+    </div>
+  </div>
+
+  <div id="spacer"></div>
+  <div id="statusband"></div>
+
+  <div id="botstack">
+    <div id="skiphint" class="sc">tap the chart or press space to skip the reveal</div>
+    <div id="orderpanel">
+      <div class="oprow">
+        <div class="opseg">
+          <span class="oplbl">divers</span>
+          <div id="pips"></div>
+        </div>
+        <div class="opseg" id="breakseg">
+          <span class="oplbl">break</span>
+          <div id="breakbar"></div>
+        </div>
+        <div id="opright">
+          <button class="btn tiny ghost" id="btnClear">Clear</button>
+          <button class="btn prime" id="btnCommit">Seal orders ⏎</button>
+        </div>
+      </div>
+    </div>
+    <div id="hintstrip"></div>
+  </div>
+</div>
+
+<div id="greet"></div>
+<div id="toast"></div>
+<div id="ach"></div>
+
+<!-- ================= START / LOBBY ================= -->
+<div class="ovl" id="startScreen">
+  <div class="panel wide scrollpad">
+    <div id="startArt">
+      <div class="big">Lagan</div>
+      <div class="tag">cargo sunk on purpose, buoyed, and waiting for whoever dares claim it</div>
+    </div>
+    <div class="rule"></div>
+    <div class="note" style="text-align:center;margin-bottom:11px">
+      Two salvage crews work the same drowned fleet off a fog-bound coast. Each tide you seal
+      orders for four divers in secret; the buoys surface together. <b>Outnumber your rival at a wreck
+      and the top crate is yours. Match them and the lines foul</b> — nobody claims, and the crate is
+      worth one more next tide. Break open a crate from your own hold to buy extra divers: the value
+      is gone for good, but muscle wins wrecks.
+    </div>
+
+    <div id="pendingWrap" style="display:none;margin-bottom:11px">
+      <div class="sect" style="border-color:rgba(240,180,90,.6);background:rgba(240,180,90,.08)">
+        <h3>You were signalled aboard</h3>
+        <div class="note" style="margin-bottom:8px">A crew is waiting on code <b class="mono" id="pendCode"></b>.</div>
+        <button class="btn prime big" id="btnPendJoin" style="width:100%">Join that match</button>
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="sect">
+        <h3>Play a rival</h3>
+        <div class="col">
+          <button class="btn prime" id="btnCreate">Create match — get a code</button>
+          <button class="btn" id="btnJoinOpen">Join with a code</button>
+          <button class="btn ghost" id="btnMyMatches">My matches</button>
+        </div>
+        <div class="note tiny" id="onlineNote" style="margin-top:8px"></div>
+      </div>
+      <div class="sect">
+        <h3>Play here and now</h3>
+        <div class="col">
+          <button class="btn" id="btnAiMaster">Vs the sea-lawyer — <span class="sc">Master</span></button>
+          <button class="btn" id="btnAiMate">Vs the mate — <span class="sc">easier</span></button>
+          <button class="btn" id="btnHotseat">Hotseat — two crews, one screen</button>
+        </div>
+        <div class="note tiny" style="margin-top:8px">Hotseat passes the device between secret orders. No account needed.</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="sect">
+        <h3>Primary controls — all you need</h3>
+        <div class="ctrlgroup">
+          <div class="kv"><b>Click site / 1–6</b><span>Send one diver to that wreck</span></div>
+          <div class="kv"><b>Shift+click / ⇧1–6</b><span>Call one diver back (right-click works too)</span></div>
+          <div class="kv"><b>Click crate / B</b><span>Arm or disarm breaking a crate from your hold</span></div>
+          <div class="kv"><b>Enter / Seal</b><span>Seal and send your orders</span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <h3>Secondary</h3>
+        <div class="ctrlgroup sec">
+          <div class="kv"><b>P or Esc</b><span>Pause — shows these controls</span></div>
+          <div class="kv"><b>H or ?</b><span>Controls, any time</span></div>
+          <div class="kv"><b>M</b><span>Mute the sea</span></div>
+          <div class="kv"><b>Space / tap</b><span>Skip the reveal</span></div>
+          <div class="kv"><b>R</b><span>Rematch (local games)</span></div>
+          <div class="kv"><b>F</b><span>Forfeit (online, asks first)</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="note tiny" style="text-align:center;margin-top:10px">
+      Press <b>H</b> or <b>?</b> any time to see these controls again. Every mouse action has a key —
+      nothing needs two buttons at once.
+    </div>
+  </div>
+</div>
+
+<!-- ================= CREATE ================= -->
+<div class="ovl" id="createScreen">
+  <div class="panel">
+    <div class="ptitle">Buoy laid</div>
+    <div class="psub">send this code to your rival</div>
+    <div class="rule"></div>
+    <div id="createBody">
+      <div class="codebig" id="createCode" title="Tap to copy">--------</div>
+      <div class="note" style="text-align:center;margin-top:9px" id="createHint">
+        Tap the code to copy it. You can also copy a one-tap invite link from
+        <b>aimade.games/matches</b>. The match waits seven days.
+      </div>
+      <div class="rule"></div>
+      <div style="text-align:center"><span class="spin"></span> <span class="note">Waiting for a rival to make fast…</span></div>
+      <div class="rule"></div>
+      <div class="col">
+        <button class="btn ghost" id="btnCreateBack">Back to the chartroom</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= JOIN ================= -->
+<div class="ovl" id="joinScreen">
+  <div class="panel">
+    <div class="ptitle">Come alongside</div>
+    <div class="psub">eight characters, off the invite</div>
+    <div class="rule"></div>
+    <input class="code" id="joinInput" maxlength="8" autocomplete="off" autocapitalize="characters"
+      spellcheck="false" placeholder="XXXXXXXX" inputmode="latin" aria-label="Join code">
+    <div class="err" id="joinErr"></div>
+    <div class="col">
+      <button class="btn prime" id="btnJoinGo">Board her</button>
+      <button class="btn ghost" id="btnJoinBack">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MY MATCHES ================= -->
+<div class="ovl" id="listScreen">
+  <div class="panel">
+    <div class="ptitle">My matches</div>
+    <div class="psub">resume anything still afloat</div>
+    <div class="rule"></div>
+    <div class="mlist" id="mlist"></div>
+    <div class="err" id="listErr"></div>
+    <div class="rule"></div>
+    <div class="col">
+      <button class="btn ghost" id="btnListRefresh">Refresh</button>
+      <button class="btn ghost" id="btnListBack">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PAUSE / CONTROLS ================= -->
+<div class="ovl" id="ctrlScreen">
+  <div class="panel wide">
+    <div class="ptitle" id="ctrlTitle">Paused — Controls</div>
+    <div class="psub">the sea waits</div>
+    <div class="rule"></div>
+    <div class="grid2">
+      <div class="sect">
+        <h3>Primary</h3>
+        <div class="ctrlgroup">
+          <div class="kv"><b>Click site / 1–6</b><span>Send one diver to that wreck</span></div>
+          <div class="kv"><b>Shift+click / ⇧1–6</b><span>Call one diver back (right-click too)</span></div>
+          <div class="kv"><b>Click crate / B</b><span>Arm or disarm breaking a crate from your hold</span></div>
+          <div class="kv"><b>Enter / Seal</b><span>Seal and send your orders</span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <h3>Secondary</h3>
+        <div class="ctrlgroup sec">
+          <div class="kv"><b>P or Esc</b><span>Pause / close this panel</span></div>
+          <div class="kv"><b>H or ?</b><span>Open this panel any time</span></div>
+          <div class="kv"><b>M</b><span>Mute</span></div>
+          <div class="kv"><b>Space / tap</b><span>Skip the reveal</span></div>
+          <div class="kv"><b>R</b><span>Rematch / restart (local)</span></div>
+          <div class="kv"><b>F</b><span>Forfeit (online)</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="sect" style="margin-top:9px">
+      <h3>How a tide is settled</h3>
+      <div class="note">
+        Both crews commit in secret, then the buoys surface together. At each wreck the crew with
+        <b>strictly more divers</b> hauls the top crate into its hold. <b>Equal divers foul the lines</b> —
+        nobody claims and that crate gains <b>+1</b> value (up to 9). Empty wrecks are skipped.
+        Break one of your own banked crates to add its value in extra divers for a single tide;
+        the value itself is destroyed. Highest hold when the last crate leaves the water wins;
+        ties break on crates held, then on crates unbroken.
+      </div>
+    </div>
+    <div class="rule"></div>
+    <div class="col">
+      <button class="btn prime" id="btnResume">Back to the water</button>
+      <button class="btn ghost" id="btnQuit">Leave to the chartroom</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= HANDOFF (hotseat) ================= -->
+<div class="ovl solid" id="handoff">
+  <div class="panel">
+    <div class="psub" id="hoPre">pass the device</div>
+    <div id="hoCrew">CORMORANT</div>
+    <div id="hoEyes">👀</div>
+    <div class="note" id="hoNote">Everyone else, eyes off the chart.</div>
+    <div class="rule"></div>
+    <button class="btn prime big" id="btnHoGo" style="width:100%">I'm the only one looking</button>
+  </div>
+</div>
+
+<!-- ================= RESULT ================= -->
+<div class="ovl" id="resultScreen">
+  <div class="panel">
+    <div id="resverdict">—</div>
+    <div class="psub" id="ressub"></div>
+    <div class="rule"></div>
+    <div class="rescols">
+      <div class="rescol" id="resA">
+        <div class="crewname" id="resNameA"></div>
+        <div class="restot" id="resTotA">0</div>
+        <div class="rescrates" id="resCratesA"></div>
+        <div class="note tiny" id="resFootA" style="margin-top:6px"></div>
+      </div>
+      <div style="align-self:center;font-family:var(--mono);color:var(--mute);font-size:15px">vs</div>
+      <div class="rescol" id="resB">
+        <div class="crewname" id="resNameB"></div>
+        <div class="restot" id="resTotB">0</div>
+        <div class="rescrates" id="resCratesB"></div>
+        <div class="note tiny" id="resFootB" style="margin-top:6px"></div>
+      </div>
+    </div>
+    <div class="note tiny" id="resLost" style="text-align:center;margin-top:9px"></div>
+    <div class="rule"></div>
+    <div class="col">
+      <button class="btn prime" id="btnRematch">Rematch</button>
+      <button class="btn ghost" id="btnResHome">Chartroom</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= CONFIRM ================= -->
+<div class="ovl" id="confirmScreen">
+  <div class="panel" style="max-width:420px">
+    <div class="ptitle" id="cfTitle">Sure?</div>
+    <div class="note" id="cfBody" style="text-align:center;margin-top:8px"></div>
+    <div class="rule"></div>
+    <div class="col">
+      <button class="btn danger" id="cfYes">Yes</button>
+      <button class="btn ghost" id="cfNo">No</button>
+    </div>
+  </div>
+</div>
+
+<!-- aimade.games Arcade SDK -->
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+"use strict";
+/*==LAGAN_ENGINE_START==*/
+/* LAGAN rules engine + AI. Pure functions only: no DOM, no globals, node-runnable.
+   The headless balance harness slices this exact region out of the shipped HTML. */
+var LAGAN = (function () {
+  'use strict';
+
+  // ---------------------------------------------------------------- constants
+  var DIVERS = 4;                                   // permanent divers per crew
+  var MAX_TIDES = 20;                               // hard cap on rounds
+  var VALUE_CAP = 9;                                // escalation ceiling
+  var NSITES = 6;
+  // Tuned from self-play: the spec's [5,4,4,3,3,3,2,2,2,2,1,1,1]/33 pool ran 3.3%
+  // tide-capped and 2.7% drawn with the median match on the 6-tide floor. Fewer
+  // near-free 1s and one extra crate fixes all three. Total 37 (odd), one flagship.
+  var POOL = [5, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 2, 1, 1]; // 14 crates, total 37 (odd)
+  var SITE_COUNTS = [3, 3, 2, 2, 2, 2];             // 14 crates over 6 wrecks
+  var CREWS = [
+    { name: 'CORMORANT', short: 'CORM', ink: '#d0553f', lit: '#f08466', dark: '#4a1c14' },
+    { name: 'KITTIWAKE', short: 'KITT', ink: '#e3b04a', lit: '#f8da8c', dark: '#4a3812' }
+  ];
+  var SHIP_NAMES = [
+    'MARIGOLD', 'WIDOW SMEATON', 'FIVE SISTERS', 'BLACK BUOY', 'HALCYON', 'LADY GRANT',
+    'PENNANT', 'ARGOSY', 'SALTIRE', 'FOUNDLING', 'MERIDIAN', 'OLD GRUDGE', 'KESTREL',
+    'HOLYWELL', 'THISTLEDOWN', 'GANNET', 'ROSE OF LEITH', 'DUNLIN', 'WRACK MARY',
+    'ST ELMO', 'PROVIDENCE', 'LONG MARGARET', 'SEVEN BELLS', 'FIDDLER', 'TALLOW',
+    'COBBLE', 'WHELK', 'BRIG DOLOUR', 'MARY CHANCE', 'NORTH STAR'
+  ];
+
+  // -------------------------------------------------------------------- rng
+  function hashStr(s) {
+    var h = 2166136261 >>> 0, i;
+    s = String(s);
+    for (i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return h >>> 0;
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function makeRng(seed) { return mulberry32(hashStr(seed)); }
+  var SEEDCHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function newSeed(rnd) {
+    rnd = rnd || Math.random;
+    var s = '', i;
+    for (i = 0; i < 8; i++) s += SEEDCHARS[(rnd() * SEEDCHARS.length) | 0];
+    return s;
+  }
+  function shuffle(arr, rnd) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = (rnd() * (i + 1)) | 0, t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
+  // ------------------------------------------------------------------ chart
+  // Everything visual+structural derives from the seed, so both clients agree.
+  function makeChart(seed) {
+    var r = makeRng('lagan-chart:' + seed);
+    var pool = shuffle(POOL.slice(), r);
+    var counts = shuffle(SITE_COUNTS.slice(), r);
+    var names = shuffle(SHIP_NAMES.slice(), r).slice(0, NSITES);
+    var sites = [], k = 0, i, j;
+    for (i = 0; i < NSITES; i++) {
+      var st = [];
+      for (j = 0; j < counts[i]; j++) st.push(pool[k++]);
+      sites.push(st);
+    }
+    var jit = [], depth = [], wr = [];
+    for (i = 0; i < NSITES; i++) {
+      jit.push([r() * 2 - 1, r() * 2 - 1]);
+      depth.push(7 + ((r() * 26) | 0));
+      wr.push({ tilt: (r() * 2 - 1) * 0.36, flip: r() < 0.5 ? 1 : -1, len: 0.86 + r() * 0.3 });
+    }
+    var deco = [];
+    for (i = 0; i < 190; i++) deco.push([r(), r(), r(), r()]);
+    return { seed: seed, names: names, sites: sites, jit: jit, depth: depth, wreck: wr, deco: deco };
+  }
+
+  // ------------------------------------------------------------------ state
+  function initialState(seed) {
+    var ch = makeChart(seed);
+    return {
+      v: 1, s: seed, tide: 1, t: 0,
+      sites: ch.sites.map(function (a) { return a.slice(); }),
+      bank: [[], []], broken: [0, 0], log: []
+    };
+  }
+  function cloneState(st) {
+    return {
+      v: st.v, s: st.s, tide: st.tide, t: st.t,
+      sites: st.sites.map(function (a) { return a.slice(); }),
+      bank: [st.bank[0].slice(), st.bank[1].slice()],
+      broken: [st.broken[0], st.broken[1]],
+      log: st.log.map(function (a) { return [a[0].slice(), a[1].slice(), a[2], a[3]]; })
+    };
+  }
+  function liveSites(st) {
+    var out = [], i;
+    for (i = 0; i < NSITES; i++) if (st.sites[i].length) out.push(i);
+    return out;
+  }
+  function topVal(st, i) { return st.sites[i].length ? st.sites[i][0] : 0; }
+  function poolLeft(st) {
+    var s = 0, i, j;
+    for (i = 0; i < NSITES; i++) for (j = 0; j < st.sites[i].length; j++) s += st.sites[i][j];
+    return s;
+  }
+  function cratesLeft(st) {
+    var n = 0, i;
+    for (i = 0; i < NSITES; i++) n += st.sites[i].length;
+    return n;
+  }
+  function scoreOf(st, seat) {
+    var b = st.bank[seat], s = 0, i;
+    for (i = 0; i < b.length; i++) s += b[i];
+    return s;
+  }
+  function isOver(st) { return cratesLeft(st) === 0 || st.tide > MAX_TIDES; }
+  function overReason(st) {
+    if (cratesLeft(st) === 0) return 'swept';
+    if (st.tide > MAX_TIDES) return 'tidecap';
+    return null;
+  }
+  // Winner: value, then crates held, then fewer broken. null = honest draw.
+  function verdict(st) {
+    var sa = scoreOf(st, 0), sb = scoreOf(st, 1);
+    var res = { scores: [sa, sb], crates: [st.bank[0].length, st.bank[1].length], broken: st.broken.slice(), winner: null, by: 'draw' };
+    if (sa !== sb) { res.winner = sa > sb ? 0 : 1; res.by = 'value'; return res; }
+    if (st.bank[0].length !== st.bank[1].length) { res.winner = st.bank[0].length > st.bank[1].length ? 0 : 1; res.by = 'crates'; return res; }
+    if (st.broken[0] !== st.broken[1]) { res.winner = st.broken[0] < st.broken[1] ? 0 : 1; res.by = 'broken'; return res; }
+    return res;
+  }
+
+  // ------------------------------------------------------------------ orders
+  // Deterministic clamp of any raw order into a legal one. Both clients run this
+  // on both revealed orders, so a malformed/hostile payload still resolves alike.
+  function sanitizeOrder(st, seat, raw) {
+    raw = raw || {};
+    var bank = st.bank[seat] || [];
+    var bi = raw.bi;
+    if (typeof bi !== 'number' || !isFinite(bi)) bi = null;
+    else { bi = Math.floor(bi); if (bi < 0 || bi >= bank.length) bi = null; }
+    var bv = bi == null ? 0 : bank[bi];
+    var D = DIVERS + bv;
+    var src = (raw.a && raw.a.length === NSITES) ? raw.a : null;
+    var a = [0, 0, 0, 0, 0, 0], live = [], i, sum = 0;
+    for (i = 0; i < NSITES; i++) {
+      if (st.sites[i].length) {
+        live.push(i);
+        var x = src ? Math.floor(src[i]) : 0;
+        if (!isFinite(x) || x < 0) x = 0;
+        if (x > D) x = D;
+        a[i] = x; sum += x;
+      }
+    }
+    while (sum > D) {                              // trim the fattest pile first
+      var bI = -1, bV = 0;
+      for (i = 0; i < live.length; i++) if (a[live[i]] > bV) { bV = a[live[i]]; bI = live[i]; }
+      if (bI < 0) break;
+      a[bI]--; sum--;
+    }
+    if (sum < D && live.length) { a[live[0]] += (D - sum); sum = D; }
+    return { a: a, bi: bi, bv: bv };
+  }
+
+  // -------------------------------------------------------------- resolution
+  // Pure: (state, two raw orders) -> next state + a reveal script. No randomness.
+  function resolve(st, rawA, rawB) {
+    var oA = sanitizeOrder(st, 0, rawA), oB = sanitizeOrder(st, 1, rawB);
+    var ns = cloneState(st);
+    var ev = { tide: st.tide, breaks: [null, null], sites: [], claims: [[], []], nclaims: 0, seed: st.s };
+    if (oA.bi != null) { ev.breaks[0] = { value: oA.bv }; ns.bank[0].splice(oA.bi, 1); ns.broken[0]++; }
+    if (oB.bi != null) { ev.breaks[1] = { value: oB.bv }; ns.bank[1].splice(oB.bi, 1); ns.broken[1]++; }
+    for (var i = 0; i < NSITES; i++) {
+      var stack = ns.sites[i];
+      if (!stack.length) { ev.sites.push({ i: i, a: 0, b: 0, out: 'dead', v: 0 }); continue; }
+      var a = oA.a[i], b = oB.a[i], v = stack[0];
+      if (a > b) {
+        stack.shift(); ns.bank[0].push(v);
+        ev.sites.push({ i: i, a: a, b: b, out: 'a', v: v, next: stack.length ? stack[0] : null });
+        ev.claims[0].push({ i: i, v: v }); ev.nclaims++;
+      } else if (b > a) {
+        stack.shift(); ns.bank[1].push(v);
+        ev.sites.push({ i: i, a: a, b: b, out: 'b', v: v, next: stack.length ? stack[0] : null });
+        ev.claims[1].push({ i: i, v: v }); ev.nclaims++;
+      } else if (a > 0) {
+        var nv = Math.min(VALUE_CAP, v + 1); stack[0] = nv;
+        ev.sites.push({ i: i, a: a, b: b, out: 'foul', v: v, nv: nv, capped: nv === v });
+      } else {
+        ev.sites.push({ i: i, a: 0, b: 0, out: 'none', v: v });
+      }
+    }
+    ns.log.push([oA.a.slice(), oB.a.slice(), oA.bv, oB.bv]);
+    if (ns.log.length > 24) ns.log.shift();
+    ns.tide = st.tide + 1;
+    return { state: ns, ev: ev, orders: [oA, oB] };
+  }
+
+  // ===================================================================== AI ==
+  // Decides from PUBLIC state + revealed history only. It is never handed the
+  // human's pending order; aiOrder's signature has nowhere to put one.
+
+  function winProb(margin, pool) {
+    if (pool <= 0) return margin > 0 ? 1 : (margin < 0 ? 0 : 0.5);
+    var s = Math.max(1.1, 0.42 * Math.pow(pool, 0.72));
+    var z = margin / s;
+    if (z > 18) return 1; if (z < -18) return 0;
+    return 1 / (1 + Math.exp(-z));
+  }
+
+  // All ways to split D divers across `live` sites.
+  function compositions(D, live) {
+    var out = [], k = live.length, cur = new Array(NSITES);
+    function rec(idx, left) {
+      if (idx === k - 1) {
+        var a = [0, 0, 0, 0, 0, 0], i;
+        for (i = 0; i < k - 1; i++) a[live[i]] = cur[i];
+        a[live[k - 1]] = left;
+        out.push(a); return;
+      }
+      for (var n = left; n >= 0; n--) { cur[idx] = n; rec(idx + 1, left - n); }
+    }
+    if (k === 0) return out;
+    if (k === 1) { var a0 = [0, 0, 0, 0, 0, 0]; a0[live[0]] = D; return [a0]; }
+    rec(0, D);
+    return out;
+  }
+
+  // Opponent model from revealed history: where they like to dig, how often they
+  // spike everything onto one wreck, how often they smash a crate.
+  function buildModel(st, seat) {
+    var w = [1, 1, 1, 1, 1, 1], tot = NSITES, spikes = 0, breaks = 0, n = 0, i, k;
+    for (k = 0; k < st.log.length; k++) {
+      var rec = st.log[k], a = seat ? rec[1] : rec[0], bv = seat ? rec[3] : rec[2];
+      var s = 0, mx = 0;
+      for (i = 0; i < NSITES; i++) { w[i] += a[i]; tot += a[i]; s += a[i]; if (a[i] > mx) mx = a[i]; }
+      if (s > 0 && mx / s >= 0.7) spikes++;
+      if (bv > 0) breaks++;
+      n++;
+    }
+    return {
+      w: w, tot: tot, n: n,
+      spikeRate: (spikes + 0.7) / (n + 2.6),
+      breakRate: (breaks + 0.35) / (n + 2.6)
+    };
+  }
+
+  function weightedPick(items, wts, rnd) {
+    var s = 0, i;
+    for (i = 0; i < wts.length; i++) s += wts[i];
+    var r = rnd() * s;
+    for (i = 0; i < wts.length; i++) { r -= wts[i]; if (r <= 0) return items[i]; }
+    return items[items.length - 1];
+  }
+
+  function breakOptions(st, seat, allow) {
+    var opts = [{ bi: null, bv: 0 }];
+    if (!allow) return opts;
+    var bank = st.bank[seat], seen = {}, i;
+    for (i = 0; i < bank.length; i++) {
+      if (seen[bank[i]]) continue;
+      seen[bank[i]] = 1;
+      opts.push({ bi: i, bv: bank[i] });
+    }
+    return opts;
+  }
+
+  function sampleOrder(st, seat, model, rnd) {
+    var live = liveSites(st);
+    var bank = st.bank[seat], bv = 0, bi = null, i;
+    if (bank.length && rnd() < model.breakRate) {
+      var idx = 0;
+      for (i = 1; i < bank.length; i++) if (bank[i] < bank[idx]) idx = i;
+      if (rnd() < 0.32) idx = (rnd() * bank.length) | 0;
+      bi = idx; bv = bank[idx];
+    }
+    var D = DIVERS + bv, a = [0, 0, 0, 0, 0, 0];
+    var mx = 1;
+    for (i = 0; i < live.length; i++) mx = Math.max(mx, topVal(st, live[i]));
+    var wts = [];
+    for (i = 0; i < live.length; i++) {
+      var si = live[i];
+      wts.push(((model.w[si] / model.tot) * 1.6 + 0.05) * (0.3 + 0.7 * (topVal(st, si) / mx)));
+    }
+    if (rnd() < model.spikeRate) {
+      a[weightedPick(live, wts, rnd)] = D;
+    } else {
+      for (var d = 0; d < D; d++) a[weightedPick(live, wts, rnd)]++;
+    }
+    return { a: a, bv: bv, bi: bi, w: 1 };
+  }
+
+  // Expected win-probability of `cand` against a weighted pool of enemy orders.
+  function evalCand(st, cand, pool, poolVal, margin, tie) {
+    var acc = 0, wsum = 0, j, s;
+    for (j = 0; j < pool.length; j++) {
+      var o = pool[j], w = o.w || 1;
+      var d = o.bv - cand.bv, claimed = 0, escal = 0;
+      for (s = 0; s < NSITES; s++) {
+        var stk = st.sites[s];
+        if (!stk.length) continue;
+        var v = stk[0], x = cand.a[s], y = o.a[s];
+        if (x > y) { d += v; claimed += v; }
+        else if (y > x) { d -= v; claimed += v; }
+        else if (x > 0 && v < VALUE_CAP) escal++;
+      }
+      acc += w * winProb(margin + d, poolVal - claimed + escal);
+      wsum += w;
+    }
+    return acc / wsum + tie * 1e-6;
+  }
+
+  function candidateSet(st, seat, allowBreak) {
+    var live = liveSites(st);
+    var opts = breakOptions(st, seat, allowBreak), out = [], i, j;
+    for (i = 0; i < opts.length; i++) {
+      var comps = compositions(DIVERS + opts[i].bv, live);
+      for (j = 0; j < comps.length; j++) out.push({ a: comps[j], bv: opts[i].bv, bi: opts[i].bi });
+    }
+    return out;
+  }
+
+  function tieScore(st, a) {
+    var t = 0;
+    for (var i = 0; i < NSITES; i++) if (a[i]) t += a[i] * topVal(st, i);
+    return t;
+  }
+
+  var AI_LEVELS = {
+    mate:   { pre: 10, full: 40, keep: 26, br: false, temp: 0.055, slip: 0.14, allowBreak: true },
+    master: { pre: 14, full: 76, keep: 52, br: true,  temp: 0.0105, slip: 0,   allowBreak: true }
+  };
+
+  function aiOrder(st, seat, opts) {
+    opts = opts || {};
+    var cfg = AI_LEVELS[opts.level] || AI_LEVELS.master;
+    var rnd = opts.rnd || Math.random;
+    var allowBreak = cfg.allowBreak && opts.allowBreak !== false;
+    var live = liveSites(st);
+    if (!live.length) return { a: [0, 0, 0, 0, 0, 0], bi: null };
+    if (st.tide <= 1) allowBreak = false;
+
+    var opp = 1 - seat;
+    var model = buildModel(st, opp);
+    var margin = scoreOf(st, seat) - scoreOf(st, opp);
+    var pv = poolLeft(st);
+
+    // lazy fallback for the easier level: sometimes just dig where the gold is
+    if (cfg.slip > 0 && rnd() < cfg.slip) return botGreedy(st, seat, rnd);
+
+    // 1. enemy pool sampled from their revealed habits
+    var pool = [], i;
+    for (i = 0; i < cfg.full; i++) pool.push(sampleOrder(st, opp, model, rnd));
+    var pre = pool.slice(0, cfg.pre);
+
+    // 2. prescreen my candidates cheaply, keep the promising ones
+    var cands = candidateSet(st, seat, allowBreak), scored = [], j;
+    for (j = 0; j < cands.length; j++) {
+      var c = cands[j];
+      c.tie = tieScore(st, c.a);
+      scored.push({ c: c, v: evalCand(st, c, pre, pv, margin, c.tie) });
+    }
+    scored.sort(function (x, y) { return y.v - x.v; });
+    var keep = scored.slice(0, cfg.keep);
+
+    // 3. let the enemy best-respond to my shortlist, then blend that into the pool
+    if (cfg.br && keep.length) {
+      var mine = [], mw = Math.max(1, keep.length >= 8 ? 8 : keep.length);
+      for (i = 0; i < mw; i++) mine.push({ a: keep[i].c.a, bv: keep[i].c.bv, w: 1 });
+      var oppCands = candidateSet(st, opp, st.bank[opp].length > 0 && st.tide > 1);
+      var oppScored = [];
+      for (j = 0; j < oppCands.length; j++) {
+        var oc = oppCands[j];
+        oppScored.push({ c: oc, v: evalCand(st, oc, mine, pv, -margin, tieScore(st, oc.a)) });
+      }
+      oppScored.sort(function (x, y) { return y.v - x.v; });
+      var nbr = Math.min(10, oppScored.length);
+      var brW = pool.length / Math.max(1, nbr);     // 50/50 blend of habit vs. best play
+      for (i = 0; i < nbr; i++) {
+        pool.push({ a: oppScored[i].c.a, bv: oppScored[i].c.bv, bi: oppScored[i].c.bi, w: brW });
+      }
+    }
+
+    // 4. full evaluation of the shortlist against the blended pool
+    for (j = 0; j < keep.length; j++) keep[j].v = evalCand(st, keep[j].c, pool, pv, margin, keep[j].c.tie);
+    keep.sort(function (x, y) { return y.v - x.v; });
+
+    // 5. mix: softmax over near-best so patterns cannot be farmed
+    var best = keep[0].v, T = cfg.temp, tot = 0, ws = [];
+    var n = Math.min(keep.length, 22);
+    for (i = 0; i < n; i++) { var e = Math.exp((keep[i].v - best) / T); ws.push(e); tot += e; }
+    var r = rnd() * tot, pick = 0;
+    for (i = 0; i < n; i++) { r -= ws[i]; if (r <= 0) { pick = i; break; } }
+    var ch = keep[pick].c;
+    return { a: ch.a.slice(), bi: ch.bi };
+  }
+
+  // ------------------------------------------------------- archetype bots ---
+  function botRandom(st, seat, rnd) {
+    rnd = rnd || Math.random;
+    var live = liveSites(st), bank = st.bank[seat], bi = null, bv = 0;
+    if (bank.length && st.tide > 1 && rnd() < 0.15) { bi = (rnd() * bank.length) | 0; bv = bank[bi]; }
+    var a = [0, 0, 0, 0, 0, 0];
+    for (var d = 0; d < DIVERS + bv; d++) a[live[(rnd() * live.length) | 0]]++;
+    return { a: a, bi: bi };
+  }
+  function botGreedy(st, seat, rnd) {
+    var live = liveSites(st), a = [0, 0, 0, 0, 0, 0], d, i;
+    for (d = 0; d < DIVERS; d++) {
+      var bI = live[0], bV = -1;
+      for (i = 0; i < live.length; i++) {
+        var s = live[i], sc = topVal(st, s) / (a[s] + 1);
+        if (sc > bV + 1e-9) { bV = sc; bI = s; }
+      }
+      a[bI]++;
+    }
+    return { a: a, bi: null };
+  }
+  function botSpike(st, seat, rnd) {
+    rnd = rnd || Math.random;
+    var live = liveSites(st), best = [], bV = -1, i;
+    for (i = 0; i < live.length; i++) {
+      var v = topVal(st, live[i]);
+      if (v > bV) { bV = v; best = [live[i]]; } else if (v === bV) best.push(live[i]);
+    }
+    var a = [0, 0, 0, 0, 0, 0];
+    a[best[(rnd() * best.length) | 0]] = DIVERS;
+    return { a: a, bi: null };
+  }
+  function botNoBreak(st, seat, rnd) {
+    return aiOrder(st, seat, { level: 'master', rnd: rnd, allowBreak: false });
+  }
+  function botMaster(st, seat, rnd) { return aiOrder(st, seat, { level: 'master', rnd: rnd }); }
+  function botMate(st, seat, rnd) { return aiOrder(st, seat, { level: 'mate', rnd: rnd }); }
+
+  // Headless match driver used by the balance harness. Each seat gets its OWN
+  // random stream — sharing one lets the first caller's draws bias the second.
+  function playMatch(botA, botB, seed, rndA, rndB) {
+    rndA = rndA || makeRng('seat0:' + seed);
+    rndB = rndB || makeRng('seat1:' + seed);
+    var st = initialState(seed), tides = 0;
+    while (!isOver(st)) {
+      var oa = botA(st, 0, rndA), ob = botB(st, 1, rndB);
+      var r = resolve(st, oa, ob);
+      st = r.state; tides++;
+      if (tides > MAX_TIDES + 2) break;
+    }
+    return { state: st, tides: tides, verdict: verdict(st), reason: overReason(st) };
+  }
+
+  return {
+    DIVERS: DIVERS, MAX_TIDES: MAX_TIDES, VALUE_CAP: VALUE_CAP, NSITES: NSITES,
+    POOL: POOL, CREWS: CREWS,
+    hashStr: hashStr, mulberry32: mulberry32, makeRng: makeRng, newSeed: newSeed, shuffle: shuffle,
+    makeChart: makeChart, initialState: initialState, cloneState: cloneState,
+    liveSites: liveSites, topVal: topVal, poolLeft: poolLeft, cratesLeft: cratesLeft,
+    scoreOf: scoreOf, isOver: isOver, overReason: overReason, verdict: verdict,
+    sanitizeOrder: sanitizeOrder, resolve: resolve,
+    winProb: winProb, buildModel: buildModel, aiOrder: aiOrder, compositions: compositions,
+    bots: { random: botRandom, greedy: botGreedy, spike: botSpike, nobreak: botNoBreak, master: botMaster, mate: botMate },
+    playMatch: playMatch
+  };
+})();
+/*==LAGAN_ENGINE_END==*/
+
+/* ======================================================================== *
+ *  LAGAN — presentation layer: audio, particles, chart renderer.
+ * ======================================================================== */
+var $ = function (id) { return document.getElementById(id); };
+var CV = $('cv'), CTX = CV.getContext('2d', { alpha: false });
+var W = 1, H = 1, DPR = 1, NOW = 0;
+var TAU = Math.PI * 2;
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function ease(t) { return t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t); }
+function easeOut(t) { return 1 - Math.pow(1 - clamp(t, 0, 1), 3); }
+function easeIn(t) { return Math.pow(clamp(t, 0, 1), 2.4); }
+function span(t, a, b) { return clamp((t - a) / (b - a), 0, 1); }
+
+/* ------------------------------------------------------------------ audio */
+var AUD = { ctx: null, master: null, muted: false, noise: null };
+function audioBoot() {
+  if (AUD.ctx) return AUD.ctx;
+  try {
+    var C = window.AudioContext || window.webkitAudioContext;
+    if (!C) return null;
+    AUD.ctx = new C();
+    AUD.master = AUD.ctx.createGain();
+    AUD.master.gain.value = AUD.muted ? 0 : 0.55;
+    AUD.master.connect(AUD.ctx.destination);
+    var n = AUD.ctx.sampleRate * 1.2 | 0, buf = AUD.ctx.createBuffer(1, n, AUD.ctx.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    AUD.noise = buf;
+  } catch (e) { AUD.ctx = null; }
+  return AUD.ctx;
+}
+function audioResume() {
+  var c = audioBoot();
+  if (c && c.state === 'suspended') { try { c.resume(); } catch (e) { } }
+}
+function setMute(m) {
+  AUD.muted = m;
+  if (AUD.master) try { AUD.master.gain.value = m ? 0 : 0.55; } catch (e) { }
+  var b = $('btnMute'); if (b) { b.textContent = m ? '✕' : '♪'; b.title = m ? 'Unmute (M)' : 'Mute (M)'; }
+}
+function osc(o) {
+  var c = AUD.ctx; if (!c || AUD.muted) return;
+  var t = c.currentTime + (o.at || 0);
+  var g = c.createGain(), n = c.createOscillator();
+  n.type = o.type || 'sine';
+  n.frequency.setValueAtTime(o.f, t);
+  if (o.f2 != null) {
+    if (o.exp !== false && o.f > 0 && o.f2 > 0) n.frequency.exponentialRampToValueAtTime(o.f2, t + o.dur);
+    else n.frequency.linearRampToValueAtTime(o.f2, t + o.dur);
+  }
+  if (o.det) n.detune.setValueAtTime(o.det, t);
+  var peak = (o.gain == null ? 0.2 : o.gain), at = o.attack == null ? 0.006 : o.attack;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(peak, t + at);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + o.dur);
+  var last = n;
+  if (o.filter) {
+    var f = c.createBiquadFilter(); f.type = o.filter; f.frequency.setValueAtTime(o.fc || 800, t);
+    if (o.fc2) f.frequency.exponentialRampToValueAtTime(o.fc2, t + o.dur);
+    f.Q.value = o.q || 1; last.connect(f); last = f;
+  }
+  last.connect(g); g.connect(AUD.master);
+  n.start(t); n.stop(t + o.dur + 0.03);
+}
+function noiz(o) {
+  var c = AUD.ctx; if (!c || AUD.muted || !AUD.noise) return;
+  var t = c.currentTime + (o.at || 0);
+  var s = c.createBufferSource(); s.buffer = AUD.noise; s.loop = true;
+  s.playbackRate.value = o.rate || 1;
+  var f = c.createBiquadFilter(); f.type = o.filter || 'bandpass';
+  f.frequency.setValueAtTime(o.fc || 900, t);
+  if (o.fc2) f.frequency.exponentialRampToValueAtTime(o.fc2, t + o.dur);
+  f.Q.value = o.q || 0.9;
+  var g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(o.gain == null ? 0.16 : o.gain, t + (o.attack || 0.008));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + o.dur);
+  s.connect(f); f.connect(g); g.connect(AUD.master);
+  s.start(t); s.stop(t + o.dur + 0.03);
+}
+var SFX = {
+  plop: function (k) {
+    osc({ type: 'sine', f: 420 + (k || 0) * 26, f2: 165, dur: 0.13, gain: 0.16 });
+    noiz({ filter: 'bandpass', fc: 1500, fc2: 500, dur: 0.1, gain: 0.05, q: 1.4 });
+  },
+  lift: function () { osc({ type: 'triangle', f: 210, f2: 400, dur: 0.1, gain: 0.11 }); },
+  nope: function () { osc({ type: 'square', f: 150, f2: 96, dur: 0.13, gain: 0.07 }); },
+  ui: function () { osc({ type: 'triangle', f: 640, f2: 880, dur: 0.07, gain: 0.07 }); },
+  seal: function () {
+    noiz({ filter: 'lowpass', fc: 520, fc2: 160, dur: 0.24, gain: 0.3, q: 0.6 });
+    osc({ type: 'square', f: 108, f2: 62, dur: 0.2, gain: 0.14, at: 0.01 });
+    osc({ type: 'sine', f: 300, f2: 150, dur: 0.16, gain: 0.08, at: 0.02 });
+  },
+  foghorn: function () {
+    osc({ type: 'sawtooth', f: 91, dur: 1.15, gain: 0.13, attack: 0.16, filter: 'lowpass', fc: 430, q: 2 });
+    osc({ type: 'sawtooth', f: 137, dur: 1.05, gain: 0.075, attack: 0.2, filter: 'lowpass', fc: 500, q: 2, at: 0.03 });
+    osc({ type: 'sine', f: 45, dur: 1.2, gain: 0.09, attack: 0.2 });
+  },
+  buoy: function (k) {
+    osc({ type: 'triangle', f: 700 + (k || 0) * 34, f2: 290, dur: 0.15, gain: 0.13, at: (k || 0) * 0.045 });
+    noiz({ filter: 'highpass', fc: 1200, dur: 0.2, gain: 0.05, at: (k || 0) * 0.045 });
+  },
+  creak: function () {
+    osc({ type: 'sawtooth', f: 118, f2: 96, dur: 0.5, gain: 0.075, filter: 'bandpass', fc: 380, q: 7 });
+    osc({ type: 'sawtooth', f: 173, f2: 205, dur: 0.42, gain: 0.05, filter: 'bandpass', fc: 620, q: 9, at: 0.09 });
+  },
+  tug: function () {
+    osc({ type: 'sawtooth', f: 92, f2: 128, dur: 0.7, gain: 0.085, filter: 'bandpass', fc: 300, fc2: 560, q: 6 });
+    noiz({ filter: 'bandpass', fc: 420, fc2: 900, dur: 0.6, gain: 0.05, q: 3 });
+  },
+  winch: function (at) {
+    osc({ type: 'sawtooth', f: 128, f2: 340, dur: 0.5, gain: 0.1, at: at || 0, filter: 'bandpass', fc: 500, fc2: 1300, q: 4 });
+    osc({ type: 'square', f: 64, f2: 168, dur: 0.5, gain: 0.05, at: at || 0 });
+  },
+  splash: function (at) {
+    noiz({ filter: 'highpass', fc: 700, fc2: 2600, dur: 0.42, gain: 0.19, at: at || 0, q: 0.5 });
+    noiz({ filter: 'lowpass', fc: 900, dur: 0.24, gain: 0.1, at: (at || 0) + 0.02 });
+  },
+  clang: function (at) {
+    osc({ type: 'square', f: 738, f2: 690, dur: 0.5, gain: 0.09, at: at || 0, filter: 'bandpass', fc: 1500, q: 3 });
+    osc({ type: 'square', f: 1093, f2: 1010, dur: 0.42, gain: 0.06, at: (at || 0) + 0.008, filter: 'bandpass', fc: 2300, q: 4 });
+    noiz({ filter: 'bandpass', fc: 2600, dur: 0.3, gain: 0.05, at: at || 0, q: 2 });
+  },
+  glint: function (at) {
+    var f = [1480, 1970, 2640];
+    for (var i = 0; i < 3; i++) osc({ type: 'triangle', f: f[i], dur: 0.14, gain: 0.045, at: (at || 0) + i * 0.055 });
+  },
+  crunch: function (at) {
+    noiz({ filter: 'lowpass', fc: 1500, fc2: 240, dur: 0.3, gain: 0.24, at: at || 0, q: 0.7 });
+    osc({ type: 'square', f: 88, f2: 44, dur: 0.26, gain: 0.11, at: at || 0 });
+    osc({ type: 'sawtooth', f: 330, f2: 120, dur: 0.16, gain: 0.06, at: (at || 0) + 0.02 });
+  },
+  win: function () {
+    var f = [392, 523.3, 659.3, 784, 1046.5];
+    for (var i = 0; i < 5; i++) {
+      osc({ type: 'triangle', f: f[i], dur: 0.42, gain: 0.11, at: i * 0.13 });
+      osc({ type: 'sine', f: f[i] / 2, dur: 0.5, gain: 0.06, at: i * 0.13 });
+    }
+  },
+  lose: function () {
+    var f = [311, 261.6, 196, 155.6];
+    for (var i = 0; i < 4; i++) osc({ type: 'sine', f: f[i], dur: 0.85, gain: 0.1, at: i * 0.26, attack: 0.05 });
+    osc({ type: 'sawtooth', f: 78, dur: 1.9, gain: 0.06, attack: 0.4, filter: 'lowpass', fc: 300 });
+  },
+  draw: function () {
+    osc({ type: 'triangle', f: 392, dur: 0.5, gain: 0.09 });
+    osc({ type: 'triangle', f: 392, dur: 0.7, gain: 0.08, at: 0.35 });
+  },
+  ach: function () {
+    var f = [659.3, 880, 1174.7];
+    for (var i = 0; i < 3; i++) osc({ type: 'triangle', f: f[i], dur: 0.3, gain: 0.09, at: i * 0.075 });
+  }
+};
+
+/* -------------------------------------------------------------- particles */
+var PMAX = 340, PS = [], PN = 0;
+(function () { for (var i = 0; i < PMAX; i++) PS.push({ live: false }); })();
+function pspawn(kind, x, y, o) {
+  for (var i = 0; i < PMAX; i++) {
+    var k = (PN + i) % PMAX, p = PS[k];
+    if (p.live) continue;
+    PN = (k + 1) % PMAX;
+    p.live = true; p.kind = kind; p.x = x; p.y = y; p.t = 0;
+    o = o || {};
+    p.vx = o.vx || 0; p.vy = o.vy || 0; p.g = o.g == null ? 0 : o.g;
+    p.life = o.life || 0.8; p.r = o.r || 3; p.r2 = o.r2 || 26;
+    p.col = o.col || '#dbe8e5'; p.a = o.a == null ? 1 : o.a; p.rot = o.rot || 0;
+    return p;
+  }
+  return null;
+}
+function pupdate(dt) {
+  for (var i = 0; i < PMAX; i++) {
+    var p = PS[i]; if (!p.live) continue;
+    p.t += dt;
+    if (p.t >= p.life) { p.live = false; continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt;
+    if (p.kind === 'spray' || p.kind === 'bubble') p.vx *= (1 - 1.4 * dt);
+  }
+}
+function pdraw(c) {
+  for (var i = 0; i < PMAX; i++) {
+    var p = PS[i]; if (!p.live) continue;
+    var u = p.t / p.life, al = (1 - u) * p.a;
+    c.globalAlpha = al;
+    if (p.kind === 'ripple') {
+      c.strokeStyle = p.col; c.lineWidth = Math.max(0.6, 2.1 * (1 - u));
+      c.beginPath(); c.ellipse(p.x, p.y, lerp(p.r, p.r2, easeOut(u)), lerp(p.r, p.r2, easeOut(u)) * 0.42, 0, 0, TAU); c.stroke();
+    } else if (p.kind === 'spray') {
+      c.fillStyle = p.col; c.beginPath(); c.arc(p.x, p.y, p.r * (1 - u * 0.5), 0, TAU); c.fill();
+    } else if (p.kind === 'bubble') {
+      c.strokeStyle = p.col; c.lineWidth = 1;
+      c.beginPath(); c.arc(p.x, p.y, p.r * (0.5 + u * 0.7), 0, TAU); c.stroke();
+    } else if (p.kind === 'glint') {
+      c.strokeStyle = p.col; c.lineWidth = 1.4;
+      var s = p.r * (1 - u) * 2.2;
+      c.beginPath();
+      c.moveTo(p.x - s, p.y); c.lineTo(p.x + s, p.y);
+      c.moveTo(p.x, p.y - s); c.lineTo(p.x, p.y + s);
+      c.stroke();
+    } else if (p.kind === 'chip') {
+      c.save(); c.translate(p.x, p.y); c.rotate(p.rot + p.t * 7);
+      c.fillStyle = p.col; c.fillRect(-p.r, -p.r * 0.7, p.r * 2, p.r * 1.4); c.restore();
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+/* ----------------------------------------------------------------- layout */
+var LAY = {
+  rect: { x: 0, y: 0, w: 1, h: 1 }, sites: [], R: 20, portrait: false, coastH: 40,
+  coast: [], compass: { x: 0, y: 0, r: 30 }, cart: null, iso: [], ready: false
+};
+// A shallow bay (landscape) and a meandering channel (portrait). Both are
+// normalised into whatever chart area survives the HUD and the bottom stack.
+var ARC_L = [[0.111, 0.41], [0.226, 0.63], [0.401, 0.75], [0.599, 0.75], [0.774, 0.63], [0.889, 0.41]];
+var ARC_P = [[0.19, 0.05], [0.75, 0.20], [0.16, 0.42], [0.73, 0.57], [0.28, 0.79], [0.80, 0.95]];
+
+function siteMetrics(R) {
+  var ch = Math.max(11, R * 0.42);
+  // halfW must clear the widest thing hung off a site: the diver cluster,
+  // not the crate stack. labelH clears the two label lines plus the status pill.
+  return { crateH: ch, stackH: 3 * (ch + 2) + R * 0.24, labelH: R * 0.62 + 34 + 40, halfW: R * 1.62 };
+}
+function stackBaseY(site) { return site.y - site.r * 0.17; }
+function crateBox(R) { return { w: R * 1.22, h: Math.max(11, R * 0.42) }; }
+function stackTopY(site, n) { return stackBaseY(site) - n * (crateBox(site.r).h + 2); }
+function crateXY(site, idxFromTop, n) {
+  var cb = crateBox(site.r);
+  return { x: site.x, y: stackTopY(site, n) + idxFromTop * (cb.h + 2) + cb.h / 2, w: cb.w, h: cb.h };
+}
+
+function layout() {
+  var hud = $('hud'), bs = $('botstack');
+  var top = (hud && hud.classList.contains('on')) ? hud.offsetHeight : 8;
+  var bot = bs ? bs.offsetHeight : 0;
+  var pad = 8, i, j, k;
+  var r = LAY.rect;
+  r.x = pad; r.y = top + pad;
+  r.w = Math.max(160, W - pad * 2);
+  r.h = Math.max(180, H - top - bot - pad * 2);
+  LAY.portrait = (r.h / r.w) > 1.06;
+  var P = LAY.portrait ? ARC_P : ARC_L;
+  var nx0 = 1, nx1 = 0, ny0 = 1, ny1 = 0;
+  for (i = 0; i < 6; i++) {
+    nx0 = Math.min(nx0, P[i][0]); nx1 = Math.max(nx1, P[i][0]);
+    ny0 = Math.min(ny0, P[i][1]); ny1 = Math.max(ny1, P[i][1]);
+  }
+  LAY.coastH = r.h * (LAY.portrait ? 0.062 : 0.10);
+  var ch = APP.chart;
+  var R = clamp(Math.min(r.w / 8.2, r.h / 8.2), 13, 78), pts = [], m = siteMetrics(R);
+  for (k = 0; k < 4; k++) {
+    m = siteMetrics(R);
+    var usableW = Math.max(50, r.w - 2 * m.halfW);
+    var usableH = Math.max(50, r.h - m.stackH - m.labelH - LAY.coastH);
+    var fill = LAY.portrait ? 0.97 : 0.68;
+    var offY = r.y + LAY.coastH + m.stackH + usableH * (1 - fill) * 0.5;
+    pts = [];
+    for (i = 0; i < 6; i++) {
+      var jx = ch ? ch.jit[i][0] : 0, jy = ch ? ch.jit[i][1] : 0;
+      var u = (P[i][0] - nx0) / Math.max(1e-6, nx1 - nx0);
+      var v = (P[i][1] - ny0) / Math.max(1e-6, ny1 - ny0);
+      pts.push({
+        x: r.x + m.halfW + clamp(u + jx * 0.011, 0, 1) * usableW,
+        y: offY + clamp(v + jy * 0.011, 0, 1) * usableH * fill
+      });
+    }
+    var minD = 1e9;
+    for (i = 0; i < 6; i++) for (j = i + 1; j < 6; j++)
+      minD = Math.min(minD, Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y));
+    var nR = clamp(Math.min(minD * 0.355, r.w / 8.2, r.h / 8.2), 13, 78);
+    if (Math.abs(nR - R) < 0.5) { R = nR; break; }
+    R = nR;
+  }
+  LAY.R = R;
+  LAY.sites = [];
+  for (i = 0; i < 6; i++) {
+    LAY.sites.push({
+      i: i, x: pts[i].x, y: pts[i].y, r: R,
+      hit: Math.max(R * 1.5, 32),
+      dx: pts[i].x - R * 1.14, dy: pts[i].y + R * 0.06, dr: Math.max(12, R * 0.44)
+    });
+  }
+
+  // shoreline: a headland strip across the top of the chart area
+  LAY.coast = [];
+  var segs = 30;
+  for (i = 0; i <= segs; i++) {
+    var u2 = i / segs, d0 = ch ? ch.deco[(i * 3) % 190] : [0.5, 0.5, 0.5, 0.5];
+    LAY.coast.push({
+      x: r.x - r.w * 0.05 + u2 * r.w * 1.10,
+      y: r.y + LAY.coastH * (0.30 + 0.34 * Math.sin(u2 * 6.3 + (ch ? ch.deco[3][0] * 6.2 : 0))
+        + 0.30 * d0[1] + 0.16 * Math.sin(u2 * 17.3 + 1.7))
+    });
+  }
+
+  // isobaths: smooth depth contours sweeping under the wrecks
+  LAY.iso = [];
+  for (k = 0; k < 3; k++) {
+    var line = [], base = 0.30 + k * 0.24, ph = ch ? ch.deco[10 + k][0] * 6.2 : k;
+    for (i = 0; i <= 22; i++) {
+      var u3 = i / 22;
+      line.push({
+        x: r.x - 30 + u3 * (r.w + 60),
+        y: r.y + LAY.coastH + (base + 0.055 * Math.sin(u3 * 4.1 + ph) + 0.03 * Math.sin(u3 * 9.7 + ph * 2)) * (r.h - LAY.coastH)
+      });
+    }
+    LAY.iso.push({ pts: line, d: 10 + k * 12 });
+  }
+
+  // furniture goes in whatever corners the wrecks left alone
+  var cands = [[0.11, 0.85], [0.89, 0.85], [0.12, 0.30], [0.88, 0.30]];
+  var scored = [];
+  for (i = 0; i < cands.length; i++) {
+    var cx = r.x + cands[i][0] * r.w, cy = r.y + cands[i][1] * r.h, dmin = 1e9;
+    for (j = 0; j < 6; j++) dmin = Math.min(dmin, Math.hypot(cx - LAY.sites[j].x, cy - LAY.sites[j].y));
+    scored.push({ x: cx, y: cy, d: dmin, i: i });
+  }
+  scored.sort(function (a, b) { return b.d - a.d; });
+  var cr = clamp(Math.min(r.w, r.h) * (LAY.portrait ? 0.085 : 0.105), 22, 78);
+  while (cr > 22 && scored[0].d < cr + R * 1.7) cr *= 0.9;   // never crowd a wreck
+  LAY.compass.r = cr;
+  LAY.compass.x = clamp(scored[0].x, r.x + cr * 1.15, r.x + r.w - cr * 1.15);
+  LAY.compass.y = clamp(scored[0].y, r.y + LAY.coastH + cr * 1.15, r.y + r.h - cr * 1.15);
+  // chart annotation: a single engraved line of water lettering under the shore
+  LAY.cart = (!LAY.portrait && r.w > 560)
+    ? { x: r.x + 14, y: r.y + LAY.coastH + 15 } : null;
+  LAY.ready = true;
+}
+
+function resize() {
+  DPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 2.6));
+  W = window.innerWidth; H = window.innerHeight;
+  CV.width = Math.max(1, Math.round(W * DPR));
+  CV.height = Math.max(1, Math.round(H * DPR));
+  CTX.setTransform(DPR, 0, 0, DPR, 0, 0);
+  layout();
+}
+
+/* ------------------------------------------------------------ chart paint */
+var FOG = [], GULLS = [];
+function initAmbient() {
+  var i;
+  FOG.length = 0;
+  for (i = 0; i < 15; i++) FOG.push({
+    x: Math.random(), y: Math.random(), r: 0.10 + Math.random() * 0.2,
+    v: 0.004 + Math.random() * 0.012, a: 0.03 + Math.random() * 0.06, p: Math.random() * TAU
+  });
+  GULLS.length = 0;
+  for (i = 0; i < 4; i++) GULLS.push({
+    x: Math.random(), y: 0.08 + Math.random() * 0.3, v: 0.018 + Math.random() * 0.03,
+    s: 0.7 + Math.random() * 0.7, p: Math.random() * TAU, dir: Math.random() < 0.5 ? 1 : -1
+  });
+}
+function drawSea(c, t) {
+  var g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#123840'); g.addColorStop(0.16, '#0e2c34');
+  g.addColorStop(0.52, '#0c262d'); g.addColorStop(0.84, '#091f25'); g.addColorStop(1, '#06161a');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  // low dusk band burning off the water at the top of the chart
+  var hz = LAY.rect.y + LAY.coastH * 0.4;
+  var gg = c.createLinearGradient(0, hz - 60, 0, hz + H * 0.42);
+  gg.addColorStop(0, 'rgba(240,168,86,0.16)');
+  gg.addColorStop(0.22, 'rgba(226,140,74,0.075)');
+  gg.addColorStop(1, 'rgba(226,140,74,0)');
+  c.fillStyle = gg; c.fillRect(0, Math.max(0, hz - 60), W, H);
+  // swell
+  c.save();
+  c.globalAlpha = 0.06; c.strokeStyle = '#a8dcd6'; c.lineWidth = 1;
+  var rows = Math.ceil(H / 32) + 2;
+  for (var i = 0; i < rows; i++) {
+    var y = i * 32 + Math.sin(t * 0.33 + i * 0.7) * 3.2;
+    c.beginPath();
+    for (var x = -20; x <= W + 20; x += 44) {
+      var yy = y + Math.sin((x * 0.0105) + t * 0.52 + i * 0.55) * 3.2;
+      if (x === -20) c.moveTo(x, yy); else c.lineTo(x, yy);
+    }
+    c.stroke();
+  }
+  // slow caustic sheets
+  c.globalAlpha = 0.035; c.fillStyle = '#bfe8e0';
+  for (i = 0; i < 5; i++) {
+    var cx = ((i * 0.23 + t * 0.011) % 1.2 - 0.1) * W;
+    var cy = (0.22 + (i % 3) * 0.26) * H + Math.sin(t * 0.24 + i) * 18;
+    c.beginPath(); c.ellipse(cx, cy, W * 0.20, H * 0.055, 0.24, 0, TAU); c.fill();
+  }
+  c.restore();
+}
+function hatch(c, x0, y0, x1, y1, gap, col, ang) {
+  c.save();
+  c.beginPath(); c.rect(x0, y0, x1 - x0, y1 - y0); c.clip();
+  c.strokeStyle = col; c.lineWidth = 1;
+  var d = Math.max(x1 - x0, y1 - y0) * 2, dx = Math.cos(ang) * d, dy = Math.sin(ang) * d;
+  for (var i = -Math.ceil(d / gap); i < Math.ceil(d / gap); i++) {
+    var px = x0 + i * gap * Math.cos(ang + Math.PI / 2), py = y0 + i * gap * Math.sin(ang + Math.PI / 2);
+    c.beginPath(); c.moveTo(px - dx, py - dy); c.lineTo(px + dx, py + dy); c.stroke();
+  }
+  c.restore();
+}
+function drawChartFurniture(c, t) {
+  var r = LAY.rect, ch = APP.chart, i, k;
+  if (!ch) return;
+  c.save();
+
+  // graticule
+  c.strokeStyle = 'rgba(168,214,208,0.06)'; c.lineWidth = 1;
+  var step = clamp(Math.min(r.w, r.h) / 6.5, 46, 150);
+  for (i = 0; i * step < W; i++) { c.beginPath(); c.moveTo(i * step, 0); c.lineTo(i * step, H); c.stroke(); }
+  for (i = 0; i * step < H; i++) { c.beginPath(); c.moveTo(0, i * step); c.lineTo(W, i * step); c.stroke(); }
+
+  // rhumb lines radiating from the compass
+  var cx = LAY.compass.x, cy = LAY.compass.y, big = Math.max(W, H) * 1.5;
+  c.strokeStyle = 'rgba(240,180,90,0.05)';
+  for (i = 0; i < 16; i++) {
+    var a = i * TAU / 16;
+    c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(a) * big, cy + Math.sin(a) * big); c.stroke();
+  }
+
+  // isobaths — dashed depth contours with an inline sounding
+  c.save();
+  c.setLineDash([7, 6]); c.lineWidth = 1.1;
+  for (k = 0; k < LAY.iso.length; k++) {
+    var L = LAY.iso[k];
+    c.strokeStyle = 'rgba(150,206,200,' + (0.13 - k * 0.025).toFixed(3) + ')';
+    c.beginPath();
+    for (i = 0; i < L.pts.length; i++) {
+      var p = L.pts[i];
+      if (i === 0) c.moveTo(p.x, p.y);
+      else {
+        var q = L.pts[i - 1];
+        c.quadraticCurveTo(q.x, q.y, (q.x + p.x) / 2, (q.y + p.y) / 2);
+      }
+    }
+    c.stroke();
+  }
+  c.restore();
+  c.save();
+  c.fillStyle = 'rgba(160,206,200,0.24)';
+  c.font = 'italic 10px ' + FONT_SERIF; c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (k = 0; k < LAY.iso.length; k++) {
+    var LL = LAY.iso[k], pp = LL.pts[3 + k * 5];
+    if (pp) c.fillText(LL.d + ' fm', pp.x, pp.y);
+  }
+  c.restore();
+
+  // soundings scattered over open water
+  c.fillStyle = 'rgba(178,214,209,0.17)';
+  c.font = '9.5px ' + FONT_MONO; c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (i = 0; i < 130; i++) {
+    var d = ch.deco[i];
+    var x = r.x + d[0] * r.w, y = r.y + LAY.coastH * 0.8 + d[1] * (r.h - LAY.coastH * 0.8);
+    var near = false;
+    for (var s2 = 0; s2 < LAY.sites.length; s2++) {
+      var st = LAY.sites[s2];
+      if (Math.abs(st.x - x) < st.r * 1.9 && y > st.y - st.r * 3.4 && y < st.y + st.r * 1.9) { near = true; break; }
+    }
+    if (near) continue;
+    if (Math.hypot(x - cx, y - cy) < LAY.compass.r * 1.15) continue;
+    c.fillText(String(4 + ((d[2] * 44) | 0)), x, y);
+  }
+
+  // headland along the top of the chart
+  if (LAY.coast.length) {
+    var cst = LAY.coast, top = r.y - 200;
+    c.beginPath();
+    c.moveTo(cst[0].x, top);
+    for (i = 0; i < cst.length; i++) c.lineTo(cst[i].x, cst[i].y);
+    c.lineTo(cst[cst.length - 1].x, top);
+    c.closePath();
+    c.fillStyle = 'rgba(206,178,128,0.14)'; c.fill();
+    c.save(); c.clip();
+    hatch(c, r.x - r.w * 0.06, top, r.x + r.w * 1.06, r.y + LAY.coastH * 1.2, 9, 'rgba(224,203,163,0.12)', 0.85);
+    c.restore();
+    c.beginPath();
+    c.moveTo(cst[0].x, cst[0].y);
+    for (i = 1; i < cst.length; i++) c.lineTo(cst[i].x, cst[i].y);
+    c.strokeStyle = 'rgba(230,210,172,0.55)'; c.lineWidth = 1.6; c.stroke();
+    c.strokeStyle = 'rgba(230,210,172,0.20)'; c.lineWidth = 1;
+    for (i = 0; i < cst.length; i++) {
+      c.beginPath(); c.moveTo(cst[i].x, cst[i].y + 1.5); c.lineTo(cst[i].x + 3, cst[i].y + 8); c.stroke();
+    }
+    // a couple of drying rocks off the point
+    c.fillStyle = 'rgba(226,205,166,0.34)';
+    for (i = 0; i < 3; i++) {
+      var dd = ch.deco[40 + i * 7];
+      var rx = r.x + (0.12 + dd[0] * 0.76) * r.w, ry = r.y + LAY.coastH * (1.15 + dd[1] * 0.5);
+      c.beginPath(); c.moveTo(rx - 4, ry + 2); c.lineTo(rx, ry - 4); c.lineTo(rx + 4, ry + 2); c.closePath(); c.fill();
+    }
+  }
+
+  drawCartouche(c);
+  drawCompass(c, t);
+  c.restore();
+}
+function drawCartouche(c) {
+  var q = LAY.cart, ch = APP.chart;
+  if (!q || !ch) return;
+  c.save();
+  c.textAlign = 'left'; c.textBaseline = 'middle';
+  c.fillStyle = 'rgba(232,214,180,0.34)';
+  c.font = '13px ' + FONT_SERIF;
+  var title = 'THE LAGAN GROUND';
+  c.fillText(title, q.x, q.y);
+  var wdt = c.measureText(title).width;
+  c.strokeStyle = 'rgba(232,214,180,0.16)'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(q.x, q.y + 11); c.lineTo(q.x + wdt, q.y + 11); c.stroke();
+  c.fillStyle = 'rgba(160,206,200,0.30)';
+  c.font = 'italic 10.5px ' + FONT_SERIF;
+  c.fillText('soundings in metres at low water  ·  sheet ' + ch.seed, q.x, q.y + 23);
+  c.restore();
+}
+
+function drawCompass(c, t) {
+  var x = LAY.compass.x, y = LAY.compass.y, R = LAY.compass.r;
+  c.save(); c.translate(x, y);
+  c.globalAlpha = 0.5;
+  c.strokeStyle = 'rgba(240,180,90,0.55)'; c.lineWidth = 1;
+  c.beginPath(); c.arc(0, 0, R, 0, TAU); c.stroke();
+  c.beginPath(); c.arc(0, 0, R * 0.78, 0, TAU); c.stroke();
+  c.beginPath(); c.arc(0, 0, R * 0.2, 0, TAU); c.stroke();
+  var i;
+  for (i = 0; i < 32; i++) {
+    var a = i * TAU / 32, l = (i % 4 === 0) ? R * 0.16 : R * 0.07;
+    c.beginPath();
+    c.moveTo(Math.cos(a) * (R - l), Math.sin(a) * (R - l));
+    c.lineTo(Math.cos(a) * R, Math.sin(a) * R); c.stroke();
+  }
+  for (i = 0; i < 4; i++) {
+    var a2 = i * Math.PI / 2 - Math.PI / 2;
+    c.beginPath();
+    c.moveTo(Math.cos(a2) * R * 0.78, Math.sin(a2) * R * 0.78);
+    c.lineTo(Math.cos(a2 + 0.34) * R * 0.2, Math.sin(a2 + 0.34) * R * 0.2);
+    c.lineTo(Math.cos(a2 - 0.34) * R * 0.2, Math.sin(a2 - 0.34) * R * 0.2);
+    c.closePath();
+    c.fillStyle = i % 2 ? 'rgba(240,180,90,0.30)' : 'rgba(219,232,229,0.22)';
+    c.fill(); c.stroke();
+  }
+  c.fillStyle = 'rgba(255,217,160,0.75)'; c.font = 'bold ' + Math.round(R * 0.28) + 'px ' + FONT_SERIF;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText('N', 0, -R * 0.9);
+  c.restore();
+}
+function drawFog(c, t, front) {
+  c.save();
+  for (var i = 0; i < FOG.length; i++) {
+    var f = FOG[i];
+    if ((i % 2 === 0) !== !!front) continue;
+    var x = ((f.x + t * f.v) % 1.25 - 0.12) * W;
+    var y = (f.y + Math.sin(t * 0.13 + f.p) * 0.02) * H;
+    var R = f.r * Math.max(W, H) * 0.6;
+    var g = c.createRadialGradient(x, y, 0, x, y, R);
+    var al = f.a * (front ? 0.85 : 1) * (0.7 + 0.3 * Math.sin(t * 0.21 + f.p));
+    g.addColorStop(0, 'rgba(186,214,214,' + al.toFixed(3) + ')');
+    g.addColorStop(0.6, 'rgba(160,196,198,' + (al * 0.35).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(160,196,198,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.ellipse(x, y, R, R * 0.42, 0, 0, TAU); c.fill();
+  }
+  c.restore();
+}
+function drawGulls(c, t) {
+  c.save(); c.strokeStyle = 'rgba(214,232,228,0.34)'; c.lineWidth = 1.4; c.lineCap = 'round';
+  for (var i = 0; i < GULLS.length; i++) {
+    var g = GULLS[i];
+    var u = (g.x + t * g.v * g.dir) % 1.3;
+    if (u < 0) u += 1.3;
+    var x = (u - 0.15) * W, y = g.y * H + Math.sin(t * 0.6 + g.p) * 9;
+    var s = g.s * 7, f = Math.sin(t * 3.4 + g.p) * 0.5 + 0.5;
+    c.beginPath();
+    c.moveTo(x - s, y + s * 0.4 * f);
+    c.quadraticCurveTo(x - s * 0.4, y - s * 0.45, x, y);
+    c.quadraticCurveTo(x + s * 0.4, y - s * 0.45, x + s, y + s * 0.4 * f);
+    c.stroke();
+  }
+  c.restore();
+}
+function vignette(c) {
+  var g = c.createRadialGradient(W * 0.5, H * 0.48, Math.min(W, H) * 0.30, W * 0.5, H * 0.5, Math.max(W, H) * 0.78);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(2,9,12,0.62)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+}
+
+/* ------------------------------------------------------------- site paint */
+var FONT_SERIF = "Georgia,'Iowan Old Style','Times New Roman',serif";
+var FONT_MONO = "ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace";
+var CREW = LAGAN.CREWS;
+
+function drawWreck(c, site, ch, alive) {
+  var R = site.r, wr = ch.wreck[site.i];
+  // lamplight pool: the eye goes where the crates still are
+  if (alive) {
+    var g = c.createRadialGradient(site.x, site.y - R * 0.3, R * 0.1, site.x, site.y - R * 0.2, R * 2.5);
+    g.addColorStop(0, 'rgba(240,180,90,0.085)');
+    g.addColorStop(0.55, 'rgba(240,180,90,0.028)');
+    g.addColorStop(1, 'rgba(240,180,90,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.ellipse(site.x, site.y - R * 0.2, R * 2.5, R * 2.2, 0, 0, TAU); c.fill();
+  }
+  c.save();
+  c.translate(site.x, site.y);
+  // silt mound
+  c.fillStyle = 'rgba(4,14,17,0.55)';
+  c.beginPath(); c.ellipse(0, R * 0.44, R * 1.3, R * 0.28, 0, 0, TAU); c.fill();
+  c.fillStyle = 'rgba(150,176,168,0.05)';
+  c.beginPath(); c.ellipse(0, R * 0.40, R * 1.5, R * 0.32, 0, 0, TAU); c.fill();
+
+  c.save();
+  c.rotate(wr.tilt);
+  c.scale(wr.flip, 1);
+  var L = R * wr.len;
+  // hull
+  c.beginPath();
+  c.moveTo(-L, -R * 0.02);
+  c.quadraticCurveTo(-L * 0.55, R * 0.46, 0, R * 0.48);
+  c.quadraticCurveTo(L * 0.62, R * 0.44, L, -R * 0.10);
+  c.lineTo(L * 0.88, -R * 0.30);
+  c.quadraticCurveTo(0, -R * 0.10, -L * 0.92, -R * 0.24);
+  c.closePath();
+  var hg = c.createLinearGradient(0, -R * 0.3, 0, R * 0.5);
+  if (alive) { hg.addColorStop(0, 'rgba(45,80,84,0.96)'); hg.addColorStop(1, 'rgba(15,38,43,0.96)'); }
+  else { hg.addColorStop(0, 'rgba(24,48,53,0.7)'); hg.addColorStop(1, 'rgba(12,30,34,0.7)'); }
+  c.fillStyle = hg; c.fill();
+  c.strokeStyle = alive ? 'rgba(214,196,158,0.66)' : 'rgba(150,170,170,0.24)';
+  c.lineWidth = 1.5; c.stroke();
+  // ribs
+  c.strokeStyle = alive ? 'rgba(214,196,158,0.24)' : 'rgba(150,170,170,0.11)';
+  c.lineWidth = 1;
+  for (var i = -3; i <= 3; i++) {
+    var x = i * L * 0.235;
+    c.beginPath(); c.moveTo(x, -R * 0.20); c.lineTo(x * 0.94, R * 0.40); c.stroke();
+  }
+  // gunwale + snapped mast
+  c.beginPath(); c.moveTo(-L * 0.92, -R * 0.22); c.quadraticCurveTo(0, -R * 0.08, L * 0.88, -R * 0.28);
+  c.strokeStyle = alive ? 'rgba(226,205,166,0.42)' : 'rgba(150,170,170,0.18)';
+  c.lineWidth = 1.2; c.stroke();
+  c.beginPath();
+  c.moveTo(L * 0.30, -R * 0.20); c.lineTo(L * 0.52, -R * 0.95);
+  c.strokeStyle = alive ? 'rgba(214,196,158,0.44)' : 'rgba(150,170,170,0.18)';
+  c.lineWidth = 2; c.stroke();
+  c.restore();
+
+  // level cargo platform the crate stack actually sits on
+  if (alive) {
+    var pw = R * 1.44, ph = Math.max(4, R * 0.13), py = -R * 0.17 + ph * 0.5;
+    c.fillStyle = 'rgba(28,52,56,0.95)';
+    c.fillRect(-pw / 2, py - ph / 2, pw, ph);
+    c.strokeStyle = 'rgba(214,196,158,0.42)'; c.lineWidth = 1;
+    c.strokeRect(-pw / 2 + 0.5, py - ph / 2 + 0.5, pw - 1, ph - 1);
+  }
+  c.restore();
+}
+
+function drawCrate(c, x, y, w, h, val, opts) {
+  opts = opts || {};
+  var flag = opts.flag, top = opts.top, esc = opts.esc, alpha = opts.alpha == null ? 1 : opts.alpha;
+  c.save();
+  c.globalAlpha = alpha;
+  if (opts.scale && opts.scale !== 1) { c.translate(x, y); c.scale(opts.scale, opts.scale); c.translate(-x, -y); }
+  var x0 = x - w / 2, y0 = y - h / 2;
+  if (top) {
+    c.shadowColor = 'rgba(240,180,90,0.55)'; c.shadowBlur = 10;
+  }
+  var g = c.createLinearGradient(x0, y0, x0, y0 + h);
+  if (top) { g.addColorStop(0, '#c99a54'); g.addColorStop(1, '#8a6229'); }
+  else { g.addColorStop(0, '#6a5c44'); g.addColorStop(1, '#493f2f'); }
+  c.fillStyle = g;
+  c.fillRect(x0, y0, w, h);
+  c.shadowBlur = 0;
+  c.strokeStyle = top ? 'rgba(255,224,175,0.95)' : 'rgba(190,170,132,0.4)';
+  c.lineWidth = top ? 1.4 : 1;
+  c.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+  // slats
+  c.strokeStyle = top ? 'rgba(60,40,14,0.35)' : 'rgba(30,26,18,0.35)';
+  c.lineWidth = 1;
+  c.beginPath(); c.moveTo(x0 + w * 0.5, y0 + 1); c.lineTo(x0 + w * 0.5, y0 + h - 1); c.stroke();
+  if (esc) {
+    c.strokeStyle = 'rgba(224,112,92,0.95)'; c.lineWidth = 1.3;
+    c.strokeRect(x0 - 1.5, y0 - 1.5, w + 3, h + 3);
+  }
+  c.fillStyle = top ? '#2a1a04' : 'rgba(226,214,190,0.8)';
+  c.font = 'bold ' + Math.round(h * 0.72) + 'px ' + FONT_MONO;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(String(val), x, y + 0.5);
+  if (flag) {
+    c.strokeStyle = top ? '#2a1a04' : 'rgba(240,180,90,0.75)';
+    c.lineWidth = 1.1;
+    var fx = x0 + 3.5, fy = y0 + h * 0.5;
+    c.beginPath(); c.moveTo(fx, fy - h * 0.3); c.lineTo(fx, fy + h * 0.3); c.stroke();
+    c.beginPath(); c.moveTo(fx, fy - h * 0.3); c.lineTo(fx + h * 0.34, fy - h * 0.16); c.lineTo(fx, fy - h * 0.02); c.closePath();
+    c.fillStyle = top ? '#2a1a04' : 'rgba(240,180,90,0.75)'; c.fill();
+  }
+  c.restore();
+}
+
+function drawDiverToken(c, x, y, r, col, lit) {
+  c.save();
+  c.fillStyle = col; c.strokeStyle = lit;
+  c.lineWidth = 1;
+  c.beginPath(); c.arc(x, y - r * 0.55, r * 0.44, 0, TAU); c.fill();
+  c.beginPath();
+  c.moveTo(x - r * 0.42, y + r * 0.72);
+  c.quadraticCurveTo(x, y - r * 0.32, x + r * 0.42, y + r * 0.72);
+  c.quadraticCurveTo(x, y + r * 0.34, x - r * 0.42, y + r * 0.72);
+  c.closePath(); c.fill();
+  c.beginPath(); c.arc(x + r * 0.16, y - r * 0.66, r * 0.15, 0, TAU);
+  c.fillStyle = 'rgba(255,240,220,0.85)'; c.fill();
+  c.restore();
+}
+
+/* ------------------------------------------------------------ board paint */
+// Reveal timeline (seconds). Total ~4.0s, skippable.
+var RT = { brk: 0.00, buoy: 0.36, count: 1.00, tug: 1.54, res: 2.46, settle: 3.50, end: 4.02 };
+
+function drawBuoy(c, x, y, col, lit, s, bob) {
+  c.save(); c.translate(x, y + bob); c.scale(s, s);
+  c.strokeStyle = 'rgba(8,22,26,0.9)'; c.lineWidth = 2.6;
+  c.beginPath(); c.moveTo(0, 1); c.lineTo(0, -19); c.stroke();
+  c.fillStyle = col; c.strokeStyle = lit; c.lineWidth = 1.3;
+  c.beginPath(); c.ellipse(0, 0, 8.4, 6.2, 0, 0, TAU); c.fill(); c.stroke();
+  c.beginPath(); c.ellipse(-2.4, -1.8, 2.6, 1.7, -0.4, 0, TAU);
+  c.fillStyle = 'rgba(255,244,226,0.5)'; c.fill();
+  c.beginPath(); c.moveTo(0, -19); c.lineTo(12, -15); c.lineTo(0, -11); c.closePath();
+  c.fillStyle = lit; c.fill();
+  c.restore();
+}
+
+function drawSiteLabel(c, site, ch, dim) {
+  var R = site.r;
+  c.save();
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  var fs = clamp(R * 0.30, 8.5, 13);
+  c.font = fs + 'px ' + FONT_SERIF;
+  c.fillStyle = dim ? 'rgba(143,169,168,0.4)' : 'rgba(226,212,182,0.86)';
+  var nm = ch.names[site.i];
+  if (R < 26 && nm.length > 11) nm = nm.slice(0, 10) + '·';
+  c.fillText(nm, site.x, site.y + R * 0.62);
+  c.font = (fs * 0.82) + 'px ' + FONT_MONO;
+  c.fillStyle = dim ? 'rgba(143,169,168,0.28)' : 'rgba(160,196,198,0.5)';
+  c.fillText('№' + (site.i + 1) + '  ' + ch.depth[site.i] + 'm', site.x, site.y + R * 0.62 + fs * 1.15);
+  c.restore();
+}
+
+function drawCounter(c, x, y, n, col, lit, ink, scale, flip) {
+  c.save();
+  c.translate(x, y);
+  if (flip != null) c.scale(1, Math.max(0.04, Math.abs(flip)));
+  if (scale !== 1) c.scale(scale, scale);
+  var w = 22, h = 19;
+  c.fillStyle = col; c.strokeStyle = lit; c.lineWidth = 1.3;
+  c.beginPath();
+  if (c.roundRect) { c.roundRect(-w / 2, -h / 2, w, h, 3); } else { c.rect(-w / 2, -h / 2, w, h); }
+  c.fill(); c.stroke();
+  c.fillStyle = ink; c.font = 'bold 13px ' + FONT_MONO;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(String(n), 0, 0.5);
+  c.restore();
+}
+
+function bankTarget(seat) {
+  var el = document.getElementById(seat === 0 ? 'cardA' : 'cardB');
+  if (!el) return { x: seat === 0 ? W * 0.12 : W * 0.88, y: 30 };
+  var r = el.getBoundingClientRect();
+  return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.62 };
+}
+
+function drawBoard(c, t) {
+  var ch = APP.chart, rev = APP.reveal;
+  var st = rev ? rev.pre : APP.state;
+  if (!st || !ch) return;
+  var rt = rev ? rev.t : 0;
+  var i, k;
+
+  for (i = 0; i < 6; i++) {
+    var site = LAY.sites[i], stack = st.sites[i], alive = stack.length > 0;
+    var R = site.r;
+    var sinfo = rev ? rev.byIndex[i] : null;
+
+    // --- hover / selection ring
+    if (!rev && APP.phase === 'order' && alive) {
+      var hov = (APP.hover === i);
+      var mine = APP.order.a[i];
+      if (hov || mine > 0) {
+        c.save();
+        c.strokeStyle = hov ? 'rgba(255,217,160,0.75)' : 'rgba(240,180,90,0.28)';
+        c.lineWidth = hov ? 2 : 1.2;
+        c.setLineDash(hov ? [] : [4, 4]);
+        c.beginPath(); c.ellipse(site.x, site.y, R * 1.4, R * 1.18, 0, 0, TAU); c.stroke();
+        c.restore();
+      }
+    }
+
+    drawWreck(c, site, ch, alive);
+
+    // --- crate stack (index 0 = top = claimable)
+    var n = stack.length;
+    for (k = 0; k < n; k++) {
+      var cxy = crateXY(site, k, n);
+      var val = stack[k];
+      var alpha = 1, sc = 1, drawn = true;
+      var esc = false;
+      if (rev && sinfo && k === 0) {
+        if (sinfo.out === 'a' || sinfo.out === 'b') {
+          // the hauled crate flies separately once the winch starts
+          if (rt >= sinfo.haulAt) drawn = false;
+        } else if (sinfo.out === 'foul') {
+          esc = true;
+          if (rt >= sinfo.foulAt) val = sinfo.nv;
+          var pu = span(rt, sinfo.foulAt, sinfo.foulAt + 0.32);
+          sc = 1 + Math.sin(pu * Math.PI) * 0.28;
+        }
+      }
+      if (!drawn) continue;
+      drawCrate(c, cxy.x, cxy.y, cxy.w, cxy.h, val, {
+        top: k === 0, flag: val >= 5 && !esc, esc: esc || (!rev && val > 5),
+        alpha: alpha, scale: sc
+      });
+    }
+    if (!alive) {
+      c.save();
+      c.fillStyle = 'rgba(143,169,168,0.34)';
+      c.font = clamp(R * 0.26, 8, 11) + 'px ' + FONT_MONO;
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('SWEPT', site.x, site.y - R * 0.75);
+      c.restore();
+    }
+    drawSiteLabel(c, site, ch, !alive);
+
+    // --- divers
+    if (!rev) {
+      if (APP.phase === 'order' && APP.order.a[i] > 0) {
+        drawDiverCluster(c, site, APP.order.a[i], APP.entrySeat, true);
+      }
+    } else if (sinfo) {
+      drawRevealSite(c, site, sinfo, rt, n);
+    }
+  }
+
+  if (rev) drawRevealFx(c, rev, rt);
+}
+
+function drawDiverCluster(c, site, n, seat, pending) {
+  var cr = CREW[seat], R = site.r;
+  var x = site.dx, y = site.dy, dr = site.dr;
+  c.save();
+  c.beginPath(); c.arc(x, y, dr, 0, TAU);
+  c.fillStyle = 'rgba(6,22,26,0.72)'; c.fill();
+  c.strokeStyle = pending ? 'rgba(255,217,160,0.6)' : cr.lit;
+  c.lineWidth = 1.2;
+  c.setLineDash(pending ? [3, 3] : []);
+  c.stroke();
+  c.setLineDash([]);
+  drawDiverToken(c, x - dr * 0.16, y, dr * 0.92, cr.ink, cr.lit);
+  c.fillStyle = cr.lit;
+  c.font = 'bold ' + Math.round(dr * 0.86) + 'px ' + FONT_MONO;
+  c.textAlign = 'left'; c.textBaseline = 'middle';
+  c.fillText('×' + n, x + dr * 0.18, y + 0.5);
+  if (pending && APP.hoverDivers === site.i) {
+    c.fillStyle = 'rgba(255,217,160,0.9)';
+    c.font = 'bold ' + Math.round(dr * 0.8) + 'px ' + FONT_MONO;
+    c.textAlign = 'center';
+    c.fillText('−', x, y - dr * 1.25);
+  }
+  c.restore();
+}
+
+function drawRevealSite(c, site, s, rt, nstack) {
+  var R = site.r, i = site.i;
+  var sc = clamp(R / 38, 0.8, 2.0);
+  var out = R * 1.26;
+  // counters ride just above their own buoy; only when a buoy sits close enough
+  // to the crate stack to collide do they climb above the stack instead
+  var stackHalf = crateBox(R).w * 0.5;
+  var collide = out < stackHalf + 13 * sc + 5;
+  var ropeY = collide
+    ? (nstack > 0 ? stackTopY(site, nstack) : site.y - R * 1.1) - 16
+    : site.y - R * 0.10 - (R * 0.52 + 15 * sc);
+  var seats = [0, 1];
+  for (var q = 0; q < 2; q++) {
+    var seat = seats[q], n = q === 0 ? s.a : s.b;
+    if (n <= 0) continue;
+    var cr = CREW[seat];
+    var side = seat === 0 ? -1 : 1;
+    var bx = site.x + side * out, by = site.y - R * 0.10;
+    var pop = span(rt, RT.buoy + i * 0.055, RT.buoy + i * 0.055 + 0.34);
+    if (pop <= 0) continue;
+    var bs = easeOut(pop) * (1 + Math.sin(pop * Math.PI) * 0.24);
+    var bob = Math.sin(rt * 4 + i + q) * 1.8 * pop;
+    // mooring line from the buoy down to the wreck
+    c.save();
+    c.globalAlpha = easeOut(pop) * 0.5;
+    c.strokeStyle = cr.lit; c.lineWidth = 1;
+    c.setLineDash([3, 4]);
+    c.beginPath(); c.moveTo(bx, by + bob + 4); c.lineTo(site.x + side * R * 0.5, site.y + R * 0.2); c.stroke();
+    c.restore();
+    drawBuoy(c, bx, by, cr.ink, cr.lit, bs * sc, bob);
+    var fl = span(rt, RT.count + i * 0.035, RT.count + i * 0.035 + 0.30);
+    if (fl > 0) {
+      var flip = Math.sin(fl * Math.PI * 0.5);
+      var tugged = 0;
+      if (s.out === 'a' || s.out === 'b' || s.out === 'foul') {
+        var tu = span(rt, RT.tug, RT.res);
+        var pull = Math.sin(tu * Math.PI * 3.2) * (1 - tu) * 6.5;
+        var win = s.out === 'foul' ? 0 : (s.out === 'a' ? -1 : 1);
+        tugged = pull * (seat === 0 ? -1 : 1) + (rt > RT.res - 0.16 ? win * side * -5 : 0);
+      }
+      drawCounter(c, bx + tugged, ropeY, n, cr.ink, cr.lit,
+        seat === 0 ? '#2a0c06' : '#2a2005', sc, flip);
+    }
+  }
+  // taut rope between contested buoys
+  if ((s.a > 0 && s.b > 0) && rt > RT.tug) {
+    var tu2 = span(rt, RT.tug, RT.res);
+    var ax = site.x - out, bx2 = site.x + out;
+    var sag = lerp(10, 1.5, ease(tu2));
+    var knot = s.out === 'foul' ? 0 : (s.out === 'a' ? -1 : 1) * ease(span(rt, RT.res - 0.3, RT.res + 0.1)) * R * 0.55;
+    c.save();
+    c.strokeStyle = s.out === 'foul' ? 'rgba(224,112,92,0.85)' : 'rgba(226,205,166,0.7)';
+    c.lineWidth = 1.8;
+    c.beginPath();
+    c.moveTo(ax, ropeY);
+    c.quadraticCurveTo(site.x + knot, ropeY + sag, bx2, ropeY);
+    c.stroke();
+    if (s.out === 'foul' && rt > RT.res) {
+      c.strokeStyle = 'rgba(224,112,92,' + (0.9 * (1 - span(rt, RT.res, RT.res + 0.5))).toFixed(2) + ')';
+      c.lineWidth = 3;
+      var kx = site.x, ky = ropeY + sag * 0.6, kk = 8 * sc;
+      c.beginPath(); c.moveTo(kx - kk, ky - kk); c.lineTo(kx + kk, ky + kk);
+      c.moveTo(kx + kk, ky - kk); c.lineTo(kx - kk, ky + kk); c.stroke();
+    }
+    c.restore();
+  }
+}
+
+function drawRevealFx(c, rev, rt) {
+  var i;
+  // hauled crates flying to their new owner's hold
+  for (i = 0; i < rev.hauls.length; i++) {
+    var h = rev.hauls[i];
+    var u = span(rt, h.at, h.at + 0.86);
+    if (u <= 0) continue;
+    var e = ease(u);
+    var lift = Math.sin(u * Math.PI) * 46;
+    var x = lerp(h.x0, h.x1, e * e * 0.55 + e * 0.45);
+    var y = lerp(h.y0, h.y1, e) - lift;
+    var sc = lerp(1, 0.55, e);
+    if (u < 1) {
+      c.save();
+      c.strokeStyle = 'rgba(226,205,166,0.45)'; c.lineWidth = 1;
+      c.setLineDash([3, 4]);
+      c.beginPath(); c.moveTo(x, y - 12); c.lineTo(x, y - 60); c.stroke();
+      c.restore();
+      drawCrate(c, x, y, h.w * sc, h.h * sc, h.v, { top: true, flag: h.v >= 5, alpha: 1 - Math.pow(u, 4) });
+    }
+  }
+  // break-open shards
+  for (i = 0; i < 2; i++) {
+    if (!rev.breaks[i]) continue;
+    var bu = span(rt, RT.brk, RT.brk + 0.5);
+    if (bu <= 0 || bu >= 1) continue;
+    var tgt = rev.bankPos[i];
+    c.save();
+    c.globalAlpha = 1 - bu;
+    c.fillStyle = CREW[i].lit;
+    c.font = 'bold 15px ' + FONT_MONO;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('−' + rev.breaks[i].value, tgt.x, tgt.y + 28 + bu * 22);
+    c.restore();
+  }
+  // foul escalation +1
+  for (i = 0; i < rev.byIndex.length; i++) {
+    var s = rev.byIndex[i];
+    if (!s || s.out !== 'foul' || s.capped) continue;
+    var fu = span(rt, s.foulAt, s.foulAt + 0.8);
+    if (fu <= 0 || fu >= 1) continue;
+    var site = LAY.sites[i];
+    var cxy = crateXY(site, 0, rev.pre.sites[i].length);
+    c.save();
+    c.globalAlpha = 1 - fu * fu;
+    c.fillStyle = '#ffd9a0';
+    c.font = 'bold ' + Math.round(clamp(site.r * 0.42, 11, 17)) + 'px ' + FONT_MONO;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('+1', cxy.x + cxy.w * 0.85, cxy.y - fu * 22);
+    c.restore();
+  }
+}
+
+/* ---------------------------------------------------------- reveal driver */
+function buildReveal(pre, res) {
+  var ev = res.ev, i;
+  var byIndex = new Array(6), hauls = [], order = 0;
+  var bankPos = [bankTarget(0), bankTarget(1)];
+  for (i = 0; i < 6; i++) {
+    var s = ev.sites[i];
+    var o = { out: s.out, a: s.a, b: s.b, v: s.v, nv: s.nv, capped: !!s.capped, i: i };
+    if (s.out === 'a' || s.out === 'b') {
+      o.haulAt = RT.res + order * 0.16;
+      var site = LAY.sites[i], n = pre.sites[i].length;
+      var cxy = crateXY(site, 0, n);
+      var seat = s.out === 'a' ? 0 : 1;
+      hauls.push({
+        at: o.haulAt, x0: cxy.x, y0: cxy.y, x1: bankPos[seat].x, y1: bankPos[seat].y,
+        w: cxy.w, h: cxy.h, v: s.v, seat: seat, site: i
+      });
+      order++;
+    } else if (s.out === 'foul') {
+      o.foulAt = RT.res + order * 0.16;
+      order++;
+    }
+    byIndex[i] = o;
+  }
+  return {
+    pre: pre, post: res.state, ev: ev, res: res, byIndex: byIndex, hauls: hauls,
+    breaks: ev.breaks, bankPos: bankPos, t: 0,
+    dur: Math.max(RT.end, RT.res + order * 0.16 + 1.15),
+    fired: {}, done: false
+  };
+}
+
+function revealTick(dt) {
+  var rev = APP.reveal;
+  if (!rev) return;
+  rev.t += dt;
+  var t = rev.t, f = rev.fired, i;
+  if (!f.brk && t >= RT.brk) {
+    f.brk = 1;
+    if (rev.breaks[0] || rev.breaks[1]) {
+      SFX.crunch(0);
+      for (i = 0; i < 2; i++) if (rev.breaks[i]) {
+        var bp = rev.bankPos[i];
+        for (var k = 0; k < 9; k++) pspawn('chip', bp.x, bp.y + 16, {
+          vx: (Math.random() - 0.5) * 190, vy: -40 - Math.random() * 130, g: 460,
+          life: 0.75, r: 2.6, col: CREW[i].lit, rot: Math.random() * TAU
+        });
+      }
+    }
+  }
+  if (!f.buoy && t >= RT.buoy) {
+    f.buoy = 1;
+    var k2 = 0;
+    for (i = 0; i < 6; i++) {
+      var s = rev.byIndex[i];
+      if (!s || (s.a === 0 && s.b === 0)) continue;
+      SFX.buoy(k2++);
+      var site = LAY.sites[i];
+      if (s.a > 0) rippleAt(site.x - site.r * 1.16, site.y - site.r * 0.1, CREW[0].lit);
+      if (s.b > 0) rippleAt(site.x + site.r * 1.16, site.y - site.r * 0.1, CREW[1].lit);
+    }
+  }
+  if (!f.count && t >= RT.count) { f.count = 1; SFX.creak(); }
+  if (!f.tug && t >= RT.tug) {
+    f.tug = 1;
+    for (i = 0; i < 6; i++) { var q = rev.byIndex[i]; if (q && q.a > 0 && q.b > 0) { SFX.tug(); break; } }
+  }
+  for (i = 0; i < rev.hauls.length; i++) {
+    var h = rev.hauls[i];
+    if (!f['h' + i] && t >= h.at) {
+      f['h' + i] = 1;
+      SFX.winch(0); SFX.splash(0.26);
+      var site2 = LAY.sites[h.site];
+      for (var j = 0; j < 12; j++) pspawn('spray', h.x0 + (Math.random() - 0.5) * 22, h.y0, {
+        vx: (Math.random() - 0.5) * 150, vy: -70 - Math.random() * 140, g: 520,
+        life: 0.55 + Math.random() * 0.3, r: 1.6 + Math.random() * 1.8, col: '#cfe6e2'
+      });
+      rippleAt(site2.x, site2.y - site2.r * 0.2, CREW[h.seat].lit);
+    }
+  }
+  for (i = 0; i < 6; i++) {
+    var s2 = rev.byIndex[i];
+    if (!s2 || s2.out !== 'foul') continue;
+    if (!f['f' + i] && t >= s2.foulAt) {
+      f['f' + i] = 1;
+      SFX.clang(0);
+      if (!s2.capped) SFX.glint(0.14);
+      var st3 = LAY.sites[i];
+      var cxy = crateXY(st3, 0, rev.pre.sites[i].length);
+      for (var g = 0; g < 7; g++) pspawn('glint', cxy.x + (Math.random() - 0.5) * cxy.w * 1.4,
+        cxy.y + (Math.random() - 0.5) * cxy.h * 1.6,
+        { life: 0.5 + Math.random() * 0.3, r: 3 + Math.random() * 3, col: '#ffd9a0' });
+    }
+  }
+  if (rev.t >= rev.dur && !rev.done) { rev.done = true; finishReveal(); }
+}
+function rippleAt(x, y, col) {
+  pspawn('ripple', x, y, { life: 0.85, r: 3, r2: 42, col: col, a: 0.7 });
+  pspawn('ripple', x, y, { life: 1.2, r: 3, r2: 66, col: col, a: 0.35 });
+}
+function skipReveal() {
+  var rev = APP.reveal;
+  if (!rev || rev.done) return;
+  rev.t = rev.dur; rev.done = true;
+  finishReveal();
+}
+
+/* ======================================================================== *
+ *  APP — modes, match bridge, input, screens.
+ * ======================================================================== */
+var APP = {
+  sdk: null, online: false,
+  player: { isGuest: true, displayName: '', username: '', id: null },
+  writes: false, pendingCode: null,
+  mode: null, aiLevel: 'master',
+  seed: null, chart: null, state: null,
+  phase: 'idle', paused: false,
+  entrySeat: 0, mySeat: 0,
+  order: { a: [0, 0, 0, 0, 0, 0], bi: null },
+  sealed: [null, null],
+  reveal: null, hover: -1, hoverDivers: -1, touch: false,
+  net: {
+    id: null, match: null, unwatch: null, seat: 0, sealing: false,
+    shownT: -1, revQueue: [], afterView: null, pending: null, busy: false
+  },
+  ach: {}, result: null, lastEnd: null
+};
+
+/* ------------------------------------------------------------- tiny utils */
+function el(id) { return document.getElementById(id); }
+function show(id, on) { var e = el(id); if (e) e.classList[on ? 'add' : 'remove']('on'); }
+function txt(id, s) { var e = el(id); if (e) e.textContent = s; }
+function hideAllOverlays() {
+  ['startScreen', 'createScreen', 'joinScreen', 'listScreen', 'ctrlScreen', 'handoff', 'resultScreen', 'confirmScreen']
+    .forEach(function (i) { show(i, false); });
+}
+var TOAST_T = 0;
+function toast(msg, ms) {
+  var e = el('toast'); if (!e) return;
+  e.textContent = msg; e.classList.add('on');
+  clearTimeout(TOAST_T);
+  TOAST_T = setTimeout(function () { e.classList.remove('on'); }, ms || 2600);
+}
+function setStatus(s, warn) {
+  var e = el('statusband'); if (!e) return;
+  if (!s) { e.classList.remove('on'); return; }
+  e.innerHTML = s;
+  e.classList.add('on');
+  e.classList[warn ? 'add' : 'remove']('warn');
+}
+function copyText(s) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(s).then(function () { toast('Code copied'); },
+        function () { toast('Copy it by hand: ' + s, 4000); });
+      return;
+    }
+  } catch (e) { }
+  toast('Copy it by hand: ' + s, 4000);
+}
+
+/* ------------------------------------------------------------- SDK guards */
+function withSdk(fn, fallback) {
+  if (!APP.sdk) { if (fallback) fallback(); return; }
+  try { fn(APP.sdk); } catch (e) { if (fallback) fallback(); }
+}
+function canPlayOnline() { return !!(APP.sdk && APP.online && !APP.player.isGuest && APP.writes); }
+function unlock(slug) {
+  if (APP.ach[slug]) return;
+  APP.ach[slug] = 1;
+  withSdk(function (a) {
+    if (!a.achievements || !a.achievements.unlock) return;
+    var p = a.achievements.unlock(slug);
+    if (p && p.then) p.then(function (r) {
+      if (r && r.ok && r.firstTime) {
+        var name = (r.achievement && r.achievement.name) || slug;
+        var e = el('ach');
+        e.textContent = '🏅 ' + name;
+        e.classList.add('on'); SFX.ach();
+        setTimeout(function () { e.classList.remove('on'); }, 3200);
+      }
+    }, function () { });
+  });
+}
+function humanSeats() {
+  if (APP.mode === 'hotseat') return [0, 1];
+  if (APP.mode === 'ai') return [APP.mySeat];
+  if (APP.mode === 'online') return [APP.net.seat];
+  return [];
+}
+
+/* ---------------------------------------------------------------- screens */
+function goLobby() {
+  netStop();
+  APP.mode = null; APP.phase = 'idle'; APP.reveal = null; APP.state = null;
+  APP.net.id = null; APP.net.match = null; APP.net.shownT = -1; APP.net.revQueue = [];
+  APP.chart = LAGAN.makeChart(LAGAN.newSeed());   // idle chart to look at
+  APP.state = LAGAN.initialState(APP.chart.seed);
+  show('hud', false); show('orderpanel', false); show('hintstrip', false); show('skiphint', false);
+  el('greet').style.display = '';
+  setStatus(''); hideAllOverlays(); show('startScreen', true);
+  layout(); refreshLobby();
+}
+function enterPlayChrome() {
+  hideAllOverlays();
+  el('greet').style.display = 'none';
+  show('hud', true);
+  show('hintstrip', !APP.touch);
+  layout();
+}
+function refreshLobby() {
+  var ok = canPlayOnline();
+  ['btnCreate', 'btnJoinOpen', 'btnMyMatches'].forEach(function (i) {
+    var b = el(i); if (b) b.disabled = !ok;
+  });
+  var note = el('onlineNote');
+  if (ok) note.textContent = 'Signed in as ' + (APP.player.username ? '@' + APP.player.username : APP.player.displayName) + '. Matches keep for seven days.';
+  else if (APP.sdk && APP.online && APP.player.isGuest) note.textContent = 'Sign in at aimade.games to duel a rival. Everything on the right plays right now, no account needed.';
+  else note.textContent = 'Offline — no arcade bridge here. The two local modes on the right are the whole game.';
+  var pw = el('pendingWrap');
+  if (APP.pendingCode) {
+    pw.style.display = '';
+    txt('pendCode', APP.pendingCode);
+    el('btnPendJoin').disabled = !ok;
+    if (!ok) el('btnPendJoin').textContent = 'Sign in to join ' + APP.pendingCode;
+    else el('btnPendJoin').textContent = 'Join that match';
+  } else pw.style.display = 'none';
+}
+
+/* ------------------------------------------------------------ HUD / panel */
+function seatLabel(seat) {
+  if (APP.mode === 'online') {
+    var m = APP.net.match, who = null;
+    if (m && m.seats) for (var i = 0; i < m.seats.length; i++) {
+      if (m.seats[i] && m.seats[i].seat === seat && m.seats[i].player) { who = m.seats[i].player; break; }
+    }
+    if (!who && m && m.players && m.players[seat]) who = m.players[seat];
+    var h = who ? (who.username ? '@' + who.username : (who.displayName || '')) : '';
+    if (seat === APP.net.seat) h = h ? h + ' (you)' : 'you';
+    else if (!h) h = 'waiting…';
+    return h;
+  }
+  if (APP.mode === 'ai') return seat === APP.mySeat ? 'you' : (APP.aiLevel === 'mate' ? 'the mate' : 'the sea-lawyer');
+  if (APP.mode === 'hotseat') return seat === 0 ? 'crew one' : 'crew two';
+  return '';
+}
+function updateHud() {
+  var st = APP.state; if (!st) return;
+  var waitSeat = -1;
+  if (APP.phase === 'order') waitSeat = APP.entrySeat;
+  else if (APP.phase === 'wait' && APP.mode === 'online') waitSeat = 1 - APP.net.seat;
+  for (var s = 0; s < 2; s++) {
+    var cr = CREW[s], id = s === 0 ? 'A' : 'B';
+    var card = el('card' + id);
+    var nm = el('name' + id);
+    nm.children[0].style.background = cr.ink;
+    nm.children[1].textContent = cr.name;
+    nm.children[1].style.color = cr.lit;
+    txt('tot' + id, String(LAGAN.scoreOf(st, s)));
+    el('tot' + id).style.color = cr.lit;
+    txt('sub' + id, seatLabel(s) + ' · ' + st.bank[s].length +
+      (st.bank[s].length === 1 ? ' crate' : ' crates') +
+      (st.broken[s] ? ' · ' + st.broken[s] + ' broken' : ''));
+    var me = (APP.mode === 'online' && s === APP.net.seat) || (APP.mode === 'ai' && s === APP.mySeat);
+    card.classList[me ? 'add' : 'remove']('me');
+    card.classList[waitSeat === s ? 'add' : 'remove']('turnwait');
+    var strip = el('bank' + id), want = st.bank[s].slice().sort(function (a, b) { return b - a; });
+    strip.innerHTML = '';
+    for (var i = 0; i < want.length; i++) {
+      var d = document.createElement('span');
+      d.className = 'bcrate'; d.textContent = want[i]; d.style.color = cr.lit;
+      strip.appendChild(d);
+    }
+  }
+  txt('tidenum', String(Math.min(st.tide, LAGAN.MAX_TIDES)));
+  txt('tidelbl', 'tide / ' + LAGAN.MAX_TIDES);
+}
+function orderTotal() { var s = 0, i; for (i = 0; i < 6; i++) s += APP.order.a[i]; return s; }
+function orderCap() {
+  var b = APP.order.bi;
+  if (b == null) return LAGAN.DIVERS;
+  var bank = APP.state.bank[APP.entrySeat];
+  return LAGAN.DIVERS + (bank[b] || 0);
+}
+function updateOrderPanel() {
+  var on = (APP.phase === 'order');
+  show('orderpanel', on);
+  if (!on) { layout(); return; }
+  var cap = orderCap(), used = orderTotal(), bonus = cap - LAGAN.DIVERS;
+  var pips = el('pips'); pips.innerHTML = '';
+  for (var i = 0; i < cap; i++) {
+    var d = document.createElement('span');
+    d.className = 'pip' + (i >= LAGAN.DIVERS ? ' bonus' : '') + (i < used ? ' used' : '');
+    pips.appendChild(d);
+  }
+  var bar = el('breakbar'), bank = APP.state.bank[APP.entrySeat];
+  bar.innerHTML = '';
+  if (!bank.length) {
+    var n = document.createElement('span');
+    n.className = 'bkc none'; n.textContent = '—'; n.title = 'Nothing in the hold to break yet';
+    bar.appendChild(n);
+  } else {
+    for (var k = 0; k < bank.length; k++) {
+      (function (idx) {
+        var b = document.createElement('button');
+        b.className = 'bkc' + (APP.order.bi === idx ? ' armed' : '');
+        b.textContent = bank[idx];
+        b.title = 'Break this crate: lose ' + bank[idx] + ' value, gain ' + bank[idx] + ' divers this tide';
+        b.onclick = function (e) { e.preventDefault(); audioResume(); setBreak(APP.order.bi === idx ? null : idx); };
+        bar.appendChild(b);
+      })(k);
+    }
+  }
+  var cb = el('btnCommit');
+  cb.disabled = (used !== cap);
+  cb.textContent = used === cap ? 'Seal orders ⏎' : (cap - used) + ' diver' + (cap - used === 1 ? '' : 's') + ' idle';
+  el('hintstrip').innerHTML = HINTS;
+  layout();
+}
+function setBreak(idx) {
+  if (!APP.state) return;
+  var bank = APP.state.bank[APP.entrySeat];
+  if (idx != null && (idx < 0 || idx >= bank.length)) idx = null;
+  APP.order.bi = idx;
+  var cap = orderCap();
+  var guard = 0;
+  while (orderTotal() > cap && guard++ < 40) {
+    var bI = -1, bV = 0;
+    for (var i = 0; i < 6; i++) if (APP.order.a[i] > bV) { bV = APP.order.a[i]; bI = i; }
+    if (bI < 0) break;
+    APP.order.a[bI]--;
+  }
+  if (idx != null) SFX.crunch(0); else SFX.lift();
+  updateOrderPanel();
+}
+function addDiver(i) {
+  if (APP.phase !== 'order' || !APP.state) return;
+  if (!APP.state.sites[i].length) { SFX.nope(); toast('№' + (i + 1) + ' is swept clean'); return; }
+  if (orderTotal() >= orderCap()) { SFX.nope(); toast('All divers are committed — lift one first'); return; }
+  APP.order.a[i]++;
+  SFX.plop(APP.order.a[i]);
+  var s = LAY.sites[i];
+  rippleAt(s.dx, s.dy, CREW[APP.entrySeat].lit);
+  updateOrderPanel();
+}
+function subDiver(i) {
+  if (APP.phase !== 'order' || !APP.state) return;
+  if (APP.order.a[i] <= 0) { SFX.nope(); return; }
+  APP.order.a[i]--; SFX.lift();
+  updateOrderPanel();
+}
+function cycleBreak() {
+  if (APP.phase !== 'order' || !APP.state) return;
+  var bank = APP.state.bank[APP.entrySeat];
+  if (!bank.length) { SFX.nope(); toast('Nothing in the hold to break'); return; }
+  var cur = APP.order.bi;
+  var next = (cur == null) ? 0 : (cur + 1 >= bank.length ? null : cur + 1);
+  setBreak(next);
+  toast(next == null ? 'Break called off' : 'Breaking a ' + bank[next] + ' — ' + bank[next] + ' extra divers this tide');
+}
+function clearOrder() {
+  if (APP.phase !== 'order') return;
+  APP.order.a = [0, 0, 0, 0, 0, 0];
+  SFX.lift(); updateOrderPanel();
+}
+function freshOrder() { APP.order = { a: [0, 0, 0, 0, 0, 0], bi: null }; }
+
+/* ------------------------------------------------------------ local modes */
+function startLocal(mode, level) {
+  netStop();
+  APP.mode = mode; APP.aiLevel = level || 'master';
+  APP.mySeat = 0; APP.net.seat = 0;
+  APP.seed = LAGAN.newSeed();
+  APP.chart = LAGAN.makeChart(APP.seed);
+  APP.state = LAGAN.initialState(APP.seed);
+  APP.reveal = null; APP.sealed = [null, null]; APP.result = null;
+  freshOrder();
+  enterPlayChrome();
+  beginTide();
+}
+function beginTide() {
+  APP.sealed = [null, null];
+  freshOrder();
+  if (LAGAN.isOver(APP.state)) { endLocalMatch(); return; }
+  if (APP.mode === 'ai') {
+    // The AI seals FIRST, from public state + revealed history only. There is
+    // physically no pending human order in existence when this runs.
+    APP.sealed[1] = LAGAN.aiOrder(APP.state, 1, { level: APP.aiLevel });
+    APP.entrySeat = APP.mySeat;
+    APP.phase = 'order';
+    updateAll();
+    setStatus('Seal your orders, <b>' + CREW[APP.mySeat].name + '</b> — ' +
+      (LAGAN.cratesLeft(APP.state)) + ' crates still down there');
+  } else if (APP.mode === 'hotseat') {
+    beginHandoff(0, 'order');
+  }
+}
+function beginHandoff(seat, next) {
+  APP.phase = 'handoff';
+  freshOrder();                       // nothing of the last crew's order survives
+  APP.hover = -1; APP.hoverDivers = -1;
+  show('orderpanel', false);
+  setStatus('');
+  var pre = el('hoPre'), crew = el('hoCrew'), note = el('hoNote'), btn = el('btnHoGo');
+  if (next === 'reveal') {
+    pre.textContent = 'both sets are sealed';
+    crew.textContent = 'BUOYS UP';
+    crew.style.color = 'var(--amber2)';
+    el('hoEyes').textContent = '🌊';
+    note.textContent = 'Put the chart where both crews can see it.';
+    btn.textContent = 'Surface the buoys';
+  } else {
+    pre.textContent = 'pass the device — ' + (seat === 0 ? 'first' : 'second') + ' crew';
+    crew.textContent = CREW[seat].name;
+    crew.style.color = CREW[seat].lit;
+    el('hoEyes').textContent = '👀';
+    note.textContent = 'Everyone else, eyes off the chart until the orders are sealed.';
+    btn.textContent = "I'm " + CREW[seat].name + ", and I'm alone with it";
+  }
+  APP.handoffNext = { seat: seat, next: next };
+  hideAllOverlays(); show('handoff', true);
+  updateHud();
+}
+function handoffGo() {
+  var h = APP.handoffNext;
+  hideAllOverlays();
+  if (!h) return;
+  if (h.next === 'reveal') { runLocalReveal(); return; }
+  APP.entrySeat = h.seat;
+  APP.phase = 'order';
+  freshOrder();
+  enterPlayChrome();
+  updateAll();
+  setStatus('Seal your orders, <b>' + CREW[h.seat].name + '</b>');
+}
+function commitOrder() {
+  if (APP.phase !== 'order') return;
+  if (orderTotal() !== orderCap()) { SFX.nope(); toast('Every diver must be given a wreck'); return; }
+  var order = { a: APP.order.a.slice(), bi: APP.order.bi };
+  SFX.seal();
+  if (APP.mode === 'online') { netSubmit(order); return; }
+  APP.sealed[APP.entrySeat] = order;
+  freshOrder();
+  show('orderpanel', false);
+  if (APP.mode === 'ai') {
+    APP.phase = 'wait';
+    setStatus('Orders sealed. ' + (APP.aiLevel === 'mate' ? 'The mate' : 'The sea-lawyer') + ' has already sealed hers…');
+    updateHud(); layout();
+    setTimeout(runLocalReveal, 480);
+  } else {
+    if (APP.entrySeat === 0) beginHandoff(1, 'order');
+    else beginHandoff(0, 'reveal');
+  }
+}
+function runLocalReveal() {
+  var pre = APP.state;
+  var res = LAGAN.resolve(pre, APP.sealed[0], APP.sealed[1]);
+  startReveal(pre, res);
+}
+
+/* ---------------------------------------------------------------- reveal */
+function startReveal(pre, res) {
+  hideAllOverlays();
+  enterPlayChrome();
+  APP.phase = 'reveal';
+  APP.reveal = buildReveal(pre, res);
+  show('orderpanel', false);
+  show('skiphint', true);
+  setStatus('Buoys up — tide ' + res.ev.tide);
+  updateHud(); layout();
+}
+function finishReveal() {
+  var rev = APP.reveal;
+  if (!rev) return;
+  var ev = rev.ev, post = rev.post;
+  APP.reveal = null;
+  show('skiphint', false);
+  APP.state = post;
+  awardTideAchievements(ev);
+  if (APP.mode === 'online') {
+    APP.net.shownT = post.t;
+    if (APP.net.revQueue.length) { playNextQueuedReveal(); return; }
+    if (APP.net.afterView) { APP.state = APP.net.afterView; APP.net.shownT = APP.state.t; APP.net.afterView = null; }
+    var pending = APP.net.pending; APP.net.pending = null;
+    if (pending) { netAdopt(pending, true); return; }
+    applyMatchPhase();
+    return;
+  }
+  if (LAGAN.isOver(APP.state)) { endLocalMatch(); return; }
+  beginTide();
+}
+function awardTideAchievements(ev) {
+  var hs = humanSeats(), i, j;
+  for (i = 0; i < hs.length; i++) {
+    var seat = hs[i], cl = ev.claims[seat];
+    if (cl.length) unlock('maiden-haul');
+    if (cl.length >= 3) unlock('clean-sweep');
+    for (j = 0; j < cl.length; j++) if (cl[j].v >= 7) unlock('salvage-court');
+  }
+}
+
+/* ---------------------------------------------------------------- result */
+function endLocalMatch() {
+  APP.phase = 'over';
+  showResult(LAGAN.verdict(APP.state), LAGAN.overReason(APP.state));
+}
+function showResult(v, reason) {
+  APP.result = v;
+  show('orderpanel', false); show('skiphint', false); setStatus('');
+  var mine = (APP.mode === 'hotseat') ? null : (APP.mode === 'online' ? APP.net.seat : APP.mySeat);
+  var won = (mine != null && v.winner === mine), drew = v.winner === null;
+  el('resverdict').textContent = drew ? 'Even water'
+    : (mine == null ? CREW[v.winner].name + ' takes it' : (won ? 'The haul is yours' : 'They out-dove you'));
+  el('resverdict').style.color = drew ? 'var(--foam)' : (mine == null ? CREW[v.winner].lit : (won ? 'var(--amber2)' : 'var(--bad)'));
+  var byTxt = { value: 'on banked value', crates: 'on crates held — values were level', broken: 'on crates kept whole — all else level', draw: 'nothing splits them' };
+  txt('ressub', (reason === 'tidecap' ? 'Twenty tides ran out. ' : 'The last crate left the water. ') +
+    (drew ? 'And ' + byTxt.draw + '.' : 'Won ' + byTxt[v.by] + '.'));
+  var st = APP.state;
+  for (var s = 0; s < 2; s++) {
+    var id = s === 0 ? 'A' : 'B', cr = CREW[s];
+    el('resName' + id).innerHTML = '<span class="dot" style="background:' + cr.ink +
+      ';display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px"></span>' +
+      '<span style="color:' + cr.lit + '">' + cr.name + '</span> <span class="dim tiny">' + seatLabel(s) + '</span>';
+    el('resTot' + id).textContent = v.scores[s];
+    el('resTot' + id).style.color = cr.lit;
+    var box = el('resCrates' + id); box.innerHTML = '';
+    var sorted = st.bank[s].slice().sort(function (a, b) { return b - a; });
+    for (var i = 0; i < sorted.length; i++) {
+      var d = document.createElement('span'); d.className = 'c'; d.textContent = sorted[i];
+      d.style.color = cr.lit; box.appendChild(d);
+    }
+    if (!sorted.length) box.innerHTML = '<span class="dim tiny">hold empty</span>';
+    el('resFoot' + id).textContent = st.bank[s].length + ' crates held · ' + st.broken[s] + ' broken open';
+    el('res' + id).classList[v.winner === s ? 'add' : 'remove']('win');
+  }
+  var lost = LAGAN.poolLeft(st);
+  el('resLost').textContent = lost ? (lost + ' in value went back to the sea with ' + LAGAN.cratesLeft(st) + ' unclaimed crates.')
+    : 'Every crate came up.';
+  el('btnRematch').textContent = APP.mode === 'online' ? 'Lay a fresh buoy (rematch)' : 'Rematch ⟲';
+  hideAllOverlays(); show('resultScreen', true);
+  updateHud(); layout();
+  if (drew) SFX.draw(); else if (mine == null || won) SFX.win(); else SFX.lose();
+  if (mine != null && won) {
+    if (APP.mode === 'online') unlock('privateer');
+    if (st.broken[mine] === 0 && (APP.mode === 'online' || APP.mode === 'ai')) unlock('iron-purse');
+  }
+  if (mine != null && (APP.mode === 'online' || APP.mode === 'ai') && APP.lastEnd !== APP.seedKey()) {
+    APP.lastEnd = APP.seedKey();
+    withSdk(function (a) {
+      if (!a.scores || !a.scores.submit) return;
+      a.scores.submit(v.scores[mine], {
+        mode: APP.mode, level: APP.mode === 'ai' ? APP.aiLevel : undefined,
+        result: drew ? 'draw' : (won ? 'won' : 'lost'),
+        crates: st.bank[mine].length, broken: st.broken[mine], tides: st.tide - 1
+      });
+    });
+  }
+}
+APP.seedKey = function () { return (APP.mode || '') + ':' + (APP.net.id || APP.seed || ''); };
+
+/* ======================================================================= *
+ *  ONLINE — the async match bridge.
+ * ======================================================================= */
+function normState(raw) {
+  try {
+    if (!raw || typeof raw !== 'object' || typeof raw.s !== 'string') return null;
+    var st = LAGAN.initialState(raw.s);
+    if (Object.prototype.toString.call(raw.sites) === '[object Array]' && raw.sites.length === 6) {
+      st.sites = raw.sites.map(function (a) {
+        return (Object.prototype.toString.call(a) === '[object Array]' ? a : []).map(function (v) {
+          v = Math.floor(Number(v)); return isFinite(v) ? clamp(v, 0, LAGAN.VALUE_CAP) : 0;
+        }).filter(function (v) { return v > 0; });
+      });
+    }
+    if (Object.prototype.toString.call(raw.bank) === '[object Array]' && raw.bank.length === 2) {
+      st.bank = raw.bank.map(function (a) {
+        return (Object.prototype.toString.call(a) === '[object Array]' ? a : []).map(function (v) {
+          v = Math.floor(Number(v)); return isFinite(v) ? clamp(v, 0, LAGAN.VALUE_CAP) : 0;
+        }).filter(function (v) { return v > 0; });
+      });
+    }
+    if (Object.prototype.toString.call(raw.broken) === '[object Array]')
+      st.broken = [Math.max(0, raw.broken[0] | 0), Math.max(0, raw.broken[1] | 0)];
+    st.tide = clamp(Math.floor(Number(raw.tide)) || 1, 1, LAGAN.MAX_TIDES + 1);
+    st.t = Math.max(0, Math.floor(Number(raw.t)) || 0);
+    st.log = [];
+    if (Object.prototype.toString.call(raw.log) === '[object Array]') {
+      for (var i = 0; i < raw.log.length && i < 24; i++) {
+        var r = raw.log[i];
+        if (!r || r.length < 4) continue;
+        var a0 = r[0], a1 = r[1];
+        if (!a0 || !a1 || a0.length !== 6 || a1.length !== 6) continue;
+        st.log.push([a0.map(function (v) { return Math.max(0, v | 0); }),
+        a1.map(function (v) { return Math.max(0, v | 0); }),
+        Math.max(0, r[2] | 0), Math.max(0, r[3] | 0)]);
+      }
+    }
+    return st;
+  } catch (e) { return null; }
+}
+function cpState(turnNo) {
+  var s = APP.state;
+  return { v: 1, s: s.s, tide: s.tide, t: turnNo, sites: s.sites, bank: s.bank, broken: s.broken, log: s.log };
+}
+function seatOfPlayer(m, pid) {
+  if (!m || !m.seats || pid == null) return null;
+  for (var i = 0; i < m.seats.length; i++) {
+    var s = m.seats[i];
+    if (!s) continue;
+    var p = s.player;
+    var id = (p && (p.id != null ? p.id : p)) != null ? (p && p.id != null ? p.id : p) : null;
+    if (id != null && String(id) === String(pid)) return (typeof s.seat === 'number') ? s.seat : i;
+  }
+  return null;
+}
+function normMoveEntry(e, m) {
+  var seat = (typeof e.seat === 'number') ? e.seat : null;
+  if (seat == null && typeof e.seatIndex === 'number') seat = e.seatIndex;
+  if (seat == null) seat = seatOfPlayer(m, e.player != null ? (e.player.id != null ? e.player.id : e.player) : e.playerId);
+  var mv = (e.move !== undefined) ? e.move : (e.payload !== undefined ? e.payload : e.data);
+  return { seat: seat, move: mv };
+}
+function groupRounds(m) {
+  var moves = (m && m.moves) || [], map = {}, i, j;
+  for (i = 0; i < moves.length; i++) {
+    var e = moves[i];
+    if (!e) continue;
+    if (Object.prototype.toString.call(e.moves) === '[object Array]' && typeof e.turn === 'number') {
+      map[e.turn] = map[e.turn] || { turn: e.turn, list: [] };
+      for (j = 0; j < e.moves.length; j++) map[e.turn].list.push(normMoveEntry(e.moves[j], m));
+      continue;
+    }
+    if (typeof e.turn !== 'number') continue;
+    map[e.turn] = map[e.turn] || { turn: e.turn, list: [] };
+    map[e.turn].list.push(normMoveEntry(e, m));
+  }
+  var out = [];
+  for (var k in map) if (Object.prototype.hasOwnProperty.call(map, k)) {
+    var r = map[k];
+    // repair a missing seat when the other one is known and the round is full
+    if (r.list.length === 2) {
+      if (r.list[0].seat == null && r.list[1].seat != null) r.list[0].seat = 1 - r.list[1].seat;
+      else if (r.list[1].seat == null && r.list[0].seat != null) r.list[1].seat = 1 - r.list[0].seat;
+      else if (r.list[0].seat == null && r.list[1].seat == null) { r.list[0].seat = 0; r.list[1].seat = 1; }
+    }
+    out.push(r);
+  }
+  out.sort(function (a, b) { return a.turn - b.turn; });
+  return out;
+}
+function moveForSeat(round, seat) {
+  for (var i = 0; i < round.list.length; i++) if (round.list[i].seat === seat) return round.list[i].move;
+  return undefined;
+}
+function isSealMove(mv) { return !!(mv && typeof mv === 'object' && mv.z); }
+
+// Fold every fully-revealed round in the window onto the checkpoint.
+function foldMatch(m) {
+  var view = normState(m.state);
+  if (!view) view = LAGAN.initialState((m.state && m.state.s) || 'FALLBACK');
+  var rounds = groupRounds(m), evs = [], i;
+  if (view.t === 0 && rounds.length) view.t = rounds[0].turn;
+  for (i = 0; i < rounds.length; i++) {
+    var r = rounds[i];
+    if (r.turn < view.t) continue;
+    if (r.turn > view.t) break;                    // gap: cannot resolve past it
+    if (LAGAN.isOver(view)) break;
+    if (r.list.length < 2) break;                  // still secret — one seat missing
+    var o0 = moveForSeat(r, 0), o1 = moveForSeat(r, 1);
+    if (o0 === undefined || o1 === undefined) break;
+    if (isSealMove(o0) || isSealMove(o1)) break;   // terminator, not a tide
+    var pre = view;
+    var res = LAGAN.resolve(pre, o0, o1);
+    res.state.t = r.turn + 1;
+    view = res.state;
+    evs.push({ turn: r.turn, pre: pre, res: res });
+  }
+  return { view: view, evs: evs, rounds: rounds };
+}
+
+function netStop() {
+  if (APP.net.unwatch) { try { APP.net.unwatch(); } catch (e) { } APP.net.unwatch = null; }
+  APP.net.revQueue = []; APP.net.afterView = null; APP.net.pending = null; APP.net.sealing = false;
+}
+function netWatch() {
+  netStop();
+  if (!APP.net.id) return;
+  withSdk(function (a) {
+    if (!a.matches || !a.matches.watch) return;
+    APP.net.unwatch = a.matches.watch(APP.net.id, function (m) {
+      if (!m || m.id !== APP.net.id) return;
+      var before = APP.net.match;
+      var newSub = before && m.submittedSeats && before.submittedSeats &&
+        !before.submittedSeats[1 - APP.net.seat] && m.submittedSeats[1 - APP.net.seat];
+      netAdopt(m, false);
+      if (newSub && APP.phase === 'wait') SFX.foghorn();
+    });
+  });
+}
+function netEnter(m) {
+  APP.mode = 'online';
+  APP.net.id = m.id;
+  APP.net.seat = (typeof m.yourSeat === 'number') ? m.yourSeat : 0;
+  APP.mySeat = APP.net.seat;
+  APP.net.shownT = -1; APP.net.sealing = false; APP.net.revQueue = [];
+  APP.reveal = null; APP.result = null; freshOrder();
+  APP.seed = (m.state && m.state.s) || null;
+  if (APP.seed) APP.chart = LAGAN.makeChart(APP.seed);
+  enterPlayChrome();
+  netAdopt(m, true);
+  netWatch();
+}
+function netAdopt(m, silent) {
+  if (!m) return;
+  APP.net.match = m;
+  if (typeof m.yourSeat === 'number') { APP.net.seat = m.yourSeat; APP.mySeat = m.yourSeat; }
+  if (m.state && m.state.s && (!APP.chart || APP.chart.seed !== m.state.s)) {
+    APP.seed = m.state.s; APP.chart = LAGAN.makeChart(APP.seed); layout();
+  }
+  if (APP.reveal && !APP.reveal.done) { APP.net.pending = m; return; }
+  if (m.status === 'open') {
+    APP.state = normState(m.state) || APP.state;
+    APP.phase = 'wait';
+    show('orderpanel', false);
+    setStatus('Buoy laid. Waiting for a rival on <b class="mono">' + (m.code || '') + '</b> <span class="spin"></span>');
+    updateHud(); layout();
+    return;
+  }
+  var f = foldMatch(m);
+  var first = (APP.net.shownT < 0);
+  if (!silent && !first && f.evs.length) {
+    if (APP.phase === 'wait') SFX.foghorn();
+    APP.net.revQueue = f.evs.slice();
+    APP.net.afterView = f.view;
+    playNextQueuedReveal();
+    return;
+  }
+  APP.state = f.view;
+  APP.net.shownT = f.view.t;
+  applyMatchPhase();
+}
+function playNextQueuedReveal() {
+  var q = APP.net.revQueue;
+  if (!q.length) return;
+  var e = q.shift();
+  startReveal(e.pre, e.res);
+}
+function applyMatchPhase() {
+  var m = APP.net.match;
+  if (!m || APP.mode !== 'online') return;
+  updateHud();
+  if (m.status === 'finished' || m.status === 'abandoned') {
+    netStop();
+    if (APP.phase === 'over' && APP.result) { hideAllOverlays(); show('resultScreen', true); return; }
+    APP.phase = 'over';
+    if (m.status === 'abandoned') {
+      hideAllOverlays(); show('resultScreen', true);
+      el('resverdict').textContent = 'Match abandoned';
+      el('resverdict').style.color = 'var(--mute)';
+      txt('ressub', 'A crew left the water.');
+      showResultBanks();
+    } else showResult(LAGAN.verdict(APP.state), LAGAN.overReason(APP.state));
+    return;
+  }
+  if (LAGAN.isOver(APP.state)) {
+    if (APP.phase !== 'over') showResult(LAGAN.verdict(APP.state), LAGAN.overReason(APP.state));
+    APP.phase = 'over';
+    trySeal();
+    return;
+  }
+  hideAllOverlays();
+  enterPlayChrome();
+  if (m.yourMoveNeeded) {
+    APP.entrySeat = APP.net.seat;
+    APP.phase = 'order';
+    freshOrder();
+    updateAll();
+    var oppIn = m.submittedSeats && m.submittedSeats[1 - APP.net.seat];
+    setStatus('Seal your orders, <b>' + CREW[APP.net.seat].name + '</b>' +
+      (oppIn ? ' — <span style="color:var(--amber2)">their orders are already sealed</span>' : ''));
+  } else {
+    APP.phase = 'wait';
+    show('orderpanel', false);
+    updateHud(); layout();
+    setStatus('Sealed. Waiting on <b>' + CREW[1 - APP.net.seat].name + '</b> <span class="spin"></span>');
+  }
+}
+function showResultBanks() {
+  var st = APP.state, v = LAGAN.verdict(st);
+  APP.result = v;
+  for (var s = 0; s < 2; s++) {
+    var id = s === 0 ? 'A' : 'B', cr = CREW[s];
+    el('resName' + id).innerHTML = '<span style="color:' + cr.lit + '">' + CREW[s].name + '</span>';
+    el('resTot' + id).textContent = v.scores[s];
+    el('resTot' + id).style.color = cr.lit;
+    var box = el('resCrates' + id); box.innerHTML = '';
+    st.bank[s].slice().sort(function (a, b) { return b - a; }).forEach(function (x) {
+      var d = document.createElement('span'); d.className = 'c'; d.textContent = x; d.style.color = cr.lit; box.appendChild(d);
+    });
+    el('resFoot' + id).textContent = st.bank[s].length + ' crates held · ' + st.broken[s] + ' broken open';
+  }
+  el('resLost').textContent = '';
+  el('btnRematch').textContent = 'Lay a fresh buoy (rematch)';
+}
+function netSubmit(order) {
+  var m = APP.net.match;
+  if (!m || APP.net.busy) return;
+  APP.net.busy = true;
+  APP.phase = 'wait';
+  freshOrder();
+  show('orderpanel', false);
+  setStatus('Sending sealed orders <span class="spin"></span>');
+  updateHud(); layout();
+  var turn = m.turn;
+  var payload = { turn: turn, move: { a: order.a, bi: order.bi }, state: cpState(turn), status: 'active' };
+  withSdk(function (a) {
+    a.matches.move(m.id, payload).then(function (res) {
+      APP.net.busy = false;
+      if (res && res.ok) { netAdopt(res.match, false); return; }
+      handleMoveFail(res);
+    }, function () { APP.net.busy = false; netResync('The signal dropped — resynced.'); });
+  }, function () { APP.net.busy = false; netResync('No bridge — resynced.'); });
+}
+function handleMoveFail(res) {
+  var reason = res && res.reason;
+  if (reason === 'CONFLICT') { netResync('The tide turned first — orders resynced.'); return; }
+  if (reason === 'SIGNED_OUT') { toast('You are signed out — this match needs an account.', 4200); goLobby(); return; }
+  if (reason === 'RATE_LIMITED') { toast('Easy — the harbourmaster says slow down.'); setTimeout(function () { netResync(); }, 1500); return; }
+  netResync((res && res.message) || 'Could not send — resynced.');
+}
+function netResync(msg) {
+  if (msg) toast(msg, 3400);
+  var id = APP.net.id;
+  if (!id) return;
+  withSdk(function (a) {
+    a.matches.get(id).then(function (r) {
+      if (r && r.ok && r.match) netAdopt(r.match, false);
+      else if (r && r.changed === false && APP.net.match) applyMatchPhase();
+    }, function () { });
+  });
+}
+function trySeal() {
+  var m = APP.net.match;
+  if (!m || APP.net.sealing) return;
+  if (m.status !== 'active' || !m.yourMoveNeeded) return;
+  APP.net.sealing = true;
+  var delay = APP.net.seat === 0 ? 120 : 900;   // stagger so one client usually wins cleanly
+  setTimeout(function () {
+    var mm = APP.net.match;
+    if (!mm || mm.status !== 'active' || !mm.yourMoveNeeded) { APP.net.sealing = false; return; }
+    var v = LAGAN.verdict(APP.state);
+    withSdk(function (a) {
+      a.matches.move(mm.id, {
+        turn: mm.turn, move: { z: 1 }, state: cpState(mm.turn), status: 'finished',
+        result: { winner: v.winner, draw: v.winner === null, scores: v.scores, by: v.by }
+      }).then(function (r) {
+        APP.net.sealing = false;
+        if (r && r.ok) { APP.net.match = r.match; netStop(); }
+        else if (r && r.reason === 'CONFLICT') netResync();
+      }, function () { APP.net.sealing = false; });
+    }, function () { APP.net.sealing = false; });
+  }, delay);
+}
+
+/* ---------------------------------------------------- lobby: create/join */
+function netCreate(fromRematch) {
+  if (!canPlayOnline()) { toast('Sign in at aimade.games to duel a rival'); return; }
+  var btn = el('btnCreate'); if (btn) btn.disabled = true;
+  var seed = LAGAN.newSeed();
+  var st = LAGAN.initialState(seed);
+  hideAllOverlays(); show('createScreen', true);
+  txt('createCode', '········');
+  withSdk(function (a) {
+    a.matches.create({ maxPlayers: 2, mode: 'simultaneous', state: cpFrom(st, 0) }).then(function (r) {
+      if (btn) btn.disabled = false;
+      if (!r || !r.ok) {
+        toast((r && r.message) || 'Could not lay the buoy', 3600);
+        hideAllOverlays(); show('startScreen', true); return;
+      }
+      var m = r.match;
+      var code = m.code || m.joinCode || '';
+      txt('createCode', code || '(check aimade.games/matches)');
+      APP.seed = seed; APP.chart = LAGAN.makeChart(seed);
+      APP.mode = 'online';
+      APP.net.id = m.id; APP.net.seat = (typeof m.yourSeat === 'number') ? m.yourSeat : 0;
+      APP.mySeat = APP.net.seat;
+      APP.net.shownT = -1; APP.net.match = m; APP.state = st;
+      el('createCode').onclick = function () { if (code) copyText(code); };
+      netStop();
+      withSdk(function (a2) {
+        APP.net.unwatch = a2.matches.watch(m.id, function (mm) {
+          if (!mm || mm.id !== APP.net.id) return;
+          if (mm.status === 'active') {
+            SFX.foghorn();
+            toast('A rival made fast — get to work');
+            netEnter(mm);
+          } else APP.net.match = mm;
+        });
+      });
+    }, function () { if (btn) btn.disabled = false; toast('Could not reach the arcade'); hideAllOverlays(); show('startScreen', true); });
+  }, function () { if (btn) btn.disabled = false; toast('No arcade bridge'); hideAllOverlays(); show('startScreen', true); });
+}
+function cpFrom(s, turnNo) {
+  return { v: 1, s: s.s, tide: s.tide, t: turnNo, sites: s.sites, bank: s.bank, broken: s.broken, log: s.log };
+}
+function netJoin(code) {
+  code = (code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 8) { txt('joinErr', 'Eight characters, no more, no less.'); return; }
+  if (!canPlayOnline()) { txt('joinErr', 'Sign in at aimade.games to join a match.'); return; }
+  txt('joinErr', '');
+  var b = el('btnJoinGo'); b.disabled = true; b.textContent = 'Coming alongside…';
+  withSdk(function (a) {
+    a.matches.join(code).then(function (r) {
+      b.disabled = false; b.textContent = 'Board her';
+      if (!r || !r.ok) {
+        txt('joinErr', r && r.reason === 'NOT_FOUND' ? 'No match under that code.' :
+          r && r.reason === 'CONFLICT' ? 'That match is full.' : ((r && r.message) || 'Could not board her.'));
+        return;
+      }
+      APP.pendingCode = null;
+      netEnter(r.match);
+    }, function () { b.disabled = false; b.textContent = 'Board her'; txt('joinErr', 'Could not reach the arcade.'); });
+  }, function () { b.disabled = false; b.textContent = 'Board her'; txt('joinErr', 'No arcade bridge here.'); });
+}
+function netList() {
+  hideAllOverlays(); show('listScreen', true);
+  var box = el('mlist'); box.innerHTML = '<div class="note"><span class="spin"></span> Reading the harbour book…</div>';
+  txt('listErr', '');
+  if (!canPlayOnline()) { box.innerHTML = ''; txt('listErr', 'Sign in at aimade.games to keep matches.'); return; }
+  withSdk(function (a) {
+    var got = [], pending = 2, done = function () {
+      if (--pending > 0) return;
+      renderList(got);
+    };
+    ['active', 'open'].forEach(function (s) {
+      a.matches.list({ status: s }).then(function (r) {
+        if (r && r.ok && r.matches) got = got.concat(r.matches);
+        done();
+      }, done);
+    });
+  }, function () { box.innerHTML = ''; txt('listErr', 'No arcade bridge here.'); });
+}
+function renderList(ms) {
+  var box = el('mlist'); box.innerHTML = '';
+  var seen = {}, list = [];
+  ms.forEach(function (m) { if (m && m.id && !seen[m.id]) { seen[m.id] = 1; list.push(m); } });
+  list.sort(function (a, b) {
+    var av = a.yourMoveNeeded ? 0 : 1, bv = b.yourMoveNeeded ? 0 : 1;
+    if (av !== bv) return av - bv;
+    return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+  });
+  if (!list.length) { txt('listErr', 'Nothing afloat. Lay a buoy and send the code.'); return; }
+  list.forEach(function (m) {
+    var row = document.createElement('div'); row.className = 'mrow';
+    var opp = '';
+    if (m.players) for (var i = 0; i < m.players.length; i++) {
+      var p = m.players[i];
+      if (p && p.id != null && APP.player.id != null && String(p.id) === String(APP.player.id)) continue;
+      if (p) opp = p.username ? '@' + p.username : (p.displayName || '');
+    }
+    var t = document.createElement('div'); t.className = 't';
+    t.innerHTML = (m.status === 'open' ? 'Buoy laid · <span class="mono">' + (m.code || '') + '</span>'
+      : 'vs ' + (opp || 'a rival')) + ' <span class="dim tiny">· tide ' +
+      ((m.state && m.state.tide) || (m.turn != null ? m.turn + 1 : 1)) + '</span>';
+    var b = document.createElement('span');
+    if (m.status === 'open') { b.className = 'badge open'; b.textContent = 'waiting for a rival'; }
+    else if (m.yourMoveNeeded) { b.className = 'badge you'; b.textContent = 'your move'; }
+    else { b.className = 'badge them'; b.textContent = 'their move'; }
+    row.appendChild(t); row.appendChild(b);
+    row.onclick = function () { resumeMatch(m); };
+    box.appendChild(row);
+  });
+}
+function resumeMatch(sum) {
+  txt('listErr', 'Opening…');
+  withSdk(function (a) {
+    a.matches.get(sum.id).then(function (r) {
+      if (!r || !r.ok || !r.match) { txt('listErr', 'Could not open that match.'); return; }
+      var m = r.match;
+      if (m.status === 'open') {
+        APP.net.id = m.id; APP.net.match = m; APP.mode = 'online';
+        APP.net.seat = (typeof m.yourSeat === 'number') ? m.yourSeat : 0;
+        APP.seed = (m.state && m.state.s) || null;
+        if (APP.seed) APP.chart = LAGAN.makeChart(APP.seed);
+        APP.state = normState(m.state) || APP.state;
+        var code = m.code || '';
+        hideAllOverlays(); show('createScreen', true);
+        txt('createCode', code);
+        el('createCode').onclick = function () { if (code) copyText(code); };
+        netStop();
+        withSdk(function (a2) {
+          APP.net.unwatch = a2.matches.watch(m.id, function (mm) {
+            if (!mm || mm.id !== APP.net.id) return;
+            if (mm.status === 'active') { SFX.foghorn(); netEnter(mm); } else APP.net.match = mm;
+          });
+        });
+        return;
+      }
+      netEnter(m);
+    }, function () { txt('listErr', 'Could not reach the arcade.'); });
+  }, function () { txt('listErr', 'No arcade bridge here.'); });
+}
+function forfeit() {
+  if (APP.mode !== 'online' || !APP.net.id) return;
+  askConfirm('Forfeit?', 'Leaving an active match abandons it for both crews. No score is kept.', function () {
+    var id = APP.net.id;
+    withSdk(function (a) { a.matches.leave(id).then(function () { }, function () { }); });
+    toast('You slipped the moorings.');
+    goLobby();
+  });
+}
+function askConfirm(title, body, yes) {
+  txt('cfTitle', title); txt('cfBody', body);
+  el('cfYes').onclick = function () { hideAllOverlays(); restoreAfterOverlay(); yes(); };
+  el('cfNo').onclick = function () { hideAllOverlays(); restoreAfterOverlay(); };
+  hideAllOverlays(); show('confirmScreen', true);
+}
+function restoreAfterOverlay() {
+  if (APP.phase === 'handoff') { show('handoff', true); return; }
+  if (APP.phase === 'over') { show('resultScreen', true); return; }
+  if (!APP.mode) { show('startScreen', true); return; }
+  enterPlayChrome(); updateAll();
+}
+
+/* ------------------------------------------------------------- rematch */
+function rematch() {
+  if (APP.mode === 'online') { netStop(); netCreate(true); return; }
+  if (APP.mode === 'ai') { startLocal('ai', APP.aiLevel); return; }
+  if (APP.mode === 'hotseat') { startLocal('hotseat'); return; }
+  goLobby();
+}
+
+/* -------------------------------------------------------------- controls */
+function togglePause(force) {
+  var open = el('ctrlScreen').classList.contains('on');
+  var want = (force == null) ? !open : force;
+  if (want) {
+    APP.paused = true;
+    txt('ctrlTitle', 'Paused — Controls');
+    el('btnQuit').textContent = APP.mode === 'online' ? 'Leave (match keeps)' : 'Leave to the chartroom';
+    hideAllOverlays(); show('ctrlScreen', true);
+  } else {
+    APP.paused = false;
+    hideAllOverlays();
+    restoreAfterOverlay();
+  }
+}
+function updateAll() { updateHud(); updateOrderPanel(); }
+
+/* ----------------------------------------------------------------- input */
+function canvasPoint(e) {
+  var r = CV.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function hitSite(p) {
+  var best = -1, bd = 1e9;
+  for (var i = 0; i < LAY.sites.length; i++) {
+    var s = LAY.sites[i];
+    var d = Math.hypot(p.x - s.x, p.y - s.y);
+    if (d < s.hit && d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+function hitDivers(p) {
+  for (var i = 0; i < LAY.sites.length; i++) {
+    var s = LAY.sites[i];
+    if (APP.order.a[i] > 0 && Math.hypot(p.x - s.dx, p.y - s.dy) <= s.dr * 1.25) return i;
+  }
+  return -1;
+}
+function onPointerDown(e) {
+  audioResume();
+  if (APP.reveal && !APP.reveal.done) { skipReveal(); return; }
+  if (APP.phase !== 'order') return;
+  var p = canvasPoint(e);
+  var dv = hitDivers(p);
+  var remove = e.shiftKey || e.button === 2 || e.ctrlKey;
+  if (dv >= 0 && !remove) { subDiver(dv); return; }
+  var s = hitSite(p);
+  if (s < 0) return;
+  if (remove) subDiver(s); else addDiver(s);
+}
+function onPointerMove(e) {
+  if (APP.touch) return;
+  var p = canvasPoint(e);
+  APP.hover = (APP.phase === 'order') ? hitSite(p) : -1;
+  APP.hoverDivers = (APP.phase === 'order') ? hitDivers(p) : -1;
+  CV.style.cursor = (APP.phase === 'order' && APP.hover >= 0) ? 'pointer' : 'default';
+}
+function onKey(e) {
+  var tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA') {
+    if (e.key === 'Enter' && el('joinScreen').classList.contains('on')) { e.preventDefault(); netJoin(el('joinInput').value); }
+    return;
+  }
+  var k = e.key;
+  audioResume();
+  if (k === 'h' || k === 'H' || k === '?') { e.preventDefault(); togglePause(!el('ctrlScreen').classList.contains('on')); return; }
+  if (k === 'p' || k === 'P' || k === 'Escape') {
+    e.preventDefault();
+    if (el('ctrlScreen').classList.contains('on')) { togglePause(false); return; }
+    if (el('confirmScreen').classList.contains('on')) { hideAllOverlays(); restoreAfterOverlay(); return; }
+    if (el('joinScreen').classList.contains('on') || el('listScreen').classList.contains('on')) { hideAllOverlays(); show('startScreen', true); return; }
+    if (APP.mode) togglePause(true);
+    return;
+  }
+  if (k === 'm' || k === 'M') { e.preventDefault(); setMute(!AUD.muted); toast(AUD.muted ? 'Muted' : 'Sound on'); return; }
+  if (el('ctrlScreen').classList.contains('on') || el('confirmScreen').classList.contains('on')) return;
+  if (k === ' ' || k === 'Spacebar') {
+    e.preventDefault();
+    if (APP.reveal && !APP.reveal.done) { skipReveal(); return; }
+    if (el('handoff').classList.contains('on')) { handoffGo(); return; }
+    return;
+  }
+  if (k === 'r' || k === 'R') {
+    if (APP.mode && APP.mode !== 'online') { e.preventDefault(); rematch(); }
+    else if (APP.phase === 'over') { e.preventDefault(); rematch(); }
+    return;
+  }
+  if (k === 'f' || k === 'F') {
+    if (APP.mode === 'online' && APP.phase !== 'over') { e.preventDefault(); forfeit(); }
+    return;
+  }
+  if (APP.phase !== 'order') return;
+  if (k === 'b' || k === 'B') { e.preventDefault(); cycleBreak(); return; }
+  if (k === 'Enter') { e.preventDefault(); commitOrder(); return; }
+  if (k === 'Backspace' || k === 'Delete') { e.preventDefault(); clearOrder(); return; }
+  if (k >= '1' && k <= '6') { e.preventDefault(); addDiver(+k - 1); return; }
+  var shifted = { '!': 0, '@': 1, '#': 2, '$': 3, '%': 4, '^': 5 };
+  if (shifted[k] !== undefined) { e.preventDefault(); subDiver(shifted[k]); return; }
+  if (e.shiftKey && e.code && /^Digit[1-6]$/.test(e.code)) { e.preventDefault(); subDiver(+e.code.slice(5) - 1); }
+}
+
+/* ------------------------------------------------------------------ loop */
+var LAST = 0;
+function frame(ts) {
+  requestAnimationFrame(frame);
+  NOW = ts || 0;
+  var dt = Math.min(0.05, (NOW - LAST) / 1000 || 0);
+  LAST = NOW;
+  if (APP.reveal && !APP.reveal.done) revealTick(dt);
+  pupdate(dt);
+  var t = NOW / 1000;
+  drawSea(CTX, t);
+  drawChartFurniture(CTX, t);
+  drawFog(CTX, t, false);
+  if (APP.state && APP.chart) drawBoard(CTX, t);
+  pdraw(CTX);
+  drawGulls(CTX, t);
+  drawFog(CTX, t, true);
+  vignette(CTX);
+}
+
+/* ------------------------------------------------------------------ boot */
+var HINTS = '<kbd>1\u20136</kbd> dive <kbd>\u21e71\u20136</kbd> lift <kbd>B</kbd> break <kbd>\u23ce</kbd> seal <kbd>H</kbd> controls';
+function wireUi() {
+  el('hintstrip').innerHTML = HINTS;
+  el('btnCreate').onclick = function () { audioResume(); SFX.ui(); netCreate(); };
+  el('btnJoinOpen').onclick = function () {
+    audioResume(); SFX.ui(); hideAllOverlays(); show('joinScreen', true);
+    txt('joinErr', ''); el('joinInput').value = APP.pendingCode || '';
+    setTimeout(function () { try { el('joinInput').focus(); } catch (e) { } }, 50);
+  };
+  el('btnMyMatches').onclick = function () { audioResume(); SFX.ui(); netList(); };
+  el('btnPendJoin').onclick = function () { audioResume(); SFX.ui(); netJoin(APP.pendingCode); };
+  el('btnAiMaster').onclick = function () { audioResume(); SFX.ui(); startLocal('ai', 'master'); };
+  el('btnAiMate').onclick = function () { audioResume(); SFX.ui(); startLocal('ai', 'mate'); };
+  el('btnHotseat').onclick = function () { audioResume(); SFX.ui(); startLocal('hotseat'); };
+  el('btnCreateBack').onclick = function () { SFX.ui(); goLobby(); };
+  el('btnJoinBack').onclick = function () { SFX.ui(); hideAllOverlays(); show('startScreen', true); };
+  el('btnJoinGo').onclick = function () { SFX.ui(); netJoin(el('joinInput').value); };
+  el('btnListBack').onclick = function () { SFX.ui(); hideAllOverlays(); show('startScreen', true); };
+  el('btnListRefresh').onclick = function () { SFX.ui(); netList(); };
+  el('btnResume').onclick = function () { SFX.ui(); togglePause(false); };
+  el('btnQuit').onclick = function () { SFX.ui(); goLobby(); };
+  el('btnHoGo').onclick = function () { audioResume(); SFX.ui(); handoffGo(); };
+  el('btnRematch').onclick = function () { SFX.ui(); rematch(); };
+  el('btnResHome').onclick = function () { SFX.ui(); goLobby(); };
+  el('btnCommit').onclick = function () { audioResume(); commitOrder(); };
+  el('btnClear').onclick = function () { audioResume(); clearOrder(); };
+  el('btnHelp').onclick = function () { audioResume(); SFX.ui(); togglePause(true); };
+  el('btnMute').onclick = function () { audioResume(); setMute(!AUD.muted); };
+  el('joinInput').addEventListener('input', function () {
+    this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  });
+  CV.addEventListener('pointerdown', onPointerDown);
+  CV.addEventListener('pointermove', onPointerMove);
+  CV.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  window.addEventListener('touchstart', function () {
+    if (APP.touch) return;
+    APP.touch = true;
+    document.body.classList.add('touchmode');
+    show('hintstrip', false);
+    layout();
+  }, { passive: true });
+  window.addEventListener('keydown', onKey);
+  window.addEventListener('resize', function () { resize(); updateOrderPanel(); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { resize(); });
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 220); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      resize();
+      if (APP.mode === 'online' && APP.net.id && APP.phase !== 'over') netResync();
+    }
+  });
+  window.addEventListener('focus', function () {
+    if (APP.mode === 'online' && APP.net.id && APP.phase !== 'over') netResync();
+  });
+}
+
+function boot() {
+  initAmbient();
+  wireUi();
+  resize();
+  goLobby();
+  requestAnimationFrame(frame);
+  var start = function (a) {
+    APP.sdk = a || null;
+    if (a) {
+      APP.online = !!a.online;
+      APP.player = a.player || APP.player;
+      APP.writes = !!(a.capabilities && a.capabilities.features && a.capabilities.features.writes);
+      APP.pendingCode = (a.matches && a.matches.pendingCode) || null;
+      if (!APP.player.isGuest && APP.player.displayName) {
+        el('greet').textContent = 'Hi, ' + APP.player.displayName;
+      }
+      if (a.achievements && a.achievements.mine) {
+        try {
+          var p = a.achievements.mine();
+          if (p && p.then) p.then(function (r) {
+            if (r && r.ok && r.unlocked) r.unlocked.forEach(function (s) { APP.ach[s] = 1; });
+          }, function () { });
+        } catch (e) { }
+      }
+    }
+    refreshLobby();
+  };
+  if (window.Arcade && window.Arcade.ready) {
+    try { window.Arcade.ready().then(start, function () { start(null); }); }
+    catch (e) { start(null); }
+  } else start(null);
+}
+
+/* ------------------------------------------------------- test/debug hook */
+// Debug/self-test hook. Deliberately narrow: it exposes NOTHING that would leak
+// a sealed order (no APP, no APP.sealed) — only this client's own public view.
+window.__lagan_test = {
+  L: LAGAN, LAY: LAY,
+  net: function () { return { id: APP.net.id, seat: APP.net.seat, match: APP.net.match, mode: APP.mode }; },
+  state: function () { return APP.state; },
+  phase: function () { return APP.phase; },
+  dpr: function () {
+    return {
+      dpr: window.devicePixelRatio, used: DPR,
+      cssW: CV.clientWidth, cssH: CV.clientHeight,
+      winW: window.innerWidth, winH: window.innerHeight,
+      backW: CV.width, backH: CV.height,
+      styleOk: (function () {
+        var s = getComputedStyle(CV);
+        return s.position === 'fixed' && s.display === 'block';
+      })()
+    };
+  },
+  hintCollide: function () {
+    var hs = el('hintstrip'), op = el('orderpanel'), hud = el('hud');
+    if (!hs || !hs.classList.contains('on')) return { visible: false };
+    var a = hs.getBoundingClientRect();
+    var out = { visible: true, rect: [a.left, a.top, a.right, a.bottom], collisions: [] };
+    [['orderpanel', op], ['hud', hud]].forEach(function (pair) {
+      var e = pair[1];
+      if (!e || !e.offsetParent) return;
+      var b = e.getBoundingClientRect();
+      if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) out.collisions.push(pair[0]);
+    });
+    out.inViewport = a.bottom <= window.innerHeight + 1 && a.top >= 0;
+    return out;
+  },
+  startLocal: startLocal, commitOrder: commitOrder, addDiver: addDiver, subDiver: subDiver,
+  setBreak: setBreak, skipReveal: skipReveal, order: function () { return APP.order; },
+  foldMatch: foldMatch, groupRounds: groupRounds, normState: normState, cpState: cpState,
+  applyMatchPhase: applyMatchPhase, netAdopt: netAdopt,
+  achievements: function () { return APP.ach; },
+  mute: function () { return AUD.muted; },
+  paused: function () { return el('ctrlScreen').classList.contains('on'); },
+  layout: function () { return LAY; }
+};
+
+boot();
+</script>
+</body>
+</html>
