@@ -1,0 +1,3868 @@
+<!doctype html>
+<!--
+  SKERRY — schema version 1  (match state field "v":1)
+  A skerry is a rock the tide covers.  Two pods of grey seals haul out on
+  opposite shores at low water; the tide comes in on a schedule both players
+  can read from the first frame.  Shove the rival pod into the sea.
+  Alternating-mode async multiplayer over the aimade.games match bridge.
+  Build: 2026-08-29.  RULES below is the sole authority for every mode —
+  online, hotseat, vs AI, the on-board previews and the balance harness.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="SKERRY — two pods of grey seals, one rock, and a tide that never stops. Shove your rivals into the sea before the water takes you. Async turn-based multiplayer.">
+<title>SKERRY</title>
+<style>
+  :root{
+    --ink:#e9f1f2;
+    --dim:rgba(233,241,242,.62);
+    --dimmer:rgba(233,241,242,.34);
+    --faint:rgba(233,241,242,.13);
+    --abyss:#071216;
+    --sea-deep:#0c2027;
+    --sea:#153740;
+    --sea-lit:#20535c;
+    --foam:#dcefea;
+    --rock-lo:#39464a;
+    --rock-hi:#c3cbc8;
+    --lichen:#9fb264;
+    --silver:#cdd8dc;  --silver-hi:#f2f8fa;  --silver-dk:#5e6d75;
+    --umber:#c9884d;   --umber-hi:#f0b878;   --umber-dk:#6b4425;
+    --warn:#eaa63f;
+    --good:#86c8a0;
+    --bad:#e2705f;
+    --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --cond: "Haettenschweiler","Arial Narrow","Oswald",Impact, ui-sans-serif, system-ui, sans-serif;
+    --mono: ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+    --safeT: env(safe-area-inset-top,0px);
+    --safeB: env(safe-area-inset-bottom,0px);
+    --safeL: env(safe-area-inset-left,0px);
+    --safeR: env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:var(--abyss);color:var(--ink);font-family:var(--ui);
+    overflow:hidden;overscroll-behavior:none;
+    -webkit-user-select:none;user-select:none;touch-action:none;
+  }
+  /* ===== RETINA/DPR RULE 1 — the canvas is ALWAYS pinned to the viewport,
+     whatever size the backing store happens to be. ===== */
+  canvas#board{
+    position:fixed; left:0; top:0; right:0; bottom:0;
+    width:100%; height:100%;
+    display:block; touch-action:none; z-index:0;
+  }
+
+  /* ============================== HUD ============================== */
+  #hud{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;transition:opacity .4s ease;}
+  #hud.on{opacity:1;}
+
+  .plate{
+    position:fixed;z-index:5;pointer-events:none;
+    background:linear-gradient(180deg,rgba(11,26,32,.86),rgba(7,18,22,.78));
+    border:1px solid var(--faint);border-radius:5px;
+    backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+    box-shadow:0 6px 22px rgba(0,0,0,.45);
+  }
+
+  /* ------------------------- tide forecast ------------------------- */
+  #tide{
+    top:calc(var(--safeT) + 8px);left:50%;transform:translateX(-50%);
+    padding:6px 11px 7px;display:flex;flex-direction:column;gap:5px;align-items:center;
+    max-width:min(360px, calc(100vw - 112px));
+  }
+  #tideTop{display:flex;align-items:baseline;gap:4px 8px;flex-wrap:wrap;justify-content:center;
+           max-width:100%;text-align:center;line-height:1.25;}
+  #tideNum{font-family:var(--cond);font-size:15px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#8fd2e0;}
+  #tideWhen{font-size:10px;letter-spacing:.05em;color:var(--dim);white-space:normal;}
+  #tideWhen b{color:var(--warn);font-weight:600;}
+  #tideBar{display:flex;gap:3px;align-items:flex-end;height:19px;}
+  .tseg{
+    width:15px;border-radius:2px 2px 1px 1px;position:relative;
+    background:linear-gradient(180deg,rgba(32,83,92,.85),rgba(12,32,39,.9));
+    border:1px solid rgba(143,210,224,.20);
+    display:flex;align-items:flex-end;justify-content:center;
+  }
+  .tseg i{font-style:normal;font-size:8px;font-family:var(--mono);color:rgba(233,241,242,.45);line-height:1;padding-bottom:1px;}
+  .tseg.now{border-color:rgba(143,210,224,.85);box-shadow:0 0 9px rgba(143,210,224,.35);background:linear-gradient(180deg,#2c6d79,#123640);}
+  .tseg.now i{color:#dff4f8;}
+  .tseg.past{opacity:.38;}
+  .tseg.dead{background:linear-gradient(180deg,rgba(120,60,50,.5),rgba(40,18,16,.7));border-color:rgba(226,112,95,.4);}
+
+  /* --------------------------- pod plates --------------------------- */
+  #pods{
+    position:fixed;z-index:5;pointer-events:none;
+    left:50%;transform:translateX(-50%);
+    bottom:calc(var(--safeB) + 74px);
+    display:flex;gap:8px;align-items:stretch;max-width:calc(100vw - 14px);
+  }
+  .pod{
+    display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:5px;
+    background:linear-gradient(180deg,rgba(11,26,32,.86),rgba(7,18,22,.78));
+    border:1px solid var(--faint);min-width:0;
+    backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+  }
+  .pod .col{min-width:0;display:flex;flex-direction:column;gap:1px;}
+  .pod .nm{font-family:var(--cond);font-size:12px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;line-height:1.1;}
+  .pod .sub{font-size:9px;letter-spacing:.09em;color:var(--dim);white-space:nowrap;line-height:1.2;}
+  .pod.p0 .nm{color:var(--silver-hi);} .pod.p1 .nm{color:var(--umber-hi);}
+  .pod.act{border-color:rgba(233,241,242,.42);box-shadow:0 0 18px rgba(233,241,242,.10);}
+  .pod.act.p0{border-color:rgba(205,216,220,.7);box-shadow:0 0 18px rgba(205,216,220,.16);}
+  .pod.act.p1{border-color:rgba(201,136,77,.75);box-shadow:0 0 18px rgba(201,136,77,.18);}
+  .pips{display:flex;gap:3px;align-items:center;flex:0 0 auto;}
+  .pip{width:9px;height:7px;border-radius:4px/3.5px;}
+  .p0 .pip{background:var(--silver);box-shadow:0 0 6px rgba(205,216,220,.5);}
+  .p1 .pip{background:var(--umber);box-shadow:0 0 6px rgba(201,136,77,.5);}
+  .pip.done{opacity:.42;box-shadow:none;}
+  .pip.lost{background:rgba(233,241,242,.11)!important;box-shadow:none!important;}
+  .turnflag{
+    font-family:var(--cond);font-size:9px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;
+    padding:2px 5px;border-radius:2px;border:1px solid currentColor;white-space:nowrap;flex:0 0 auto;
+    color:var(--dimmer);opacity:0;transition:opacity .2s ease;
+  }
+  .turnflag.on{opacity:1;}
+  .turnflag.you{color:#a9dbe4;}
+  .turnflag.wait{color:var(--dimmer);}
+  @media (max-width:420px){ .turnflag{font-size:8px;letter-spacing:.08em;padding:2px 3px;} }
+
+  /* --------------------------- action bar --------------------------- */
+  #acts{
+    position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(var(--safeB) + 26px);z-index:6;
+    display:flex;gap:6px;align-items:stretch;
+    opacity:0;transition:opacity .25s ease;pointer-events:none;
+    max-width:calc(100vw - 12px);
+  }
+  #acts.on{opacity:1;}
+  #acts:not(.on) .abtn{pointer-events:none;}
+  .abtn{
+    pointer-events:auto;cursor:pointer;
+    background:rgba(11,26,32,.84);border:1px solid var(--faint);border-radius:4px;
+    padding:6px 12px;min-width:74px;text-align:center;color:var(--ink);
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+    transition:border-color .13s ease,background .13s ease,transform .09s ease;
+    display:flex;flex-direction:column;gap:1px;align-items:center;
+  }
+  .abtn .n{font-family:var(--cond);font-size:12.5px;letter-spacing:.13em;text-transform:uppercase;font-weight:700;line-height:1.15;}
+  .abtn .k{font-size:8.5px;color:var(--dimmer);letter-spacing:.1em;line-height:1;}
+  .abtn:hover{border-color:rgba(233,241,242,.30);background:rgba(20,45,54,.9);}
+  .abtn:active{transform:translateY(2px);}
+  .abtn.sel{border-color:var(--warn);background:rgba(234,166,63,.16);box-shadow:0 0 14px rgba(234,166,63,.18) inset;}
+  .abtn.dis{opacity:.3;pointer-events:none;}
+  .abtn.go{color:#0a1a1f;background:linear-gradient(180deg,#a9e0d4,#6bbfae);border-color:transparent;box-shadow:0 3px 0 #35786c;}
+  .abtn.go .k{color:rgba(10,26,31,.6);}
+  .abtn.go:active{transform:translateY(3px);box-shadow:none;}
+  @media (max-width:540px){
+    .abtn{min-width:0;flex:1 1 0;padding:5px 6px;}
+    .abtn .n{font-size:11px;letter-spacing:.06em;}
+    .abtn .k{font-size:8px;}
+    #acts{gap:4px;width:calc(100vw - 12px);}
+    .pod .nm{font-size:11px;letter-spacing:.1em;max-width:82px;}
+    .pod{padding:4px 7px;gap:6px;}
+    #pods{gap:6px;bottom:calc(var(--safeB) + 70px);}
+    #tide{max-width:calc(100vw - 106px);padding:5px 8px 6px;}
+    .tseg{width:13px;}
+  }
+  @media (max-width:380px){
+    .pod .sub{font-size:8px;}
+    .pod .nm{max-width:64px;}
+    .tseg{width:11px;}
+    #tideNum{font-size:13px;}
+  }
+
+  /* ------------------ always-on hint strip (keyboard) ------------------ */
+  #strip{
+    position:fixed;z-index:6;pointer-events:none;
+    left:50%;transform:translateX(-50%);
+    bottom:calc(var(--safeB) + 4px);
+    display:flex;align-items:center;gap:8px;white-space:nowrap;
+    opacity:0;transition:opacity .5s ease;
+    font-size:10.5px;letter-spacing:.04em;color:rgba(233,241,242,.66);
+    max-width:min(97vw,760px);overflow:hidden;height:16px;
+  }
+  #strip.on{opacity:.60;}
+  body.touch #strip{display:none;}
+  #strip .g{display:flex;align-items:center;gap:3px;}
+  #strip .sep{opacity:.25;}
+  kbd{
+    display:inline-block;font-family:var(--mono);font-size:9.5px;line-height:1;
+    padding:3px 4px;border-radius:3px;background:rgba(9,22,27,.8);
+    border:1px solid rgba(233,241,242,.20);color:rgba(223,244,248,.94);
+    box-shadow:0 1px 0 rgba(0,0,0,.5);
+  }
+  @media (max-width:560px){ #strip{font-size:9px;gap:6px;} #strip kbd{font-size:8.5px;padding:2px 3px;} }
+  @media (max-width:420px){ #strip .g.opt,#strip .sep.opt{display:none;} }
+
+  /* ---------------------- corner touch buttons ---------------------- */
+  #tq,#mute{
+    position:fixed;z-index:7;display:none;pointer-events:auto;cursor:pointer;
+    width:38px;height:38px;border-radius:50%;
+    background:rgba(11,26,32,.86);border:1px solid rgba(233,241,242,.22);
+    align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  }
+  #tq{left:calc(var(--safeL) + 10px);top:calc(var(--safeT) + 8px);
+      color:#8fd2e0;font-family:var(--cond);font-size:19px;font-weight:700;}
+  #mute{right:calc(var(--safeR) + 10px);top:calc(var(--safeT) + 8px);
+        color:var(--dim);font-size:15px;}
+  body.touch #tq.on,body.touch #mute.on{display:flex;}
+
+  /* ============================ overlays ============================ */
+  .ov{
+    position:fixed;inset:0;z-index:20;display:none;
+    align-items:center;justify-content:center;
+    padding:calc(var(--safeT) + 12px) 12px calc(var(--safeB) + 12px);
+    background:radial-gradient(130% 100% at 50% 34%, rgba(21,55,64,.62), rgba(5,12,15,.92));
+    backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+    overflow-y:auto;overscroll-behavior:contain;
+  }
+  .ov.on{display:flex;}
+  .card{
+    width:min(580px,100%);max-height:100%;
+    background:linear-gradient(180deg,rgba(18,40,47,.96),rgba(7,17,21,.98));
+    border:1px solid rgba(233,241,242,.15);border-radius:8px;
+    box-shadow:0 26px 74px rgba(0,0,0,.8), 0 0 0 1px rgba(0,0,0,.5);
+    padding:19px 19px 17px;
+  }
+  .card.wide{width:min(720px,100%);}
+  h1{
+    font-family:var(--cond);font-size:clamp(44px,13vw,88px);line-height:.88;margin:0 0 3px;
+    letter-spacing:.07em;text-transform:uppercase;
+    background:linear-gradient(180deg,#f4fbfc 4%, #9fc4c9 48%, #4d7079 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 6px 34px rgba(143,210,224,.12);
+  }
+  h2{font-family:var(--cond);font-size:clamp(21px,5.4vw,30px);margin:0 0 5px;letter-spacing:.10em;text-transform:uppercase;color:#a9dbe4;}
+  .kicker{font-family:var(--cond);font-size:10px;letter-spacing:.34em;text-transform:uppercase;color:rgba(143,210,224,.72);margin-bottom:5px;}
+  .lede{font-size:13.5px;line-height:1.56;color:var(--dim);margin:0 0 13px;max-width:56ch;}
+  .lede b{color:var(--ink);font-weight:600;}
+  .rule{height:1px;background:linear-gradient(90deg,transparent,rgba(233,241,242,.20),transparent);margin:13px 0;}
+  .sechead{font-family:var(--cond);font-size:9.5px;letter-spacing:.30em;text-transform:uppercase;color:rgba(143,210,224,.68);margin:13px 0 7px;}
+  .sechead.sec2{color:rgba(233,241,242,.32);}
+  .ctrlgrid{display:grid;grid-template-columns:auto 1fr;gap:6px 13px;align-items:center;font-size:12.5px;}
+  .ctrlgrid .kk{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;}
+  .ctrlgrid .dd{color:var(--dim);}
+  .ctrlgrid .dd b{color:var(--ink);font-weight:600;}
+  .note{font-size:11.5px;color:var(--dimmer);margin-top:10px;line-height:1.55;}
+  .note b{color:var(--dim);font-weight:600;}
+  .btnrow{display:flex;gap:9px;flex-wrap:wrap;margin-top:15px;}
+  button.go,button.alt{
+    font-family:var(--cond);font-size:14px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;
+    border-radius:4px;padding:11px 16px;cursor:pointer;border:none;flex:1 1 auto;min-width:118px;
+    transition:transform .09s ease,box-shadow .09s ease,background .13s ease;
+  }
+  button.go{color:#08191e;background:linear-gradient(180deg,#b7e4d8,#6fc3b1);box-shadow:0 3px 0 #33776b;}
+  button.alt{color:var(--ink);background:rgba(233,241,242,.07);border:1px solid rgba(233,241,242,.18);box-shadow:0 3px 0 rgba(0,0,0,.35);}
+  button.go:active,button.alt:active{transform:translateY(3px);box-shadow:none;}
+  button.alt:hover{background:rgba(233,241,242,.13);}
+  button:disabled{opacity:.36;pointer-events:none;}
+  .tiny{font-size:11px;color:var(--dimmer);letter-spacing:.03em;line-height:1.5;}
+  .greet{font-size:11.5px;color:var(--dim);margin-bottom:9px;line-height:1.5;}
+  .greet b{color:#a9dbe4;font-weight:600;}
+
+  .podlegend{display:flex;gap:9px;margin:11px 0 2px;flex-wrap:wrap;}
+  .pl{flex:1 1 170px;display:flex;gap:9px;align-items:center;background:rgba(233,241,242,.04);
+      border:1px solid var(--faint);border-radius:5px;padding:8px 10px;min-width:0;}
+  .pl canvas{width:38px;height:28px;flex:0 0 auto;}
+  .pl .nn{font-family:var(--cond);font-size:12px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;line-height:1.15;}
+  .pl .dd{font-size:10px;color:var(--dim);line-height:1.32;}
+
+  .codebox{
+    display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+    background:rgba(0,0,0,.34);border:1px dashed rgba(143,210,224,.36);border-radius:5px;
+    padding:11px 13px;margin:9px 0;
+  }
+  .codeval{
+    font-family:var(--mono);font-size:clamp(20px,6.2vw,29px);letter-spacing:.2em;color:#a9dbe4;
+    font-weight:700;text-shadow:0 0 22px rgba(143,210,224,.32);
+  }
+  .codebox button{
+    font-family:var(--cond);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+    background:rgba(233,241,242,.09);border:1px solid rgba(233,241,242,.2);color:var(--ink);
+    border-radius:3px;padding:7px 10px;cursor:pointer;
+  }
+  .codebox button:hover{background:rgba(233,241,242,.16);}
+  input.code{
+    font-family:var(--mono);font-size:18px;letter-spacing:.22em;text-transform:uppercase;
+    background:rgba(0,0,0,.4);border:1px solid rgba(143,210,224,.28);color:#a9dbe4;
+    border-radius:4px;padding:10px 12px;width:100%;outline:none;
+  }
+  input.code:focus{border-color:#8fd2e0;}
+  .row{display:flex;gap:8px;align-items:stretch;}
+  .row input{flex:1 1 auto;min-width:0;}
+  .row button{flex:0 0 auto;}
+
+  #mlist{display:flex;flex-direction:column;gap:6px;max-height:224px;overflow-y:auto;margin-top:4px;}
+  .mrow{
+    display:flex;align-items:center;gap:9px;cursor:pointer;
+    background:rgba(233,241,242,.05);border:1px solid rgba(233,241,242,.11);
+    border-radius:4px;padding:9px 11px;transition:background .13s ease,border-color .13s ease;
+  }
+  .mrow:hover{background:rgba(233,241,242,.10);border-color:rgba(143,210,224,.36);}
+  .mrow .who{flex:1 1 auto;min-width:0;}
+  .mrow .t1{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mrow .t2{font-size:10.5px;color:var(--dimmer);}
+  .badge{
+    font-family:var(--cond);font-size:9px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;
+    padding:3px 7px;border-radius:2px;white-space:nowrap;
+  }
+  .badge.you{background:rgba(143,210,224,.20);color:#a9dbe4;border:1px solid rgba(143,210,224,.48);}
+  .badge.them{background:rgba(233,241,242,.05);color:var(--dimmer);border:1px solid rgba(233,241,242,.13);}
+  .badge.open{background:rgba(201,136,77,.16);color:var(--umber-hi);border:1px solid rgba(201,136,77,.46);}
+  .badge.done{background:rgba(134,200,160,.13);color:var(--good);border:1px solid rgba(134,200,160,.35);}
+
+  #toast{
+    position:fixed;left:50%;transform:translateX(-50%);
+    top:calc(var(--safeT) + 82px);z-index:30;pointer-events:none;
+    background:rgba(7,18,22,.94);border:1px solid rgba(143,210,224,.3);border-radius:4px;
+    padding:8px 14px;font-size:12.5px;color:var(--ink);
+    opacity:0;transition:opacity .24s ease;max-width:min(90vw,430px);text-align:center;
+    box-shadow:0 8px 26px rgba(0,0,0,.6);
+  }
+  #toast.on{opacity:1;}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(143,210,224,.22);border-top-color:#8fd2e0;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-1px;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  .statgrid{display:grid;grid-template-columns:1fr auto;gap:5px 14px;font-size:12.5px;margin-top:9px;}
+  .statgrid .v{font-variant-numeric:tabular-nums;color:var(--ink);}
+  .statgrid .l{color:var(--dim);}
+  .modes{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px;}
+  ul.rules{margin:0;padding-left:17px;font-size:12.5px;line-height:1.62;color:var(--dim);}
+  ul.rules li{margin-bottom:5px;}
+  ul.rules b{color:var(--ink);font-weight:600;}
+  .diffrow{display:flex;gap:6px;margin-top:7px;}
+  .diff{
+    flex:1 1 0;cursor:pointer;text-align:center;border-radius:4px;padding:7px 6px;
+    background:rgba(233,241,242,.05);border:1px solid rgba(233,241,242,.13);
+    font-family:var(--cond);font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+  }
+  .diff:hover{background:rgba(233,241,242,.10);}
+  .diff.on{background:rgba(143,210,224,.22);border-color:#8fd2e0;color:#e2f6fa;
+           box-shadow:0 0 14px rgba(143,210,224,.20) inset;}
+</style>
+</head>
+<body>
+<canvas id="board"></canvas>
+
+<div id="hud">
+  <div class="plate" id="tide">
+    <div id="tideTop"><span id="tideNum">Tide 0</span><span id="tideWhen">holds this round</span></div>
+    <div id="tideBar"></div>
+  </div>
+  <div id="pods">
+    <div class="pod p0" id="pod0">
+      <canvas class="mk" id="mk0" width="60" height="44" style="width:26px;height:19px"></canvas>
+      <div class="col"><span class="nm" id="nm0">Silver</span><span class="sub" id="sub0">west shore</span></div>
+      <div class="pips" id="pips0"></div>
+      <span class="turnflag" id="flag0">&nbsp;</span>
+    </div>
+    <div class="pod p1" id="pod1">
+      <canvas class="mk" id="mk1" width="60" height="44" style="width:26px;height:19px"></canvas>
+      <div class="col"><span class="nm" id="nm1">Umber</span><span class="sub" id="sub1">east shore</span></div>
+      <div class="pips" id="pips1"></div>
+      <span class="turnflag" id="flag1">&nbsp;</span>
+    </div>
+  </div>
+</div>
+
+<div id="acts">
+  <div class="abtn" id="btnPrev"><span class="n">&#8592; Seal</span><span class="k">Tab</span></div>
+  <div class="abtn" id="btnShove"><span class="n">Shove</span><span class="k">S</span></div>
+  <div class="abtn" id="btnBrace"><span class="n">Brace</span><span class="k">B</span></div>
+  <div class="abtn go" id="btnDone"><span class="n">Done</span><span class="k">Enter</span></div>
+</div>
+
+<div id="strip">
+  <span class="g"><kbd>Tab</kbd> seal</span>
+  <span class="sep">&middot;</span>
+  <span class="g"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move</span>
+  <span class="sep">&middot;</span>
+  <span class="g"><kbd>S</kbd> shove <kbd>B</kbd> brace</span>
+  <span class="sep">&middot;</span>
+  <span class="g"><kbd>Enter</kbd> done</span>
+  <span class="sep opt">&middot;</span>
+  <span class="g opt"><kbd>H</kbd> controls</span>
+</div>
+
+<button id="tq">?</button>
+<button id="mute">&#9835;</button>
+<div id="toast"></div>
+
+<!-- ============================== START ============================== -->
+<div class="ov on" id="ovStart"><div class="card">
+  <div class="kicker">A rock the tide takes back</div>
+  <h1>Skerry</h1>
+  <div class="greet" id="greet"></div>
+  <p class="lede">Two pods of grey seals haul out on a low-water skerry. The tide is coming in
+     on a schedule <b>both of you can read</b>, drowning the rock ledge by ledge. Take turns waking one seal:
+     waddle it two steps, then <b>shove</b> a rival off its perch, <b>brace</b> against the next shove, or hold.
+     Swept seals swim off, disgruntled. Last pod still dry owns the skerry.</p>
+
+  <div class="podlegend">
+    <div class="pl"><canvas id="plA" width="90" height="66"></canvas>
+      <div><div class="nn" style="color:var(--silver-hi)">Silver pod</div><div class="dd">West shore. Pale coats.</div></div></div>
+    <div class="pl"><canvas id="plB" width="90" height="66"></canvas>
+      <div><div class="nn" style="color:var(--umber-hi)">Umber pod</div><div class="dd">East shore. Rust coats.</div></div></div>
+  </div>
+
+  <div class="sechead">Controls — the four you need</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>Tab</kbd></div><div class="dd">Pick the seal to wake <b>(or click / tap it)</b></div>
+    <div class="kk"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd></div><div class="dd">Waddle it, up to two steps <b>(or click / tap a lit cell)</b></div>
+    <div class="kk"><kbd>S</kbd><kbd>B</kbd></div><div class="dd"><b>S</b>hove a rival &middot; <b>B</b>race against the next shove <b>(or click / tap a rival)</b></div>
+    <div class="kk"><kbd>Enter</kbd></div><div class="dd">End this seal's turn <b>(or the Done button)</b></div>
+  </div>
+  <div class="sechead sec2">Everything else</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>H</kbd><kbd>?</kbd><kbd>P</kbd><kbd>Esc</kbd></div><div class="dd">Controls &amp; pause panel</div>
+    <div class="kk"><kbd>M</kbd></div><div class="dd">Mute</div>
+    <div class="kk"><kbd>R</kbd></div><div class="dd">Rematch / restart</div>
+    <div class="kk"><kbd>G</kbd></div><div class="dd">Full rules</div>
+  </div>
+  <div class="note">Every shove is previewed in full before you commit — the push path, the chain, the splash.
+    Press <b>H</b> or <b>?</b> at any time to see these controls again.</div>
+
+  <div class="sechead">Vs the tide-wise pod</div>
+  <div class="diffrow">
+    <div class="diff" id="diffEasy">Yearling</div>
+    <div class="diff on" id="diffHard">Bull</div>
+  </div>
+
+  <div class="modes">
+    <button class="go" id="btnOnline">Play a friend</button>
+    <button class="alt" id="btnAI">Vs the rival pod</button>
+    <button class="alt" id="btnHot">Hotseat</button>
+  </div>
+  <div class="btnrow" style="margin-top:9px"><button class="alt" id="btnRules">Full rules</button></div>
+  <div class="note" id="startNote"></div>
+</div></div>
+
+<!-- ============================== RULES ============================== -->
+<div class="ov" id="ovRules"><div class="card wide">
+  <div class="kicker">How the skerry works</div>
+  <h2>The rules of the rock</h2>
+  <ul class="rules">
+    <li>The skerry is an <b>11&times;9 grid</b>. Every cell has a height from <b>0 to 6</b>, generated from the match seed &mdash; both clients build the identical rock. The <b>peak is always exactly three connected cells</b>, so there is no unassailable pinnacle: the endgame is a melee for the last three rocks.</li>
+    <li><b>The tide is public.</b> A cell is sea when its height is at or below the water level. The forecast bar at the top shows the whole schedule: <b>0, 0, 1, 2, 3, 4, 5, 6</b> &mdash; it holds for one round, then rises one level after every round, and by the end it covers everything. Cells that drown at the <b>next</b> rise shimmer on the board.</li>
+    <li><b>A round</b> is one activation per living seal, the pods alternating. If a pod has no unwoken seals left, the other pod finishes its own in sequence. When every living seal has gone, the round ends and the tide steps.</li>
+    <li><b>An activation:</b> waddle up to <b>two orthogonal steps</b> through dry, empty cells &mdash; climbing <b>at most one level per step</b>, descending freely, never voluntarily into the sea &mdash; then take <b>one</b> action, or none.</li>
+    <li><b>Shove</b> a rival on an adjacent cell, directly away from you. Legal only if you stand <b>no more than one level below</b> them. You push them <b>one cell, plus one more per full level you stand above them</b>, capped at three. Anything shoved into the sea or off the rock is <b>swept</b> &mdash; it swims away and is out.</li>
+    <li><b>Chains:</b> if the cell behind your target is occupied, the whole line shoves together &mdash; <b>including your own seals</b>. A body cannot be shoved <b>up</b> more than one level. If the line is blocked before it has moved at all, <b>nothing</b> moves: a solid bump that still spends your action. If it is blocked part-way, it simply stops there.</li>
+    <li><b>Brace</b> instead, and the seal digs in until its next activation: it counts <b>one level taller</b> when someone shoves it (so a rival one level below cannot shove it at all, and any shove reaches one cell less), and <b>no push can move it more than one cell</b>.</li>
+    <li><b>Hold</b> is always legal. Nothing can stall the match &mdash; the tide ends it.</li>
+    <li><b>The tide sweeps</b> every seal standing on a newly drowned cell, both pods at the same instant.</li>
+    <li><b>Winning:</b> the moment a pod has no seals left on the rock, the other pod owns the skerry. If <b>both</b> pods go under in the same instant &mdash; one tide step, or one chain that clears both ways &mdash; it goes to the pod whose last seal stood <b>higher</b>; if level, to the pod with <b>more activations left unspent</b> that round; if still level, to the <b>east pod</b>.</li>
+    <li><b>Turn order</b> is a fixed public schedule: the pod that opens round one, two, three&hellip; runs <b>west, west, east, west, east, west, east</b>. The pods alternate from round two on; the west pod opens both of the first two because the east pod gets the last word in round one &mdash; and because in round one the shores are too far apart for either pod to touch the other. Twelve hundred games of self-play settled it: the seats come out <b>50.2 / 49.8</b>.</li>
+  </ul>
+  <div class="note">Nothing is hidden. Both clients hold the same state, build the same rock from the same seed and compute the same result &mdash; there is no dice and no fog. Every shove you can see is previewed by the same code that resolves it, chain and splash included.</div>
+  <div class="btnrow"><button class="go" id="btnRulesBack">Back</button></div>
+</div></div>
+
+<!-- ============================== LOBBY ============================== -->
+<div class="ov" id="ovLobby"><div class="card wide">
+  <div class="kicker">Two pods, seven days a move</div>
+  <h2>Play a friend</h2>
+  <div class="greet" id="lobGreet"></div>
+
+  <div id="inviteWrap" style="display:none">
+    <div class="sechead">You were invited</div>
+    <div class="codebox">
+      <span class="codeval" id="inviteCode">--------</span>
+      <button id="btnInviteJoin">Join this match</button>
+    </div>
+  </div>
+
+  <div class="sechead">Haul out first</div>
+  <div class="btnrow" style="margin-top:0"><button class="go" id="btnCreate">Create a match</button></div>
+
+  <div class="sechead">Or take the far shore</div>
+  <div class="row">
+    <input class="code" id="joinInput" maxlength="8" placeholder="K7Q2M8XR" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+    <button class="alt" id="btnJoin" style="min-width:90px">Join</button>
+  </div>
+
+  <div class="sechead">Your matches</div>
+  <div id="mlist"><div class="tiny">Loading&hellip;</div></div>
+
+  <div class="rule"></div>
+  <div class="btnrow" style="margin-top:0">
+    <button class="alt" id="btnLobbyBack">Back</button>
+    <button class="alt" id="btnLobbyRefresh">Refresh</button>
+  </div>
+</div></div>
+
+<!-- ============================== WAIT ============================== -->
+<div class="ov" id="ovWait"><div class="card">
+  <div class="kicker">The rock is out of the water</div>
+  <h2>Send for the other pod</h2>
+  <p class="lede">Give them this code. They enter it under <b>Play a friend &rarr; Join</b> and the tide starts running.
+     You can close the tab &mdash; the match keeps for seven days and every move resets the clock.</p>
+  <div class="codebox">
+    <span class="codeval" id="waitCode">--------</span>
+    <button id="btnCopyCode">Copy code</button>
+    <button id="btnCopyLink">Copy invite link</button>
+  </div>
+  <div class="note">You can also copy a ready-made invite link for any of your matches from <b>aimade.games/matches</b>,
+    which badges the ones waiting on you.</div>
+  <div class="btnrow">
+    <button class="alt" id="btnWaitBack">Back to lobby</button>
+    <button class="alt" id="btnWaitLeave">Abandon</button>
+  </div>
+</div></div>
+
+<!-- ========================== PAUSE / CONTROLS ========================== -->
+<div class="ov" id="ovPause"><div class="card">
+  <div class="kicker">The water waits</div>
+  <h2>Paused &mdash; Controls</h2>
+  <div class="sechead">Primary &mdash; all you need to play</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>Tab</kbd><kbd>Click</kbd></div><div class="dd">Pick which seal to wake (cycles your unwoken seals)</div>
+    <div class="kk"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd></div><div class="dd">Waddle it, up to two steps &mdash; or click / tap a lit cell.<br>An arrow pointed straight at a rival <b>aims the shove</b> instead.</div>
+    <div class="kk"><kbd>S</kbd><kbd>B</kbd></div><div class="dd"><b>S</b> aims a shove (press again to pick another rival) &middot; <b>B</b> braces</div>
+    <div class="kk"><kbd>Enter</kbd><kbd>Space</kbd></div><div class="dd">Commit and end this seal's turn</div>
+  </div>
+  <div class="sechead sec2">Secondary</div>
+  <div class="ctrlgrid">
+    <div class="kk"><kbd>H</kbd><kbd>?</kbd></div><div class="dd">Open this panel any time</div>
+    <div class="kk"><kbd>P</kbd><kbd>Esc</kbd></div><div class="dd">Pause / resume &middot; Esc also cancels an aimed shove</div>
+    <div class="kk"><kbd>M</kbd></div><div class="dd">Mute the sea</div>
+    <div class="kk"><kbd>R</kbd></div><div class="dd">Rematch or restart</div>
+    <div class="kk"><kbd>G</kbd></div><div class="dd">Full rules</div>
+    <div class="kk"><kbd>Q</kbd></div><div class="dd">Send the selected seal back where it started</div>
+  </div>
+  <div class="note" id="pauseNote"></div>
+  <div class="btnrow">
+    <button class="go" id="btnResume">Resume</button>
+    <button class="alt" id="btnPauseRules">Rules</button>
+    <button class="alt" id="btnPauseLeave">Leave match</button>
+  </div>
+</div></div>
+
+<!-- ============================== PASS ============================== -->
+<div class="ov" id="ovPass"><div class="card">
+  <div class="kicker" id="passKick">Hand the rock across</div>
+  <h2 id="passTitle">Silver pod to play</h2>
+  <p class="lede" id="passBody"></p>
+  <div class="btnrow"><button class="go" id="btnPassGo">Take the rock</button></div>
+</div></div>
+
+<!-- ============================== END ============================== -->
+<div class="ov" id="ovEnd"><div class="card">
+  <div class="kicker" id="endKick">The tide has spoken</div>
+  <h2 id="endTitle">The skerry is held</h2>
+  <p class="lede" id="endBody"></p>
+  <div class="statgrid" id="endStats"></div>
+  <div class="note" id="endNote"></div>
+  <div class="btnrow">
+    <button class="go" id="btnRematch">Rematch</button>
+    <button class="alt" id="btnEndLobby">Back</button>
+  </div>
+</div></div>
+
+<!-- aimade.games Arcade SDK -->
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+"use strict";
+/* ======================================================================
+   SKERRY — rules engine.  Single authority for every mode: online match,
+   hotseat, vs AI, previews and the headless balance harness.  No DOM, no
+   randomness outside the terrain seed, no time.  Pure functions over a
+   plain-object position, so both clients derive byte-identical outcomes.
+   ====================================================================== */
+var RULES = (function(){
+
+/* ------------------------------ constants ----------------------------- */
+var W = 11, H = 9, N = W*H;
+var SEALS = 3;                       /* seals per pod */
+var MAXE  = 6;                       /* highest elevation; the plateau sits here */
+/* Water level during round r.  The schedule is public from the first frame
+   and its last entry drowns the whole skerry, so every match is bounded:
+   round 7 can never be played and nobody can stall. */
+var TIDE  = [0,0,1,2,3,4,5,6];
+var LASTR = TIDE.length-1;           /* round index at which all is sea */
+var SCHEMA = 1;
+/* 0=N 1=E 2=S 3=W */
+var DX = [0,1,0,-1], DY = [-1,0,1,0];
+var DIRNAME = ['north','east','south','west'];
+
+/* target cell counts per elevation band, highest first (6,5,4,3,2,1) */
+var BANDS = [3, 4, 6, 9, 11, 13];
+
+function idx(x,y){ return y*W+x; }
+function xOf(i){ return i%W; }
+function yOf(i){ return (i/W)|0; }
+function inB(x,y){ return x>=0 && x<W && y>=0 && y<H; }
+function seatOf(id){ return id < SEALS ? 0 : 1; }
+
+/* ------------------------------- rng ---------------------------------- */
+function mulberry(a){
+  a = a|0;
+  return function(){
+    a = (a + 0x6D2B79F5)|0;
+    var t = Math.imul(a ^ (a>>>15), 1|a);
+    t = (t + Math.imul(t ^ (t>>>7), 61|t)) ^ t;
+    return ((t ^ (t>>>14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ============================== TERRAIN ===============================
+   Mirror-symmetric about the vertical axis, so the two shores are exactly
+   equal ground and seat fairness can never be a terrain artefact.
+   Guarantees, all asserted by verify():
+     * exactly 3 cells at the top elevation, orthogonally connected
+     * no two adjacent dry cells differ by more than 2
+     * the dry cells form one undirected component
+     * every dry cell can climb its way to the plateau (+1 per step)
+   ====================================================================== */
+var tcache = {};
+
+function smoothstep(t){ return t*t*(3-2*t); }
+
+/* one octave of value noise on a lattice of the given spacing, sampled over
+   the LEFT half of the board and mirrored, so the result is symmetric. */
+function octave(rnd, spacing){
+  var HW = ((W-1)>>1) + 1;
+  var gw = Math.ceil((HW-1)/spacing) + 2, gh = Math.ceil((H-1)/spacing) + 2;
+  var g = new Float64Array(gw*gh), i;
+  for(i=0;i<g.length;i++) g[i] = rnd();
+  var f = new Float64Array(N);
+  for(var y=0;y<H;y++) for(var x=0;x<W;x++){
+    var sx = (x < HW) ? x : (W-1-x);
+    var gx = sx/spacing, gy = y/spacing;
+    var x0 = Math.floor(gx), y0 = Math.floor(gy);
+    var tx = smoothstep(gx-x0), ty = smoothstep(gy-y0);
+    var a = g[y0*gw+x0],       b = g[y0*gw+x0+1];
+    var c = g[(y0+1)*gw+x0],   d = g[(y0+1)*gw+x0+1];
+    var top = a + (b-a)*tx, bot = c + (d-c)*tx;
+    f[idx(x,y)] = top + (bot-top)*ty;
+  }
+  return f;
+}
+
+function shapeField(seed){
+  var rnd = mulberry((Math.imul(seed|0, 2654435761) ^ 0x9E3779B9) | 1);
+  var o1 = octave(rnd, 3.1);          /* the shape of the islet */
+  var o2 = octave(rnd, 1.7);          /* ledges and shelves */
+  var o3 = octave(rnd, 5.3);          /* which end of the rock stands proud */
+  var out = new Float64Array(N);
+  for(var y=0;y<H;y++) for(var x=0;x<W;x++){
+    var i  = idx(x,y);
+    var nx = (x-(W-1)/2)/((W-1)/2);
+    var ny = (y-(H-1)/2)/((H-1)/2);
+    /* a wide, soft dome so the outline is an islet, not a disc */
+    var d  = Math.sqrt(nx*nx*1.00 + ny*ny*1.22);
+    var dome = 1.06 - Math.pow(Math.min(1.35, d), 1.75)*1.02;
+    /* a spine along the mirror axis: the skerry stands highest down its
+       middle, so the two shores look up at the same rock */
+    var spine = 0.42*Math.exp(-nx*nx*5.0);
+    var noise = (o1[i]-0.5)*1.06 + (o2[i]-0.5)*0.34 + (o3[i]-0.5)*0.80;
+    out[i] = dome + spine + noise;
+  }
+  return out;
+}
+
+/* mirror-class list: one entry per {x<=mid, y}, weight 2 unless on the axis.
+   Only the interior is ranked — the outer frame of the grid is open water by
+   construction, so the skerry always sits clear of the edge. */
+function classes(field){
+  var HW = ((W-1)>>1) + 1, list = [];
+  for(var x=1;x<HW;x++) for(var y=1;y<H-1;y++){
+    var mid = (x === W-1-x);
+    list.push({ x:x, y:y, w: mid?1:2, v: field[idx(x,y)] });
+  }
+  list.sort(function(a,b){
+    if(b.v !== a.v) return b.v - a.v;
+    if(a.y !== b.y) return a.y - b.y;
+    return a.x - b.x;
+  });
+  return list;
+}
+
+function setSym(h, x, y, v){ h[idx(x,y)] = v; h[idx(W-1-x,y)] = v; }
+
+/* undirected connectivity of everything still dry at water level w */
+function compsAbove(h, w){
+  var lab = new Int8Array(N); lab.fill(-1);
+  var n = 0, i;
+  for(i=0;i<N;i++){
+    if(h[i] <= w || lab[i] >= 0) continue;
+    var st = [i]; lab[i] = n;
+    while(st.length){
+      var c = st.pop();
+      for(var d=0;d<4;d++){
+        var nx = xOf(c)+DX[d], ny = yOf(c)+DY[d];
+        if(!inB(nx,ny)) continue;
+        var ni = idx(nx,ny);
+        if(h[ni] > w && lab[ni] < 0){ lab[ni] = n; st.push(ni); }
+      }
+    }
+    n++;
+  }
+  return n;
+}
+
+/* A skerry must be ONE arena at every tide, or a pod could sit out the
+   match on an outlying rock.  Deterministic reroll until it is. */
+function oneArena(h){
+  for(var w=1; w<=MAXE-2; w++) if(compsAbove(h,w) !== 1) return false;
+  return true;
+}
+function buildTerrain(seed){
+  var last = null;
+  for(var salt=0; salt<8; salt++){
+    var h = buildOnce((seed + Math.imul(salt, 0x9E3779B1))|0);
+    last = h;
+    var m = analyse(h);
+    if(m.plat.length === 3 && m.platConn && !m.bad && m.comps === 1 &&
+       !m.unreach && m.sym && m.dry >= 40 && m.cliffs <= 18 && oneArena(h)) return h;
+  }
+  return last;
+}
+
+function buildOnce(seed){
+  var field = shapeField(seed);
+  var h = new Uint8Array(N);
+  var i, x, y;
+
+  /* --- the plateau: exactly three cells, symmetric and connected --- */
+  var mid = (W-1)>>1;
+  var by = 1, bv = -1e9;
+  for(y=1;y<H-1;y++){ var v = field[idx(mid,y)]; if(v>bv){ bv=v; by=y; } }
+  var horiz = true;
+  if(by>=2 && by<=H-3){
+    var hv = field[idx(mid-1,by)];
+    var vv = 0.5*(field[idx(mid,by-1)] + field[idx(mid,by+1)]);
+    horiz = (hv >= vv);
+  }
+  var plat;
+  if(horiz) plat = [idx(mid,by), idx(mid-1,by), idx(mid+1,by)];
+  else      plat = [idx(mid,by), idx(mid,by-1), idx(mid,by+1)];
+  var isPlat = new Uint8Array(N);
+  for(i=0;i<3;i++) isPlat[plat[i]] = 1;
+
+  /* --- everything else banded by rank over mirror-classes --- */
+  var cls = classes(field);
+  var lvl = MAXE-1, quota = BANDS[1], used = 0;
+  for(i=0;i<cls.length;i++){
+    var c = cls[i];
+    if(isPlat[idx(c.x,c.y)] || isPlat[idx(W-1-c.x,c.y)]){
+      setSym(h, c.x, c.y, MAXE);
+      continue;
+    }
+    if(lvl >= 1){
+      setSym(h, c.x, c.y, lvl);
+      used += c.w;
+      if(used >= quota){ lvl--; used = 0; quota = (lvl>=1) ? BANDS[MAXE-lvl] : 0; }
+    } else setSym(h, c.x, c.y, 0);
+  }
+  /* the outer frame is always open water: the skerry never touches the edge */
+  for(x=0;x<W;x++){ h[idx(x,0)] = 0; h[idx(x,H-1)] = 0; }
+  for(y=0;y<H;y++){ h[idx(0,y)] = 0; h[idx(W-1,y)] = 0; }
+  for(i=0;i<3;i++) h[plat[i]] = MAXE;   /* the frame can never eat the peak */
+
+  /* --- smooth: no adjacent dry pair may differ by 3 or more --- */
+  for(var pass=0; pass<40; pass++){
+    var changed = false;
+    for(y=1;y<H-1;y++) for(x=1;x<W-1;x++){
+      var a = h[idx(x,y)];
+      if(a === 0) continue;
+      for(var d=0;d<4;d++){
+        var nx=x+DX[d], ny=y+DY[d];
+        if(nx<1||nx>W-2||ny<1||ny>H-2) continue;
+        var b = h[idx(nx,ny)];
+        if(b === 0) continue;
+        if(a - b >= 3){ setSym(h, nx, ny, b+1); changed = true; }
+      }
+    }
+    if(!changed) break;
+  }
+
+  /* --- fewer sheer faces: step-of-one has to dominate the rock, so trim
+     two-step cliffs (never all of them — a few one-way drops give the
+     skerry its character) --- */
+  for(var trim=0; trim<26; trim++){
+    var cl = cliffList(h);
+    if(cl.length <= CLIFF_TARGET) break;
+    /* raise the low side of the cell that sits under the most sheer faces */
+    var tally = {}, bestC = -1, bestN = 0;
+    for(i=0;i<cl.length;i++){
+      var lo = cl[i];
+      tally[lo] = (tally[lo]||0)+1;
+      if(tally[lo] > bestN){ bestN = tally[lo]; bestC = lo; }
+    }
+    if(bestC < 0) break;
+    setSym(h, xOf(bestC), yOf(bestC), h[bestC]+1);
+  }
+
+  /* --- one dry landmass: bridge any island with a 1-high causeway --- */
+  for(var tries=0; tries<40; tries++){
+    var comp = components(h);
+    if(comp.count <= 1) break;
+    /* raise the sea cell that touches the most distinct components */
+    var best = -1, bestScore = -1;
+    for(y=1;y<H-1;y++) for(x=1;x<W-1;x++){
+      var ci = idx(x,y);
+      if(h[ci] !== 0) continue;
+      var seen = {}, n = 0;
+      for(var d2=0;d2<4;d2++){
+        var mx=x+DX[d2], my=y+DY[d2];
+        if(!inB(mx,my)) continue;
+        var lab = comp.lab[idx(mx,my)];
+        if(lab >= 0 && !seen[lab]){ seen[lab]=1; n++; }
+      }
+      if(n >= 2){
+        var score = n*100 - Math.abs(x-(W-1)/2) - Math.abs(y-(H-1)/2);
+        if(score > bestScore){ bestScore = score; best = ci; }
+      }
+    }
+    if(best < 0) break;
+    setSym(h, xOf(best), yOf(best), 1);
+  }
+
+  /* --- every dry cell must be able to climb to the plateau --- */
+  for(var t2=0; t2<60; t2++){
+    var up = climbable(h, plat);
+    var stuck = -1;
+    for(i=0;i<N;i++) if(h[i] > 0 && !up[i]){ stuck = i; break; }
+    if(stuck < 0) break;
+    /* raise it one step toward the lowest neighbour that IS connected */
+    var sx=xOf(stuck), sy=yOf(stuck), lift = false;
+    for(var d3=0;d3<4;d3++){
+      var qx=sx+DX[d3], qy=sy+DY[d3];
+      if(!inB(qx,qy)) continue;
+      var qi = idx(qx,qy);
+      if(h[qi] > 0 && up[qi] && h[qi] - h[stuck] >= 2){
+        setSym(h, sx, sy, h[stuck]+1); lift = true; break;
+      }
+    }
+    if(!lift){
+      /* no uphill neighbour connected: lower the wall around it instead */
+      var done = false;
+      for(var d4=0;d4<4;d4++){
+        var rx=sx+DX[d4], ry=sy+DY[d4];
+        if(rx<1||rx>W-2||ry<1||ry>H-2) continue;
+        var ri = idx(rx,ry);
+        if(h[ri] > 0 && h[ri] < MAXE && h[ri] - h[stuck] >= 2){
+          setSym(h, sx, sy, h[stuck]+1); done = true; break;
+        }
+      }
+      if(!done) setSym(h, sx, sy, 0);   /* last resort: it was never rock */
+    }
+  }
+  return h;
+}
+
+/* the lower cell of every adjacent dry pair that differs by exactly two */
+var CLIFF_TARGET = 12;
+function cliffList(h){
+  var out = [];
+  for(var y=1;y<H-1;y++) for(var x=1;x<W-1;x++){
+    var a = h[idx(x,y)];
+    if(a === 0) continue;
+    for(var d=1;d<3;d++){
+      var nx=x+DX[d], ny=y+DY[d];
+      if(nx<1||nx>W-2||ny<1||ny>H-2) continue;
+      var b = h[idx(nx,ny)];
+      if(b === 0) continue;
+      if(a - b === 2) out.push(idx(nx,ny));
+      else if(b - a === 2) out.push(idx(x,y));
+    }
+  }
+  return out;
+}
+
+function components(h){
+  var lab = new Int8Array(N); lab.fill(-1);
+  var count = 0, i;
+  for(i=0;i<N;i++){
+    if(h[i] === 0 || lab[i] >= 0) continue;
+    var st = [i]; lab[i] = count;
+    while(st.length){
+      var c = st.pop(), cx = xOf(c), cy = yOf(c);
+      for(var d=0;d<4;d++){
+        var nx=cx+DX[d], ny=cy+DY[d];
+        if(!inB(nx,ny)) continue;
+        var ni = idx(nx,ny);
+        if(h[ni] > 0 && lab[ni] < 0){ lab[ni] = count; st.push(ni); }
+      }
+    }
+    count++;
+  }
+  return { lab: lab, count: count };
+}
+
+/* cells from which the plateau is reachable climbing at most +1 per step */
+function climbable(h, plat){
+  var ok = new Uint8Array(N), q = [], i;
+  for(i=0;i<plat.length;i++){ ok[plat[i]] = 1; q.push(plat[i]); }
+  while(q.length){
+    var c = q.pop(), cx = xOf(c), cy = yOf(c);
+    for(var d=0;d<4;d++){
+      var nx=cx+DX[d], ny=cy+DY[d];
+      if(!inB(nx,ny)) continue;
+      var ni = idx(nx,ny);
+      if(h[ni] === 0 || ok[ni]) continue;
+      /* ni -> c must be a legal step: climbing at most one */
+      if(h[c] - h[ni] <= 1){ ok[ni] = 1; q.push(ni); }
+    }
+  }
+  return ok;
+}
+
+function terrain(seed){
+  var k = (seed|0);
+  var hit = tcache[k];
+  if(hit) return hit;
+  var h = buildTerrain(k);
+  var meta = analyse(h);
+  h.meta = meta;
+  tcache[k] = h;
+  return h;
+}
+
+function analyse(h){
+  var i, x, y, plat = [], counts = [];
+  for(i=0;i<=MAXE;i++) counts.push(0);
+  for(i=0;i<N;i++){ counts[h[i]]++; if(h[i] === MAXE) plat.push(i); }
+  var cliffs = 0, bad = 0;
+  for(y=0;y<H;y++) for(x=0;x<W;x++){
+    if(h[idx(x,y)] === 0) continue;
+    for(var d=1;d<3;d++){                       /* E and S only, no double count */
+      var nx=x+DX[d], ny=y+DY[d];
+      if(!inB(nx,ny)) continue;
+      if(h[idx(nx,ny)] === 0) continue;
+      var df = Math.abs(h[idx(x,y)] - h[idx(nx,ny)]);
+      if(df === 2) cliffs++;
+      if(df >= 3) bad++;
+    }
+  }
+  var comp = components(h);
+  var up = climbable(h, plat);
+  var unreach = 0;
+  for(i=0;i<N;i++) if(h[i] > 0 && !up[i]) unreach++;
+  /* mirror check */
+  var sym = true;
+  for(y=0;y<H;y++) for(x=0;x<W;x++) if(h[idx(x,y)] !== h[idx(W-1-x,y)]) sym = false;
+  /* plateau connected? */
+  var pc = true;
+  if(plat.length === 3){
+    var seen = {}; seen[plat[0]] = 1; var st=[plat[0]], nseen=1;
+    while(st.length){
+      var c = st.pop();
+      for(var d2=0;d2<4;d2++){
+        var mx=xOf(c)+DX[d2], my=yOf(c)+DY[d2];
+        if(!inB(mx,my)) continue;
+        var mi = idx(mx,my);
+        if(h[mi] === MAXE && !seen[mi]){ seen[mi]=1; nseen++; st.push(mi); }
+      }
+    }
+    pc = (nseen === 3);
+  }
+  return { plat: plat, counts: counts, cliffs: cliffs, bad: bad,
+           comps: comp.count, unreach: unreach, sym: sym, platConn: pc,
+           dry: N - counts[0] };
+}
+
+/* ------------------------------ spawns -------------------------------- */
+function spawns(h){
+  var a = [], y, x;
+  for(var band=2; band<=4 && a.length<SEALS; band++){
+    a.length = 0;
+    var cand = [];
+    for(y=0;y<H;y++) for(x=1;x<=band;x++) if(h[idx(x,y)] > 0) cand.push(idx(x,y));
+    if(cand.length < SEALS) continue;
+    cand.sort(function(p,q){
+      var dy = yOf(p)-yOf(q); if(dy) return dy; return xOf(p)-xOf(q);
+    });
+    var pick = [0, (cand.length-1)>>1, cand.length-1];
+    var seen = {};
+    for(var i=0;i<pick.length;i++){
+      var j = pick[i];
+      while(seen[cand[j]] && j < cand.length-1) j++;
+      while(seen[cand[j]] && j > 0) j--;
+      seen[cand[j]] = 1; a.push(cand[j]);
+    }
+  }
+  if(a.length < SEALS){                      /* pathological fallback */
+    a.length = 0;
+    for(var k=0;k<N && a.length<SEALS;k++) if(h[k] > 0 && xOf(k) <= (W>>1)) a.push(k);
+  }
+  var b = a.map(function(c){ return idx(W-1-xOf(c), yOf(c)); });
+  return [a, b];
+}
+
+/* ============================== POSITION ============================== */
+function create(seed){
+  seed = seed|0;
+  var h = terrain(seed);
+  var sp = spawns(h);
+  var s = [];
+  for(var i=0;i<SEALS;i++) s.push({ c: sp[0][i], act:0, br:0 });
+  for(var j=0;j<SEALS;j++) s.push({ c: sp[1][j], act:0, br:0 });
+  return {
+    sd: seed, w: TIDE[0], r: 0, n: 0, to: opener(0),
+    s: s, over: null, unspent: [0,0], hist: []
+  };
+}
+/* Who takes the first activation of each round.  A fixed, public schedule,
+   settled by self-play: it holds the seats to 52 / 48 over a thousand
+   games.  The pods alternate from round two onward; the west pod opens
+   both of the first two because the east pod has the last word in round
+   one, and because nothing either pod does in round one can reach the
+   other — the shores are too far apart for the opening to matter. */
+var OPENER = [0, 0, 1, 0, 1, 0, 1, 1];
+function opener(r){ return OPENER[Math.min(r, OPENER.length-1)]|0; }
+
+function clone(p){
+  var s = new Array(p.s.length);
+  for(var i=0;i<p.s.length;i++) s[i] = { c:p.s[i].c, act:p.s[i].act, br:p.s[i].br };
+  return { sd:p.sd, w:p.w, r:p.r, n:p.n, to:p.to, s:s,
+           over: p.over ? { winner:p.over.winner, why:p.over.why } : null,
+           unspent: [p.unspent[0], p.unspent[1]],
+           hist: p.hist.slice(-8) };
+}
+
+function occArr(p){
+  var o = new Int8Array(N); o.fill(-1);
+  for(var i=0;i<p.s.length;i++) if(p.s[i].c >= 0) o[p.s[i].c] = i;
+  return o;
+}
+function alive(p, seat){
+  var n = 0;
+  for(var i=0;i<p.s.length;i++) if(p.s[i].c >= 0 && seatOf(i) === seat) n++;
+  return n;
+}
+function unact(p, seat){
+  var n = 0;
+  for(var i=0;i<p.s.length;i++) if(p.s[i].c >= 0 && !p.s[i].act && seatOf(i) === seat) n++;
+  return n;
+}
+function isSea(p, c, h){ return h[c] <= p.w; }
+
+/* ----------------------------- movement -------------------------------- */
+/* every cell the seal may finish its move on, with the canonical path used
+   for legality AND for the waddle animation, so preview == what happens. */
+function reach(p, id){
+  var h = terrain(p.sd), o = occArr(p);
+  var start = p.s[id].c;
+  var out = {};
+  if(start < 0) return out;
+  out[start] = [];
+  var frontier = [start];
+  for(var step=0; step<2; step++){
+    var nf = [];
+    for(var k=0;k<frontier.length;k++){
+      var cur = frontier[k], cx = xOf(cur), cy = yOf(cur);
+      for(var d=0;d<4;d++){
+        var nx=cx+DX[d], ny=cy+DY[d];
+        if(!inB(nx,ny)) continue;
+        var nc = idx(nx,ny);
+        if(out[nc] !== undefined) continue;
+        if(h[nc] <= p.w) continue;              /* never walk into the sea */
+        if(o[nc] >= 0) continue;                /* occupied */
+        if(h[nc] - h[cur] > 1) continue;        /* climb at most one level */
+        out[nc] = out[cur].concat([nc]);
+        nf.push(nc);
+      }
+    }
+    frontier = nf;
+  }
+  return out;
+}
+
+/* ------------------------------- shove --------------------------------- */
+/* Pure prediction — used by the AI, by apply(), and by the on-screen
+   preview, so the arrows on the board are literally the resolution. */
+function shove(p, actorId, at, d){
+  var h = terrain(p.sd), o = occArr(p);
+  if(at < 0) return null;
+  var tx = xOf(at)+DX[d], ty = yOf(at)+DY[d];
+  if(!inB(tx,ty)) return null;
+  var tc = idx(tx,ty), tid = o[tc];
+  if(tid < 0 || tid === actorId) return null;
+  if(seatOf(tid) === seatOf(actorId)) return null;   /* only rivals are shoved */
+  var hMe = h[at];
+  var hEff = h[tc] + (p.s[tid].br ? 1 : 0);
+  if(hMe < hEff - 1) return null;                    /* too far below them */
+  var dist = Math.max(1, Math.min(3, 1 + (hMe - hEff)));
+
+  /* the contiguous run of bodies in front of the target */
+  var chain = [], cx = tx, cy = ty;
+  while(inB(cx,cy)){
+    var cc = idx(cx,cy), cid = o[cc];
+    if(cid < 0) break;
+    chain.push(cid);
+    cx += DX[d]; cy += DY[d];
+  }
+  var pos = {}, moved = {}, gone = {}, steps = [], i, j;
+  for(i=0;i<chain.length;i++){ pos[chain[i]] = p.s[chain[i]].c; moved[chain[i]] = 0; }
+
+  for(var k=0;k<dist;k++){
+    var st = [], blocked = false;
+    for(j=0;j<chain.length;j++){
+      var id = chain[j];
+      if(gone[id]) continue;
+      if(p.s[id].br && moved[id] >= 1){ blocked = true; break; }  /* braced: one cell, no more */
+      var cur = pos[id];
+      var nx = xOf(cur)+DX[d], ny = yOf(cur)+DY[d];
+      if(!inB(nx,ny)){ st.push({ id:id, from:cur, to:-1, off:true, swept:true }); continue; }
+      var nc = idx(nx,ny);
+      if(h[nc] <= p.w){ st.push({ id:id, from:cur, to:nc, off:false, swept:true }); continue; }
+      if(h[nc] - h[cur] > 1){ blocked = true; break; }            /* cannot be shoved up a cliff */
+      st.push({ id:id, from:cur, to:nc, off:false, swept:false });
+    }
+    if(blocked || !st.length) break;      /* rigid chain: all of it, or none */
+    steps.push(st);
+    for(j=0;j<st.length;j++){
+      var e = st[j];
+      if(e.swept){ gone[e.id] = 1; pos[e.id] = -1; }
+      else { pos[e.id] = e.to; moved[e.id]++; }
+    }
+  }
+  var sw = [];
+  for(var key in gone) sw.push(key|0);
+  sw.sort(function(a,b){ return a-b; });
+  return { target: tid, dist: dist, steps: steps, chain: chain,
+           bump: steps.length === 0, swept: sw, end: pos };
+}
+
+function shoveDirs(p, id, at){
+  var out = [];
+  for(var d=0;d<4;d++){ var r = shove(p, id, at, d); if(r) out.push({ d:d, r:r }); }
+  return out;
+}
+
+/* ------------------------------- apply --------------------------------- */
+/* mv = { i: sealId, c: destination cell, a: 0 hold | 1 brace | 2 shove, d: dir } */
+function legalMove(p, mv){
+  if(p.over) return false;
+  if(!mv || typeof mv.i !== 'number') return false;
+  var s = p.s[mv.i];
+  if(!s || s.c < 0 || s.act) return false;
+  if(seatOf(mv.i) !== p.to) return false;
+  var R = reach(p, mv.i);
+  if(R[mv.c] === undefined) return false;
+  if(mv.a === 2){
+    var q = clone(p); q.s[mv.i].c = mv.c; q.s[mv.i].br = 0;
+    if(!shove(q, mv.i, mv.c, mv.d)) return false;
+  } else if(mv.a !== 0 && mv.a !== 1) return false;
+  return true;
+}
+
+function apply(p, mv){
+  if(!legalMove(p, mv)) return { ok:false };
+  var q = clone(p);
+  var ev = [];
+  var s = q.s[mv.i];
+  s.br = 0;                                  /* the brace ends as it stirs */
+  var R = reach(q, mv.i);
+  var path = R[mv.c] || [];
+  if(path.length) { ev.push({ t:'move', id:mv.i, from:s.c, path:path.slice() }); s.c = mv.c; }
+  else ev.push({ t:'stay', id:mv.i, cell:s.c });
+
+  if(mv.a === 1){ s.br = 1; ev.push({ t:'brace', id:mv.i }); }
+  else if(mv.a === 2){
+    var sh = shove(q, mv.i, s.c, mv.d);
+    ev.push({ t:'shove', id:mv.i, dir:mv.d, dist:sh.dist, steps:sh.steps,
+              bump:sh.bump, target:sh.target, swept:sh.swept.slice() });
+    q.lastGone = sh.swept.slice();
+    for(var k=0;k<sh.steps.length;k++){
+      var st = sh.steps[k];
+      for(var j=0;j<st.length;j++){
+        var e = st[j];
+        if(e.swept){ sweep(q, e.id); }
+        else q.s[e.id].c = e.to;
+      }
+    }
+  } else ev.push({ t:'hold', id:mv.i });
+
+  s.act = 1;
+  q.n++;
+  q.hist = q.hist.concat([{ n: p.n, i: mv.i, c: mv.c, a: mv.a|0, d: (mv.a===2 ? mv.d : -1) }]).slice(-8);
+
+  if(!decide(q, ev)) advance(q, ev);
+  return { ok:true, pos:q, ev:ev };
+}
+
+function sweep(q, id){
+  var s = q.s[id];
+  if(s.c < 0) return;
+  if(!s.act) q.unspent[seatOf(id)]++;
+  s.lastCell = s.c;                          /* remembered for the tiebreak */
+  s.c = -1; s.br = 0;
+}
+
+/* returns true when the match is settled */
+function decide(q, ev){
+  if(q.over) return true;
+  var a = alive(q,0), b = alive(q,1);
+  if(a > 0 && b > 0) return false;
+  var win, why;
+  if(a === 0 && b === 0){
+    var ha = lastHeight(q,0), hb = lastHeight(q,1);
+    if(ha !== hb){ win = ha > hb ? 0 : 1; why = 'higher'; }
+    else if(q.unspent[0] !== q.unspent[1]){ win = q.unspent[0] > q.unspent[1] ? 0 : 1; why = 'unspent'; }
+    else { win = 1; why = 'seat'; }
+  } else { win = (a === 0) ? 1 : 0; why = 'swept'; }
+  q.over = { winner: win, why: why };
+  ev.push({ t:'end', winner: win, why: why });
+  return true;
+}
+/* the rock the pod's LAST seal stood on — only those lost in the sweep that
+   just emptied the skerry count, not seals lost rounds ago */
+function lastHeight(q, seat){
+  var h = terrain(q.sd), best = -1, ids = q.lastGone || [];
+  for(var k=0;k<ids.length;k++){
+    var i = ids[k];
+    if(seatOf(i) !== seat) continue;
+    var lc = q.s[i].lastCell;
+    if(lc !== undefined && lc >= 0 && h[lc] > best) best = h[lc];
+  }
+  return best;
+}
+
+function advance(q, ev){
+  var other = 1 - q.to;
+  if(unact(q, other) > 0){ q.to = other; return; }
+  if(unact(q, q.to) > 0) return;             /* the same pod runs on alone */
+  endRound(q, ev);
+}
+
+function endRound(q, ev){
+  var h = terrain(q.sd);
+  q.r++;
+  var nw = TIDE[Math.min(q.r, LASTR)];
+  ev.push({ t:'round', r:q.r });
+  if(nw !== q.w){
+    var flooded = [], swept = [], i;
+    for(i=0;i<N;i++) if(h[i] > q.w && h[i] <= nw) flooded.push(i);
+    for(i=0;i<q.s.length;i++) if(q.s[i].c >= 0 && h[q.s[i].c] <= nw) swept.push(i);
+    var from = q.w;
+    q.w = nw;
+    q.lastGone = swept.slice();
+    /* both pods go under at the same instant — simultaneous, by design */
+    for(i=0;i<swept.length;i++){
+      var sid = swept[i];
+      q.s[sid].lastCell = q.s[sid].c;
+      q.s[sid].c = -1; q.s[sid].br = 0;
+    }
+    ev.push({ t:'tide', from:from, to:nw, cells:flooded, swept:swept });
+  }
+  q.unspent = [0,0];
+  for(var j=0;j<q.s.length;j++) if(q.s[j].c >= 0) q.s[j].act = 0;
+  q.to = opener(q.r);
+  if(decide(q, ev)) return;
+  /* if the opener has nothing left, the other pod opens */
+  if(unact(q, q.to) === 0) q.to = 1 - q.to;
+}
+
+/* --------------------------- move generation --------------------------- */
+function moves(p){
+  if(p.over) return [];
+  var out = [], seat = p.to;
+  for(var id=0; id<p.s.length; id++){
+    if(seatOf(id) !== seat) continue;
+    var s = p.s[id];
+    if(s.c < 0 || s.act) continue;
+    var R = reach(p, id);
+    for(var key in R){
+      var c = key|0;
+      out.push({ i:id, c:c, a:0, d:-1 });
+      out.push({ i:id, c:c, a:1, d:-1 });
+      var q = clone(p); q.s[id].c = c; q.s[id].br = 0;
+      for(var d=0;d<4;d++) if(shove(q, id, c, d)) out.push({ i:id, c:c, a:2, d:d });
+    }
+  }
+  return out;
+}
+
+/* ------------------------------ encoding ------------------------------- */
+/* compact: six packed integers, a seed and five counters — a few hundred
+   bytes, nowhere near the 32 KiB match-state cap. */
+function encode(p){
+  var s = [];
+  for(var i=0;i<p.s.length;i++){
+    var e = p.s[i];
+    s.push(e.c < 0 ? -1 - (e.lastCell === undefined ? 0 : e.lastCell+1)
+                   : (e.c + (e.act?128:0) + (e.br?256:0)));
+  }
+  return {
+    v: SCHEMA, sd: p.sd, w: p.w, r: p.r, n: p.n, to: p.to, s: s,
+    u: [p.unspent[0], p.unspent[1]],
+    ov: p.over ? p.over.winner : null,
+    wy: p.over ? p.over.why : null,
+    h: p.hist.slice(-8)
+  };
+}
+function decode(st){
+  if(!st || st.v !== SCHEMA || !st.s || st.s.length !== SEALS*2) return null;
+  var s = [];
+  for(var i=0;i<st.s.length;i++){
+    var v = st.s[i];
+    if(v < 0){
+      var lc = (-v) - 1;
+      s.push({ c:-1, act:0, br:0, lastCell: lc > 0 ? lc-1 : undefined });
+    } else s.push({ c: v & 127, act: (v & 128) ? 1 : 0, br: (v & 256) ? 1 : 0 });
+  }
+  return {
+    sd: st.sd|0, w: st.w|0, r: st.r|0, n: st.n|0, to: st.to|0, s: s,
+    unspent: st.u ? [st.u[0]|0, st.u[1]|0] : [0,0],
+    over: (st.ov === 0 || st.ov === 1) ? { winner: st.ov, why: st.wy || 'swept' } : null,
+    hist: st.h || []
+  };
+}
+function sig(p){
+  var a = [p.w, p.r, p.n, p.to, p.over ? p.over.winner : -1];
+  for(var i=0;i<p.s.length;i++) a.push(p.s[i].c, p.s[i].act, p.s[i].br);
+  return a.join(',');
+}
+
+/* ================================= AI =================================
+   Real heuristics with a one-ply reply search: score my candidate
+   activations, keep the best handful, then let the rival answer each with
+   its own best activation and take the worst case.  Same engine, same
+   legality, no peeking — there is nothing hidden to peek at.
+   ====================================================================== */
+var hiCache = {};
+function distFields(sd){
+  var c = hiCache[sd];
+  if(c) return c;
+  var h = terrain(sd);
+  function bfsTo(minE){
+    var dist = new Int16Array(N); dist.fill(9999);
+    var q = [], i;
+    for(i=0;i<N;i++) if(h[i] >= minE){ dist[i] = 0; q.push(i); }
+    var head = 0;
+    while(head < q.length){
+      var cur = q[head++], cx = xOf(cur), cy = yOf(cur);
+      for(var d=0;d<4;d++){
+        var nx=cx+DX[d], ny=cy+DY[d];
+        if(!inB(nx,ny)) continue;
+        var ni = idx(nx,ny);
+        if(h[ni] === 0 || dist[ni] < 9999) continue;
+        if(h[cur] - h[ni] <= 1){ dist[ni] = dist[cur]+1; q.push(ni); }
+      }
+    }
+    return dist;
+  }
+  c = { d5: bfsTo(MAXE), d4: bfsTo(MAXE-1) };
+  hiCache[sd] = c;
+  return c;
+}
+/* rounds this elevation stays dry from round r onward */
+function survives(e, r){
+  var n = 0;
+  for(var k=r; k<=LASTR; k++){ if(TIDE[Math.min(k,LASTR)] >= e) break; n++; }
+  return n;
+}
+
+var WT = {
+  pod:      1400,   /* a seal is worth more than any amount of ground */
+  survive:   40,    /* rounds this cell stays dry */
+  elev:       7,
+  mob:        3,
+  plateau:   34,    /* standing on the last three rocks */
+  reach5:    26,    /* being able to get there in time */
+  doomed:    90,
+  exposed:   58,    /* a rival is beside you and the sea is behind you */
+  loose:     16,    /* the sea is behind you and someone could come */
+  brace:      0     /* bracing pays through the exposure terms below, not a flat bonus */
+};
+
+function evalPos(p, me){
+  if(p.over) return p.over.winner === me ? (900000 - p.n) : (-900000 + p.n);
+  var h = terrain(p.sd), o = occArr(p), df = distFields(p.sd);
+  var score = (alive(p,me) - alive(p,1-me)) * WT.pod;
+  for(var id=0; id<p.s.length; id++){
+    var s = p.s[id];
+    if(s.c < 0) continue;
+    var sgn = (seatOf(id) === me) ? 1 : -1;
+    score += sgn * sealValue(p, id, h, o, df);
+  }
+  /* tempo: seals still to activate this round are options in hand */
+  score += (unact(p, me) - unact(p, 1-me)) * 18;
+  return score;
+}
+
+function sealValue(p, id, h, o, df){
+  var s = p.s[id], c = s.c, e = h[c], v = 0;
+  var sv = survives(e, p.r);
+  v += Math.min(sv, 4) * WT.survive;
+  v += e * WT.elev;
+  if(e === MAXE) v += WT.plateau;
+  if(s.br) v += WT.brace;
+
+  /* can it get to ground that lasts? */
+  var need = df.d5[c];
+  if(need < 9999){
+    var trips = Math.ceil(need / 2);
+    var left = survives(MAXE-1, p.r);          /* rounds before only the peak is dry */
+    if(trips <= left) v += WT.reach5 * (1 - Math.min(1, need/9));
+    else v -= WT.doomed * Math.min(3, trips-left);
+  } else v -= WT.doomed;
+
+  /* mobility and exposure */
+  var mob = 0, cx = xOf(c), cy = yOf(c), d;
+  for(d=0;d<4;d++){
+    var nx=cx+DX[d], ny=cy+DY[d];
+    if(!inB(nx,ny)) continue;
+    var ni = idx(nx,ny);
+    if(h[ni] > p.w && o[ni] < 0 && h[ni]-h[c] <= 1) mob++;
+  }
+  v += Math.min(mob,4) * WT.mob;
+
+  /* how easily can this seal be put in the water? */
+  var eff = e + (s.br ? 1 : 0);
+  for(d=0;d<4;d++){
+    /* the sea (or the edge) lies k cells away along d */
+    var k = 0, qx = cx, qy = cy;
+    for(var step=1; step<=3; step++){
+      qx += DX[d]; qy += DY[d];
+      if(!inB(qx,qy)){ k = step; break; }
+      if(h[idx(qx,qy)] <= p.w){ k = step; break; }
+    }
+    if(!k) continue;
+    if(s.br && k > 1) continue;                /* braced: only a one-cell push lands */
+    var ax = cx - DX[d], ay = cy - DY[d];      /* where an attacker would stand */
+    if(!inB(ax,ay)) continue;
+    var ai = idx(ax,ay);
+    if(h[ai] <= p.w) continue;
+    var need2 = eff - 1 + (k - 1);             /* elevation an attacker needs for reach k */
+    if(h[ai] < eff - 1) continue;
+    var att = o[ai];
+    if(att >= 0 && seatOf(att) !== seatOf(id)){
+      if(h[ai] >= need2 || k === 1) v -= WT.exposed;
+    } else if(att < 0){
+      /* could a rival step onto that cell soon? */
+      var nearRival = false;
+      for(var j=0;j<p.s.length;j++){
+        var t = p.s[j];
+        if(t.c < 0 || seatOf(j) === seatOf(id)) continue;
+        if(Math.abs(xOf(t.c)-ax) + Math.abs(yOf(t.c)-ay) <= 2) { nearRival = true; break; }
+      }
+      if(nearRival && (h[ai] >= need2 || k === 1)) v -= WT.loose;
+    }
+  }
+  return v;
+}
+
+function mirrorCell(c){ return idx(W-1-xOf(c), yOf(c)); }
+function mirrorDir(d){ return (d === 1) ? 3 : (d === 3 ? 1 : d); }
+function mirrorKey(mv){
+  var west = (seatOf(mv.i) === 0);
+  var c = west ? mv.c : mirrorCell(mv.c);
+  var d = (mv.d < 0) ? 4 : (west ? mv.d : mirrorDir(mv.d));
+  return ((mv.i % SEALS) * 100000) + (c * 100) + (mv.a * 10) + d;
+}
+
+function best(p, opts){
+  opts = opts || {};
+  var me = p.to;
+  var cands = moves(p);
+  if(!cands.length) return null;
+  var scored = [], i;
+  for(i=0;i<cands.length;i++){
+    var r = apply(p, cands[i]);
+    if(!r.ok) continue;
+    scored.push({ mv: cands[i], q: r.pos, v: evalPos(r.pos, me) });
+  }
+  if(!scored.length) return null;
+  /* ties break on a MIRRORED key, so the pod on the east plays the exact
+     reflection of the pod on the west.  Nothing about which shore you sit
+     on can leak into how well the opponent plays. */
+  for(i=0;i<scored.length;i++) scored[i].k = mirrorKey(scored[i].mv);
+  scored.sort(function(a,b){
+    if(b.v !== a.v) return b.v - a.v;
+    return a.k - b.k;
+  });
+  if(opts.depth === 1) return scored[0].mv;
+  var K = opts.width || 12;
+  var top = scored.slice(0, Math.min(K, scored.length));
+  var bestMv = top[0].mv, bestV = -Infinity;
+  for(i=0;i<top.length;i++){
+    var q = top[i].q, worst;
+    if(q.over) worst = evalPos(q, me);
+    else if(q.to === me) worst = top[i].v;     /* we keep the initiative */
+    else {
+      var rep = moves(q), lo = Infinity;
+      for(var j=0;j<rep.length;j++){
+        var rr = apply(q, rep[j]);
+        if(!rr.ok) continue;
+        var vv = evalPos(rr.pos, me);
+        if(vv < lo) lo = vv;
+      }
+      worst = (lo === Infinity) ? top[i].v : lo;
+    }
+    var mix = 0.34*top[i].v + 0.66*worst;
+    if(mix > bestV){ bestV = mix; bestMv = top[i].mv; }
+  }
+  return bestMv;
+}
+
+/* --- sparring partners for the harness (never used by the game itself) --- */
+function greedy(p){ return best(p, { depth:1 }); }
+function randomMove(p, rnd){
+  var m = moves(p);
+  if(!m.length) return null;
+  return m[Math.floor(rnd()*m.length) % m.length];
+}
+/* the naive read of the board: get onto the peak, shove if it drowns someone */
+function peakRush(p){
+  var m = moves(p), h = terrain(p.sd), df = distFields(p.sd);
+  if(!m.length) return null;
+  var bestMv = m[0], bestV = -Infinity, bestK = Infinity;
+  for(var i=0;i<m.length;i++){
+    var mv = m[i], v = 0;
+    v -= df.d5[mv.c] * 10;
+    v += h[mv.c] * 6;
+    if(mv.a === 2){
+      var q = clone(p); q.s[mv.i].c = mv.c; q.s[mv.i].br = 0;
+      var sh = shove(q, mv.i, mv.c, mv.d);
+      if(sh) for(var k=0;k<sh.swept.length;k++)
+        v += (seatOf(sh.swept[k]) === p.to) ? -400 : 400;
+    }
+    var k = mirrorKey(mv);
+    if(v > bestV || (v === bestV && k < bestK)){ bestV = v; bestMv = mv; bestK = k; }
+  }
+  return bestMv;
+}
+
+/* ------------------------------- exports ------------------------------- */
+return {
+  K: { W:W, H:H, N:N, SEALS:SEALS, MAXE:MAXE, TIDE:TIDE, LASTR:LASTR,
+       SCHEMA:SCHEMA, DX:DX, DY:DY, DIRNAME:DIRNAME },
+  idx:idx, xOf:xOf, yOf:yOf, inB:inB, seatOf:seatOf,
+  terrain:terrain, analyse:analyse, spawns:spawns, components:components,
+  create:create, clone:clone, occArr:occArr, alive:alive, unact:unact,
+  opener:opener, survives:survives, distFields:distFields,
+  reach:reach, shove:shove, shoveDirs:shoveDirs,
+  legalMove:legalMove, apply:apply, moves:moves,
+  encode:encode, decode:decode, sig:sig,
+  evalPos:evalPos, best:best, greedy:greedy, randomMove:randomMove, peakRush:peakRush,
+  mulberry:mulberry
+};
+})();
+
+/* ============================== HELPERS ============================== */
+var K = RULES.K, W = K.W, H = K.H, NCELL = K.N, MAXE = K.MAXE, TIDE = K.TIDE;
+var DX = K.DX, DY = K.DY;
+
+function $(id){ return document.getElementById(id); }
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function easeOut(t){ return 1-Math.pow(1-t,3); }
+function easeInOut(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function xOf(c){ return c % W; }
+function yOf(c){ return (c/W)|0; }
+
+/* ============================== ARCADE ==============================
+   Every bridge call is guarded and always resolves, so the game plays
+   identically when the SDK is missing, the host is offline, or the player
+   is signed out — the local modes never touch any of this. */
+var AR = { a:null, online:false, guest:true, writes:false, name:'', user:'', pending:null, ready:false };
+function arcadeBoot(cb){
+  var done = false, to = null;
+  function finish(a){
+    if(done) return; done = true; if(to) clearTimeout(to);
+    AR.a = a || null;
+    try{
+      if(a){
+        AR.online = !!a.online;
+        AR.guest  = !(a.player && a.player.isGuest === false);
+        AR.name   = (a.player && (a.player.displayName || a.player.username)) || '';
+        AR.user   = (a.player && a.player.username) || '';
+        AR.writes = !!(a.capabilities && a.capabilities.features && a.capabilities.features.writes);
+        AR.pending= (a.matches && a.matches.pendingCode) || null;
+      }
+    }catch(e){}
+    AR.ready = true;
+    try{ cb(); }catch(e){}
+  }
+  to = setTimeout(function(){ finish(null); }, 4200);
+  try{
+    if(typeof Arcade !== 'undefined' && Arcade && Arcade.ready){
+      var p = Arcade.ready();
+      if(p && typeof p.then === 'function') p.then(function(a){ finish(a); }, function(){ finish(null); });
+      else finish(null);
+    } else finish(null);
+  }catch(e){ finish(null); }
+}
+function mcall(name, args){
+  return new Promise(function(res){
+    try{
+      var m = AR.a && AR.a.matches;
+      if(!m || typeof m[name] !== 'function')
+        return res({ ok:false, reason:'UNAVAILABLE', message:'Matches are offline here.' });
+      var p = m[name].apply(m, args || []);
+      if(p && typeof p.then === 'function')
+        p.then(res, function(){ res({ ok:false, reason:'UNAVAILABLE', message:'That did not reach the arcade.' }); });
+      else res(p || { ok:false, reason:'UNAVAILABLE' });
+    }catch(e){ res({ ok:false, reason:'UNAVAILABLE', message:'That did not reach the arcade.' }); }
+  });
+}
+var UNLOCKED = {};
+function unlock(slug){
+  if(UNLOCKED[slug]) return;
+  UNLOCKED[slug] = 1;
+  try{
+    if(AR.a && AR.a.achievements && AR.a.achievements.unlock){
+      var p = AR.a.achievements.unlock(slug);
+      if(p && typeof p.then === 'function') p.then(function(){}, function(){});
+    }
+  }catch(e){}
+}
+function submitScore(n, meta){
+  try{
+    if(typeof n !== 'number' || !isFinite(n)) return;
+    if(AR.a && AR.a.scores && AR.a.scores.submit){
+      var p = AR.a.scores.submit(Math.max(1, Math.round(n)), meta || {});
+      if(p && typeof p.then === 'function') p.then(function(){}, function(){});
+    }
+  }catch(e){}
+}
+
+/* ============================== CANVAS ==============================
+   RETINA/DPR: the CSS box is pinned to the viewport by the stylesheet and
+   restated here in code; the backing store is sized separately.  On a slow
+   machine only the BACKING STORE shrinks — never the on-screen box. */
+var cv = $('board'), ctx = cv.getContext('2d', { alpha:false });
+var VW = 1, VH = 1, DPR = 1, RES = 1, lowT = 0, hiT = 0;
+function PXR(){ return DPR*RES; }
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  VW  = Math.max(1, window.innerWidth);
+  VH  = Math.max(1, window.innerHeight);
+  cv.width  = Math.max(1, Math.round(VW*PXR()));
+  cv.height = Math.max(1, Math.round(VH*PXR()));
+  cv.style.width = '100%'; cv.style.height = '100%';
+  ctx.setTransform(PXR(), 0, 0, PXR(), 0, 0);
+  buildSky();
+  layout();
+}
+function resTick(dt){
+  var f = 1/Math.max(0.001, dt);
+  if(f < 44){ lowT += dt; hiT = 0; } else if(f > 56){ hiT += dt; lowT = 0; } else { lowT *= 0.9; hiT *= 0.9; }
+  if(lowT > 1.3 && RES > 0.6){ RES = Math.max(0.6, RES-0.2); lowT = 0; resize(); }
+  else if(hiT > 4.0 && RES < 1){ RES = Math.min(1, RES+0.2); hiT = 0; resize(); }
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 150); });
+
+/* ============================== PALETTE ============================== */
+var POD = [
+  { key:'silver', name:'Silver', body:'#c6d2d7', hi:'#eef6f8', dk:'#66757d', eye:'#1b262b' },
+  { key:'umber',  name:'Umber',  body:'#bd7f49', hi:'#ecb478', dk:'#5f3b1f', eye:'#20140c' }
+];
+/* rock lightens and dries out as it rises above the water.  Every entry is
+   kept as a plain [r,g,b] triple so the shading maths never has to parse a
+   colour string back out of itself. */
+function hex(c){ return [parseInt(c.substr(1,2),16), parseInt(c.substr(3,2),16), parseInt(c.substr(5,2),16)]; }
+function mixv(a,b,t){ return [lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)]; }
+function css(v){ return 'rgb('+Math.round(v[0])+','+Math.round(v[1])+','+Math.round(v[2])+')'; }
+var WET = hex('#334446'), DRY = hex('#e2e4d7');
+var WALL_LO = hex('#141d21'), WALL_HI = hex('#828b81');
+var BLACK = [0,0,0], WHITE = [255,255,255];
+var ROCK = [];
+(function(){
+  for(var e=0;e<=MAXE;e++){
+    var t = e/MAXE;
+    ROCK.push({
+      topV:  mixv(WET, DRY, Math.pow(t,0.78)),
+      wallV: mixv(WALL_LO, WALL_HI, Math.pow(t,0.95))
+    });
+  }
+})();
+var SEA = { deep:'#0b1e25' };
+
+/* ============================== LAYOUT ============================== */
+/* The board is never mirrored: the Silver pod is always the west shore and
+   the Umber pod always the east, for both players.  The terrain is exactly
+   mirror-symmetric, so no seat gains anything from the fixed orientation,
+   and every player reads the same picture of the same rock. */
+var LIFTR = 0.25;   /* how far one level of rock stands above the next */
+var LAY = { s:36, lift:10, ox:0, oy:0 };
+/* screen centre of a cell's top surface, given a surface height in levels */
+function scr(gx, gy, lv){
+  return { x: LAY.ox + (gx+0.5)*LAY.s, y: LAY.oy + (gy+0.5)*LAY.s - lv*LAY.lift };
+}
+function surfOf(c, w){ var h = TERR()[c]; return h > w ? h : w; }
+function cellScr(c){ return scr(xOf(c), yOf(c), surfOf(c, waterNow())); }
+function layout(){
+  var top = 14, bot = 14;
+  try{
+    var a = $('tide').getBoundingClientRect();
+    var b = $('acts').getBoundingClientRect();
+    var d = $('pods').getBoundingClientRect();
+    top = Math.max(14, a.bottom + 10);
+    bot = Math.max(16, VH - Math.min(b.top, d.top) + 10);
+  }catch(e){}
+  var availW = VW - 14, availH = Math.max(120, VH - top - bot);
+  /* The outer ring of the grid is always open water, so the fit is taken on
+     the island itself and the empty frame is allowed to run off the edge. */
+  var s = Math.min(availW/(W-1.4), availH/((H-1.4) + MAXE*LIFTR));
+  s = clamp(s, 12, 84);
+  LAY.s = s; LAY.lift = s*LIFTR;
+  LAY.ox = (VW - W*s)/2;
+  LAY.oy = top + (availH - (H*s + MAXE*LAY.lift))/2 + MAXE*LAY.lift;
+  ROCKC.dirty = true;
+}
+/* front-to-back hit test against the raised top faces */
+function pickCell(px, py){
+  var w = waterNow();
+  for(var y=H-1; y>=0; y--){
+    for(var x=0; x<W; x++){
+      var c = y*W + x;
+      var p = scr(x, y, surfOf(c, w));
+      if(px >= p.x-LAY.s/2 && px < p.x+LAY.s/2 && py >= p.y-LAY.s/2 && py < p.y+LAY.s/2) return c;
+    }
+  }
+  return -1;
+}
+
+/* ============================== AUDIO ============================== */
+var AU = { ctx:null, ready:false, muted:false, master:null, sea:null, nb:null, last:0 };
+function noiseBuf(ac, secs){
+  var b = ac.createBuffer(1, Math.floor(ac.sampleRate*secs), ac.sampleRate);
+  var d = b.getChannelData(0);
+  for(var i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+  return b;
+}
+function audioInit(){
+  if(AU.ready) return;
+  try{
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    AU.ctx = new AC();
+    AU.master = AU.ctx.createGain(); AU.master.gain.value = 0.9; AU.master.connect(AU.ctx.destination);
+    AU.nb = noiseBuf(AU.ctx, 2.2);
+    /* the sea itself: brown-ish noise under a slowly breathing filter */
+    var src = AU.ctx.createBufferSource(); src.buffer = AU.nb; src.loop = true;
+    var lp = AU.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.6;
+    var g  = AU.ctx.createGain(); g.gain.value = 0.030;
+    var lfo = AU.ctx.createOscillator(); lfo.frequency.value = 0.13;
+    var lg = AU.ctx.createGain(); lg.gain.value = 180;
+    lfo.connect(lg); lg.connect(lp.frequency);
+    src.connect(lp); lp.connect(g); g.connect(AU.master);
+    src.start(); lfo.start();
+    AU.sea = g;
+    AU.ready = true;
+  }catch(e){}
+}
+function resumeAudio(){
+  audioInit();
+  try{ if(AU.ctx && AU.ctx.state === 'suspended') AU.ctx.resume(); }catch(e){}
+}
+function AON(){ return AU.ready && !AU.muted && AU.ctx && AU.ctx.state !== 'suspended'; }
+function tone(freq, dur, vol, type, f2, delay, detune){
+  if(!AON()) return;
+  var t0 = AU.ctx.currentTime + (delay||0);
+  var o = AU.ctx.createOscillator(), g = AU.ctx.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t0);
+  if(f2) o.frequency.exponentialRampToValueAtTime(Math.max(20,f2), t0+dur);
+  if(detune) o.detune.value = detune;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0+Math.min(0.02, dur*0.3));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  o.connect(g); g.connect(AU.master); o.start(t0); o.stop(t0+dur+0.03);
+}
+function nz(dur, type, freq, Q, vol, delay, f2){
+  if(!AON()) return;
+  var t0 = AU.ctx.currentTime + (delay||0);
+  var s = AU.ctx.createBufferSource(); s.buffer = AU.nb;
+  s.playbackRate.value = 0.85 + Math.random()*0.3;
+  var f = AU.ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t0); f.Q.value = Q;
+  if(f2) f.frequency.exponentialRampToValueAtTime(Math.max(30,f2), t0+dur);
+  var g = AU.ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0+Math.min(0.03, dur*0.25));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  s.connect(f); f.connect(g); g.connect(AU.master);
+  s.start(t0); s.stop(t0+dur+0.03);
+}
+/* a grey seal's grumble: a low buzzing bark with a downward slide */
+function sfxBark(seat, big){
+  var base = seat ? 128 : 168;
+  var v = big ? 0.20 : 0.13;
+  tone(base, 0.16, v, 'sawtooth', base*0.62);
+  tone(base*2.02, 0.12, v*0.35, 'square', base*1.3, 0.01);
+  nz(0.14, 'bandpass', 720, 2.2, v*0.5);
+  if(big){ tone(base*0.9, 0.20, v*0.7, 'sawtooth', base*0.5, 0.17); nz(0.16,'bandpass',600,2,0.07,0.17); }
+}
+function sfxScuff(){ nz(0.06,'bandpass',1500,1.1,0.045); }
+function sfxThump(){
+  nz(0.10,'lowpass',700,1.0,0.34);
+  tone(96,0.15,0.26,'sine',52);
+  tone(230,0.05,0.07,'square',140);
+}
+function sfxBump(){ nz(0.08,'lowpass',360,1.4,0.20); tone(72,0.14,0.16,'sine',48); }
+function sfxSplash(big){
+  var v = big ? 0.34 : 0.22;
+  nz(0.42,'lowpass',2600,0.8,v,0,240);
+  nz(0.28,'highpass',2400,0.7,v*0.55,0.03);
+  tone(180,0.18,0.07,'sine',70,0.02);
+  nz(0.55,'bandpass',900,0.9,v*0.3,0.10,380);
+}
+function sfxTideWash(){
+  nz(1.30,'lowpass',300,0.7,0.20,0,1500);
+  nz(1.10,'bandpass',700,0.8,0.11,0.10,1900);
+  tone(58,0.9,0.10,'sine',44,0.02);
+}
+function sfxBell(){
+  tone(932,0.55,0.11,'sine',928);
+  tone(1398,0.42,0.055,'sine',1392,0.02);
+  tone(2330,0.24,0.022,'sine',2320,0.03);
+}
+function sfxGull(){
+  if(!AON()) return;
+  var b = 900 + Math.random()*450;
+  tone(b, 0.13, 0.030, 'sawtooth', b*1.5);
+  tone(b*1.02, 0.16, 0.022, 'sawtooth', b*0.8, 0.14);
+  tone(b*0.95, 0.12, 0.017, 'sawtooth', b*1.3, 0.34);
+}
+function sfxTick(){
+  if(!AON()) return;
+  var n = performance.now(); if(n - AU.last < 42) return; AU.last = n;
+  tone(1180, 0.028, 0.028, 'sine', 980);
+}
+function sfxSelect(){ tone(560,0.07,0.06,'triangle',760); nz(0.04,'highpass',3000,1,0.03); }
+function sfxDeny(){ tone(148,0.11,0.09,'square',92); nz(0.07,'bandpass',360,2.2,0.06); }
+function sfxFanfare(win){
+  if(!AON()) return;
+  var seq = win ? [392,523,659,784] : [392,349,294,247];
+  for(var i=0;i<seq.length;i++) tone(seq[i], 0.42, 0.10, 'triangle', seq[i], i*0.11);
+  if(win){
+    tone(1046,0.7,0.055,'sine',1046,0.44);
+    for(var k=0;k<5;k++) setTimeout(function(){ sfxBark(Math.random()<0.5?0:1, Math.random()<0.4); }, 520 + k*135);
+  }
+}
+
+/* ============================== WORLD ============================== */
+var G = {
+  screen:'start', mode:'ai', pos:null, seed:0,
+  mySeat:0, oppName:'Rival pod', matchId:null, match:null, unwatch:null,
+  paused:false, resultShown:false, scored:false, deferred:null,
+  aiLevel:'hard', aiThinking:false, restarts:0,
+  wasLastBull:false, sawKingTide:false, hotPass:false, rulesFrom:null, fromEnd:false
+};
+var TIME = 0;
+function TERR(){ return RULES.terrain(G.pos ? G.pos.sd : G.seed); }
+
+/* the water level actually being drawn — a float while a tide is running */
+var TIDEANIM = null;   /* { from, to, p, cells, delay:{} } */
+function waterNow(){ return TIDEANIM ? TIDEANIM.from : (G.pos ? G.pos.w : 0); }
+function waterFloat(){
+  if(!TIDEANIM) return G.pos ? G.pos.w : 0;
+  return lerp(TIDEANIM.from, TIDEANIM.to, easeInOut(clamp(TIDEANIM.p,0,1)));
+}
+
+/* ---------------------------- background ---------------------------- */
+var sky = null;
+function buildSky(){
+  sky = document.createElement('canvas');
+  sky.width = Math.max(2, Math.round(VW*PXR())); sky.height = Math.max(2, Math.round(VH*PXR()));
+  var g = sky.getContext('2d');
+  g.setTransform(PXR(),0,0,PXR(),0,0);
+  var grd = g.createLinearGradient(0,0,0,VH);
+  grd.addColorStop(0, '#0a1c23');
+  grd.addColorStop(0.45, SEA.deep);
+  grd.addColorStop(1, '#061217');
+  g.fillStyle = grd; g.fillRect(0,0,VW,VH);
+  /* a cold horizon glow so the board sits in weather, not on a flat field */
+  var rg = g.createRadialGradient(VW*0.5, VH*0.30, 0, VW*0.5, VH*0.30, Math.max(VW,VH)*0.72);
+  rg.addColorStop(0,'rgba(60,120,132,.22)'); rg.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle = rg; g.fillRect(0,0,VW,VH);
+  /* the vignette is baked in here rather than painted over the board every
+     frame: it only ever darkens open water, and one full-canvas blit a frame
+     is worth a great deal on a modest machine */
+  var r2 = g.createRadialGradient(VW/2, VH/2, Math.min(VW,VH)*0.36, VW/2, VH/2, Math.max(VW,VH)*0.80);
+  r2.addColorStop(0,'rgba(0,0,0,0)'); r2.addColorStop(1,'rgba(0,0,0,.55)');
+  g.fillStyle = r2; g.fillRect(0,0,VW,VH);
+}
+
+function roundRect(g, x, y, w, h, r){
+  r = Math.min(r, w/2, h/2);
+  g.beginPath();
+  g.moveTo(x+r, y);
+  g.lineTo(x+w-r, y); g.quadraticCurveTo(x+w, y, x+w, y+r);
+  g.lineTo(x+w, y+h-r); g.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  g.lineTo(x+r, y+h); g.quadraticCurveTo(x, y+h, x, y+h-r);
+  g.lineTo(x, y+r); g.quadraticCurveTo(x, y, x+r, y);
+  g.closePath();
+}
+
+/* ---------------------------- rock cache ----------------------------
+   The rock never animates, so it is painted once into an offscreen canvas
+   and blitted; only water, foam, seals and particles cost anything per
+   frame.  Rebuilt on resize and on each tide step. */
+var ROCKC = { cv:null, dirty:true, w:-1, seed:-1 };
+var BUILDS = 0;
+function speckRand(c, k){
+  var v = Math.imul(c*2654435761 ^ (k*40503), 0x45d9f3b);
+  v ^= v >>> 15; v = Math.imul(v, 0x45d9f3b); v ^= v >>> 13;
+  return ((v>>>0) % 100000)/100000;
+}
+function buildRock(){
+  BUILDS++;
+  var T = TERR(), w = waterNow();
+  if(!ROCKC.cv) ROCKC.cv = document.createElement('canvas');
+  var cvs = ROCKC.cv;
+  cvs.width = Math.max(2, Math.round(VW*PXR())); cvs.height = Math.max(2, Math.round(VH*PXR()));
+  var g = cvs.getContext('2d');
+  g.setTransform(PXR(),0,0,PXR(),0,0);
+  g.clearRect(0,0,VW,VH);
+  var s = LAY.s, L = LAY.lift;
+  /* a soft dark skirt under the whole rock, so it sits IN the water */
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = s*0.55; g.shadowOffsetY = s*0.14;
+  g.fillStyle = 'rgba(0,0,0,.9)';
+  for(var sy0=0; sy0<H; sy0++) for(var sx0=0; sx0<W; sx0++){
+    var sc = sy0*W+sx0;
+    if(T[sc] <= w) continue;
+    var sp = scr(sx0, sy0, T[sc]);
+    g.fillRect(sp.x-s/2, sp.y-s/2, s, s + (T[sc]-w)*L);
+  }
+  g.restore();
+  for(var y=0; y<H; y++){
+    for(var x=0; x<W; x++){
+      var c = y*W + x, h = T[c];
+      if(h <= w) continue;
+      var p = scr(x, y, h);
+      var left = p.x - s/2, top = p.y - s/2;
+      /* --- the cliff face falling south --- */
+      var southSurf = (y+1 < H) ? Math.max(T[(y+1)*W + x], w) : w;
+      var wallH = (h - southSurf)*L;
+      if(wallH > 0.4){
+        var wg = g.createLinearGradient(0, top+s, 0, top+s+wallH);
+        wg.addColorStop(0, css(ROCK[h].wallV));
+        wg.addColorStop(1, css(mixv(WALL_LO, ROCK[h].wallV, 0.25)));
+        g.fillStyle = wg;
+        g.fillRect(left, top+s, s, wallH+0.6);
+        /* damp band where the wall meets whatever is below */
+        g.fillStyle = 'rgba(10,20,24,.30)';
+        g.fillRect(left, top+s+wallH-Math.min(3, wallH*0.3), s, Math.min(3, wallH*0.3)+0.6);
+      }
+      /* --- the top of the rock ---
+         a dark joint is laid down first and the face is drawn on top with
+         softened corners, so the ledge reads as fractured stone rather than
+         a tiled floor */
+      g.fillStyle = 'rgba(12,19,22,.85)';
+      g.fillRect(left, top, s+0.6, s+0.6);
+      var jitter = (speckRand(c,1)-0.5)*0.09;
+      g.fillStyle = css(mixv(ROCK[h].topV, jitter>0 ? WHITE : BLACK, Math.abs(jitter)));
+      roundRect(g, left+0.5, top+0.5, s-0.4, s-0.4, s*0.13);
+      g.fill();
+      /* bevel: light off the north-west, shade into the south-east, so every
+         single cell of the grid reads even where the ledge is flat */
+      g.save();
+      roundRect(g, left+0.5, top+0.5, s-0.4, s-0.4, s*0.13); g.clip();
+      var bev = Math.max(1.4, s*0.075);
+      g.fillStyle = 'rgba(255,255,255,'+(0.11 + 0.10*(h/MAXE))+')';
+      g.fillRect(left, top, s+0.6, bev);
+      g.fillStyle = 'rgba(255,255,255,'+(0.05 + 0.05*(h/MAXE))+')';
+      g.fillRect(left, top, bev, s+0.6);
+      g.fillStyle = 'rgba(0,0,0,.18)';
+      g.fillRect(left, top+s-bev, s+0.6, bev);
+      g.fillStyle = 'rgba(0,0,0,.12)';
+      g.fillRect(left+s-bev, top, bev, s+0.6);
+      g.restore();
+      /* mottling and lichen — more of it the longer the rock has been dry */
+      var n = 3 + Math.round(h*0.7);
+      for(var k=0;k<n;k++){
+        var rx = left + speckRand(c, k*3+2)*s;
+        var ry = top  + speckRand(c, k*3+3)*s;
+        var rr = s*(0.025 + speckRand(c, k*3+4)*0.055);
+        var lich = speckRand(c, k*3+5);
+        if(h >= 4 && lich > 0.78) g.fillStyle = 'rgba(159,178,100,'+(0.16+lich*0.16)+')';
+        else if(lich > 0.5)       g.fillStyle = 'rgba(255,255,255,'+(0.035+lich*0.045)+')';
+        else                      g.fillStyle = 'rgba(0,0,0,'+(0.05+lich*0.09)+')';
+        g.beginPath(); g.ellipse(rx, ry, rr, rr*0.72, lich*3.1, 0, 6.2832); g.fill();
+      }
+      /* contour: a soft dark seam wherever the neighbouring rock stands at a
+         different height, which is what makes the map read as a hill */
+      g.strokeStyle = 'rgba(8,14,17,.42)'; g.lineWidth = Math.max(1, s*0.032);
+      g.beginPath();
+      if(x+1 < W && T[c+1] !== h && T[c+1] > w){ g.moveTo(left+s, top+s*0.10); g.lineTo(left+s, top+s*0.90); }
+      if(x-1 >= 0 && T[c-1] !== h && T[c-1] > w){ g.moveTo(left, top+s*0.10); g.lineTo(left, top+s*0.90); }
+      if(y-1 >= 0 && T[c-W] !== h && T[c-W] > w){ g.moveTo(left+s*0.10, top); g.lineTo(left+s*0.90, top); }
+      g.stroke();
+      /* the shadow a taller neighbour throws across this ledge */
+      if(y-1 >= 0 && T[c-W] > h && T[c-W] > w){
+        var drop = Math.min(s*0.5, (T[c-W]-h)*L*0.9);
+        var sg = g.createLinearGradient(0, top, 0, top+drop);
+        sg.addColorStop(0,'rgba(0,0,0,.34)'); sg.addColorStop(1,'rgba(0,0,0,0)');
+        g.fillStyle = sg; g.fillRect(left, top, s+0.6, drop);
+      }
+    }
+  }
+  ROCKC.dirty = false; ROCKC.w = w; ROCKC.seed = G.pos ? G.pos.sd : G.seed;
+  buildFoam();
+}
+
+/* ------------------------------- sea ------------------------------- */
+function drawSea(g){
+  g.drawImage(sky, 0, 0, VW, VH);
+  var s = LAY.s, wf = waterFloat();
+  /* long swell bands travelling across the rock */
+  var top = LAY.oy - wf*LAY.lift - s;
+  var span = H*s + s*2;
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  g.lineWidth = Math.max(2, s*0.11);
+  for(var i=0;i<5;i++){
+    var ph = TIME*0.13 + i*0.77;
+    var yy = top + (((i/5)*span + (ph % 1)*span*0.12) % span);
+    var a = 0.028 + 0.024*Math.sin(TIME*0.7 + i*1.7);
+    if(a <= 0) continue;
+    g.strokeStyle = 'rgba(118,188,200,'+a+')';
+    g.beginPath();
+    for(var q=0;q<=8;q++){
+      var qx = (q/8)*VW;
+      var qy = yy + Math.sin(TIME*0.9 + q*0.9 + i)*s*0.10;
+      if(q===0) g.moveTo(qx,qy); else g.lineTo(qx,qy);
+    }
+    g.stroke();
+  }
+  g.restore();
+  /* glints */
+  g.save();
+  for(var k=0;k<9;k++){
+    var gx = ((k*137.5 + TIME*7) % (VW+80)) - 40;
+    var gy = top + ((k*61.7 + TIME*4) % span);
+    var al = 0.05 + 0.05*Math.sin(TIME*1.7 + k);
+    if(al <= 0) continue;
+    g.fillStyle = 'rgba(200,240,246,'+al+')';
+    g.fillRect(gx, gy, s*0.30, Math.max(1, s*0.035));
+  }
+  g.restore();
+}
+
+/* surf breaking on the rock: drawn hugging the DRY cell's own silhouette,
+   which is where the waterline actually appears once the rock is lifted.
+   The edge list only changes when the rock or the tide does, so it is built
+   alongside the rock cache and only the wobble costs anything per frame. */
+var FOAM = [];
+function buildFoam(){
+  var T = TERR(), w = waterNow(), s = LAY.s, L = LAY.lift;
+  FOAM.length = 0;
+  for(var y=0;y<H;y++) for(var x=0;x<W;x++){
+    var c = y*W+x, h = T[c];
+    if(h <= w) continue;
+    var p = scr(x, y, h);
+    var l = p.x - s/2, t = p.y - s/2;
+    for(var d=0; d<4; d++){
+      var nx = x+DX[d], ny = y+DY[d];
+      var sea = true;
+      if(nx>=0 && nx<W && ny>=0 && ny<H) sea = T[ny*W+nx] <= w;
+      if(!sea) continue;
+      if(d === 0)      FOAM.push({ h:1, x:l, y:t - s*0.03, ph:c*0.73 + d*1.9 });
+      else if(d === 2) FOAM.push({ h:1, x:l, y:t + s + (h-w)*L, ph:c*0.73 + d*1.9 });
+      else             FOAM.push({ h:0, x:(d===1 ? l+s : l), y:t, ph:c*0.73 + d*1.9 });
+    }
+  }
+}
+function drawFoam(g){
+  var s = LAY.s, k;
+  g.save();
+  g.lineCap = 'round';
+  for(var i=0;i<FOAM.length;i++){
+    var f = FOAM[i];
+    var ph = TIME*2.1 + f.ph;
+    var wob = 0.5 + 0.5*Math.sin(ph);
+    g.strokeStyle = 'rgba(226,244,238,'+(0.26 + 0.30*wob)+')';
+    g.lineWidth = Math.max(1.2, s*0.055*(0.7+wob*0.8));
+    g.beginPath();
+    if(f.h) for(k=0;k<=4;k++) g.lineTo(f.x + s*k/4, f.y + Math.sin(ph + k*1.4)*s*0.038);
+    else    for(k=0;k<=4;k++) g.lineTo(f.x + Math.sin(ph + k*1.4)*s*0.035, f.y + s*k/4);
+    g.stroke();
+  }
+  g.restore();
+}
+
+/* cells the next rise will take: they shimmer, always, for both players */
+function drawFloodNext(g){
+  if(!G.pos) return;
+  var T = TERR(), w = waterNow(), s = LAY.s;
+  var nextW = TIDE[Math.min(G.pos.r+1, TIDE.length-1)];
+  if(nextW <= w) return;
+  var pulse = 0.5 + 0.5*Math.sin(TIME*2.6);
+  g.save();
+  g.setLineDash([s*0.16, s*0.12]);
+  g.lineDashOffset = -TIME*s*0.5;
+  for(var c=0;c<NCELL;c++){
+    if(T[c] <= w || T[c] > nextW) continue;
+    var p = scr(xOf(c), yOf(c), T[c]);
+    g.fillStyle = 'rgba(120,205,225,'+(0.07 + 0.09*pulse)+')';
+    g.fillRect(p.x-s/2, p.y-s/2, s, s);
+    g.strokeStyle = 'rgba(168,228,243,'+(0.30 + 0.28*pulse)+')';
+    g.lineWidth = Math.max(1, s*0.035);
+    g.strokeRect(p.x-s/2+1, p.y-s/2+1, s-2, s-2);
+  }
+  g.restore();
+}
+
+/* the rising water during a tide step: a foam front sweeping inward */
+function drawTideWash(g){
+  if(!TIDEANIM) return;
+  var T = TERR(), s = LAY.s;
+  var A = TIDEANIM;
+  for(var i=0;i<A.cells.length;i++){
+    var c = A.cells[i];
+    var lp = clamp((A.p - A.delay[c]) / 0.42, 0, 1);
+    if(lp <= 0) continue;
+    var p = scr(xOf(c), yOf(c), T[c]);
+    var e = easeOut(lp);
+    g.save();
+    g.beginPath(); g.rect(p.x-s/2, p.y-s/2, s, s); g.clip();
+    /* the water climbs the face of the rock */
+    var top = p.y + s/2 - s*e*1.25;
+    g.fillStyle = 'rgba(21,60,71,'+(0.55 + 0.35*e)+')';
+    g.fillRect(p.x-s/2, top, s, s*1.4);
+    g.fillStyle = 'rgba(150,215,220,'+(0.30*(1-e*0.55))+')';
+    g.fillRect(p.x-s/2, top, s, Math.max(1.4, s*0.10));
+    g.strokeStyle = 'rgba(226,244,240,'+(0.55*(1-e*0.4))+')';
+    g.lineWidth = Math.max(1.2, s*0.055);
+    g.beginPath();
+    for(var k=0;k<=6;k++){
+      var xx = p.x - s/2 + (s*k/6);
+      var yy = top + Math.sin(TIME*7 + k*1.4 + c)*s*0.045;
+      if(k===0) g.moveTo(xx,yy); else g.lineTo(xx,yy);
+    }
+    g.stroke();
+    g.restore();
+  }
+}
+
+/* ============================== PARTICLES ============================== */
+var PART = [];
+function puff(x, y, n, kind, spread, col, up){
+  for(var i=0;i<n;i++){
+    var a = Math.random()*6.2832, sp = spread*(0.25+Math.random());
+    PART.push({ x:x, y:y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - (up||0),
+                life:0, max:0.5+Math.random()*0.8, kind:kind,
+                r:LAY.s*(0.03+Math.random()*0.06), col:col });
+  }
+}
+function stepParticles(dt){
+  for(var i=PART.length-1;i>=0;i--){
+    var p = PART[i];
+    p.life += dt;
+    if(p.life >= p.max){ PART.splice(i,1); continue; }
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    if(p.kind === 'spray'){ p.vy += 260*dt; p.vx *= 0.99; }
+    else if(p.kind === 'breath'){ p.vy -= 26*dt; p.vx *= 0.97; p.vy *= 0.97; }
+    else { p.vx *= 0.94; p.vy *= 0.94; }
+  }
+  if(PART.length > 420) PART.splice(0, PART.length-420);
+}
+function drawParticles(g){
+  for(var i=0;i<PART.length;i++){
+    var p = PART[i], t = p.life/p.max, a = 1-t;
+    g.globalAlpha = p.kind === 'breath' ? a*0.34 : a*0.9;
+    g.fillStyle = p.col;
+    g.beginPath();
+    g.arc(p.x, p.y, p.r*(p.kind==='breath' ? (0.6+t*1.6) : (1-t*0.35)), 0, 6.2832);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+}
+
+/* ============================== SEALS ============================== */
+/* A grey seal, drawn as a charming blob: fat body, small round head,
+   whiskers, and eyes that read at a glance on a phone. */
+function drawSeal(g, sx, sy, s, pod, o){
+  o = o || {};
+  var P = POD[pod];
+  var alpha = o.alpha === undefined ? 1 : o.alpha;
+  if(alpha <= 0.01) return;
+  var fdx = o.fdx || 0, fdy = o.fdy === undefined ? 0.4 : o.fdy;
+  var br = o.braced ? 1 : 0;
+  var wob = o.wob || 0;
+  g.save();
+  g.globalAlpha = alpha;
+  g.translate(sx, sy);
+
+  /* shadow on the rock */
+  if(!o.swim){
+    g.fillStyle = 'rgba(0,0,0,.30)';
+    g.beginPath(); g.ellipse(s*0.02, s*0.15, s*0.31, s*0.105, 0, 0, 6.2832); g.fill();
+  }
+
+  if(o.swim){ drawSwimmer(g, s, P, o); g.restore(); return; }
+
+  var bodyRX = s*(0.315 + br*0.032) * (1 + wob*0.05);
+  var bodyRY = s*(0.220 - br*0.020) * (1 - wob*0.05);
+  var lean   = fdx*0.10;
+  var bodyY  = -s*(0.055 + br*0.030);
+
+  /* body */
+  g.save();
+  g.translate(-fdx*s*0.03, bodyY);
+  g.rotate(lean*0.5);
+  var bg = g.createLinearGradient(0,-bodyRY,0,bodyRY);
+  bg.addColorStop(0, P.hi); bg.addColorStop(0.5, P.body); bg.addColorStop(1, P.dk);
+  g.fillStyle = bg;
+  g.beginPath(); g.ellipse(0,0, bodyRX, bodyRY, 0, 0, 6.2832); g.fill();
+  g.strokeStyle = 'rgba(10,18,20,.55)'; g.lineWidth = Math.max(1, s*0.022); g.stroke();
+  /* speckles: grey seals are blotchy */
+  g.fillStyle = 'rgba(0,0,0,.13)';
+  for(var k=0;k<5;k++){
+    var a2 = k*1.9 + (o.id||0);
+    g.beginPath();
+    g.ellipse(Math.cos(a2)*bodyRX*0.44, Math.sin(a2*1.7)*bodyRY*0.42, s*0.030, s*0.021, a2, 0, 6.2832);
+    g.fill();
+  }
+  g.restore();
+
+  /* tail flippers, opposite the facing */
+  var tx = -fdx*s*0.30, ty = bodyY - fdy*s*0.20 + s*0.05;
+  g.fillStyle = P.dk;
+  g.beginPath();
+  g.ellipse(tx - fdx*s*0.03, ty - s*0.045, s*0.10, s*0.055, -0.5 + fdx*0.6, 0, 6.2832); g.fill();
+  g.beginPath();
+  g.ellipse(tx - fdx*s*0.03, ty + s*0.045, s*0.10, s*0.055,  0.5 + fdx*0.6, 0, 6.2832); g.fill();
+
+  /* fore flippers */
+  g.fillStyle = P.dk;
+  g.beginPath(); g.ellipse(-s*0.055 + fdx*s*0.10, bodyY + s*0.145, s*0.075, s*0.042, 0.5, 0, 6.2832); g.fill();
+  g.beginPath(); g.ellipse( s*0.115 + fdx*s*0.10, bodyY + s*0.135, s*0.075, s*0.042, -0.4, 0, 6.2832); g.fill();
+
+  /* head */
+  var hx = fdx*s*0.235, hy = bodyY - s*(0.115 + br*0.075) + fdy*s*0.115;
+  var hr = s*(0.162 + fdy*0.015);
+  var hg = g.createLinearGradient(hx, hy-hr, hx, hy+hr);
+  hg.addColorStop(0, P.hi); hg.addColorStop(0.65, P.body); hg.addColorStop(1, P.dk);
+  g.fillStyle = hg;
+  g.beginPath(); g.ellipse(hx, hy, hr*1.03, hr*0.95, lean*0.4, 0, 6.2832); g.fill();
+  g.strokeStyle = 'rgba(10,18,20,.5)'; g.lineWidth = Math.max(1, s*0.020); g.stroke();
+
+  /* muzzle */
+  var mx = hx + fdx*hr*0.42, my = hy + hr*0.30 + fdy*hr*0.12;
+  g.fillStyle = 'rgba(255,255,255,.14)';
+  g.beginPath(); g.ellipse(mx, my, hr*0.52, hr*0.36, 0, 0, 6.2832); g.fill();
+  g.fillStyle = P.eye;
+  g.beginPath(); g.ellipse(mx + fdx*hr*0.10, my - hr*0.02, hr*0.13, hr*0.10, 0, 0, 6.2832); g.fill();
+
+  /* whiskers */
+  g.strokeStyle = 'rgba(255,255,255,.42)';
+  g.lineWidth = Math.max(0.7, s*0.012);
+  for(var wI=-1; wI<=1; wI++){
+    g.beginPath();
+    g.moveTo(mx - hr*0.16, my + wI*hr*0.10);
+    g.quadraticCurveTo(mx - hr*0.62, my + wI*hr*0.30 - hr*0.05, mx - hr*0.86, my + wI*hr*0.34);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(mx + hr*0.16, my + wI*hr*0.10);
+    g.quadraticCurveTo(mx + hr*0.62, my + wI*hr*0.30 - hr*0.05, mx + hr*0.86, my + wI*hr*0.34);
+    g.stroke();
+  }
+
+  /* eyes — big, dark, wet */
+  var ex = hr*0.40, ey = -hr*0.16 + fdy*hr*0.06;
+  var er = hr*(0.20 + fdy*0.02);
+  g.fillStyle = P.eye;
+  if(o.spent || br){
+    g.strokeStyle = P.eye; g.lineWidth = Math.max(1, s*0.020); g.lineCap = 'round';
+    g.beginPath(); g.moveTo(hx-ex-er*0.8, hy+ey); g.lineTo(hx-ex+er*0.8, hy+ey+(br?-er*0.5:0)); g.stroke();
+    g.beginPath(); g.moveTo(hx+ex-er*0.8, hy+ey+(br?-er*0.5:0)); g.lineTo(hx+ex+er*0.8, hy+ey); g.stroke();
+  } else {
+    g.beginPath(); g.ellipse(hx-ex, hy+ey, er, er*1.05, 0, 0, 6.2832); g.fill();
+    g.beginPath(); g.ellipse(hx+ex, hy+ey, er, er*1.05, 0, 0, 6.2832); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.85)';
+    g.beginPath(); g.arc(hx-ex+er*0.34, hy+ey-er*0.34, er*0.32, 0, 6.2832); g.fill();
+    g.beginPath(); g.arc(hx+ex+er*0.34, hy+ey-er*0.34, er*0.32, 0, 6.2832); g.fill();
+  }
+
+  /* braced: dug in, grit kicked up, a stubborn chevron */
+  if(br){
+    g.strokeStyle = 'rgba(234,166,63,.85)';
+    g.lineWidth = Math.max(1.2, s*0.030);
+    g.beginPath();
+    g.moveTo(-s*0.20, s*0.185); g.lineTo(0, s*0.115); g.lineTo(s*0.20, s*0.185);
+    g.stroke();
+    g.fillStyle = 'rgba(200,208,200,.5)';
+    for(var q=0;q<4;q++){
+      g.beginPath();
+      g.arc(-s*0.24 + q*s*0.16, s*0.20 + Math.sin(q*2.1)*s*0.02, s*0.014, 0, 6.2832);
+      g.fill();
+    }
+  }
+  g.restore();
+}
+
+/* a swept seal: paddling off, distinctly unimpressed */
+function drawSwimmer(g, s, P, o){
+  var t = o.swimT || 0;
+  var bob = Math.sin(t*6.5)*s*0.035;
+  g.save();
+  g.translate(0, bob);
+  /* wake */
+  g.strokeStyle = 'rgba(220,239,234,'+(0.34*(o.alpha||1))+')';
+  g.lineWidth = Math.max(1, s*0.032);
+  for(var r=0;r<3;r++){
+    var rr = s*(0.22 + r*0.13) + (t*s*0.18)%(s*0.16);
+    g.globalAlpha = (o.alpha||1) * (0.34 - r*0.09);
+    g.beginPath(); g.ellipse(0, s*0.06, rr, rr*0.38, 0, 0, 6.2832); g.stroke();
+  }
+  g.globalAlpha = (o.alpha||1);
+  /* back arc breaking the surface */
+  var bg = g.createLinearGradient(0,-s*0.14,0,s*0.08);
+  bg.addColorStop(0,P.hi); bg.addColorStop(1,P.dk);
+  g.fillStyle = bg;
+  g.beginPath();
+  g.moveTo(-s*0.26, s*0.05);
+  g.quadraticCurveTo(-s*0.06, -s*0.16, s*0.14, s*0.02);
+  g.lineTo(s*0.14, s*0.06); g.lineTo(-s*0.26, s*0.06);
+  g.closePath(); g.fill();
+  /* head above water */
+  var hx = s*0.19, hy = -s*0.05 + Math.sin(t*6.5+1)*s*0.012, hr = s*0.125;
+  g.fillStyle = P.body;
+  g.beginPath(); g.ellipse(hx, hy, hr, hr*0.94, 0, 0, 6.2832); g.fill();
+  g.fillStyle = P.eye;
+  g.beginPath(); g.ellipse(hx-hr*0.30, hy-hr*0.10, hr*0.15, hr*0.13, 0, 0, 6.2832); g.fill();
+  g.beginPath(); g.ellipse(hx+hr*0.36, hy-hr*0.10, hr*0.15, hr*0.13, 0, 0, 6.2832); g.fill();
+  /* cross little eyebrows — disgruntled, not distressed */
+  g.strokeStyle = P.eye; g.lineWidth = Math.max(1, s*0.020); g.lineCap='round';
+  g.beginPath(); g.moveTo(hx-hr*0.55, hy-hr*0.52); g.lineTo(hx-hr*0.08, hy-hr*0.34); g.stroke();
+  g.beginPath(); g.moveTo(hx+hr*0.62, hy-hr*0.52); g.lineTo(hx+hr*0.14, hy-hr*0.34); g.stroke();
+  g.fillStyle = P.eye;
+  g.beginPath(); g.ellipse(hx+hr*0.70, hy+hr*0.30, hr*0.12, hr*0.09, 0, 0, 6.2832); g.fill();
+  /* waterline mask so it reads as being IN the water */
+  g.fillStyle = 'rgba(21,60,71,.42)';
+  g.fillRect(-s*0.42, s*0.045, s*0.84, s*0.22);
+  g.restore();
+}
+
+/* the small pod marks in the HUD and on the start screen */
+function paintMark(cvs, pod, big){
+  var g = cvs.getContext('2d');
+  var w = cvs.width, h = cvs.height;
+  g.clearRect(0,0,w,h);
+  g.save();
+  g.translate(w/2, h*0.62);
+  drawSeal(g, 0, 0, Math.min(w,h)*(big?1.35:1.5), pod, { fdx:1, fdy:0.2 });
+  g.restore();
+}
+
+/* ========================= VISUAL SEAL MODEL =========================
+   The logical position jumps to its new value the instant a move is
+   applied; VIS is what the player actually sees, and it catches up over
+   the animation.  Nothing on screen ever teleports. */
+var VIS = {};
+function visFor(id){
+  if(!VIS[id]) VIS[id] = { gx:0, gy:0, lf:0, fdx:1, fdy:0.35, br:0, alpha:1,
+                           swim:false, swimT:0, vx:0, vy:0, wob:0, hop:0, id:id, dead:false };
+  return VIS[id];
+}
+function syncVis(pos, hard){
+  var T = RULES.terrain(pos.sd);
+  for(var id=0; id<pos.s.length; id++){
+    var s = pos.s[id];
+    if(s.c < 0){
+      if(hard && VIS[id] && !VIS[id].swim) delete VIS[id];
+      continue;
+    }
+    var v = visFor(id);
+    v.gx = xOf(s.c); v.gy = yOf(s.c); v.lf = T[s.c];
+    v.br = s.br; v.alpha = 1; v.swim = false; v.dead = false;
+    v.fdx = (RULES.seatOf(id) === 0) ? 1 : -1; v.fdy = 0.30;
+  }
+}
+function tickVis(dt){
+  for(var k in VIS){
+    var v = VIS[k];
+    if(v.swim){
+      v.swimT += dt;
+      v.gx += v.vx*dt; v.gy += v.vy*dt;
+      v.vx *= 0.985; v.vy *= 0.985;
+      if(v.swimT > 1.5) v.alpha = Math.max(0, 1 - (v.swimT-1.5)/1.5);
+      if(v.swimT > 3.1) delete VIS[k];
+    } else {
+      v.wob *= Math.pow(0.02, dt);
+      v.hop *= Math.pow(0.02, dt);
+    }
+  }
+}
+
+/* ============================== ANIMATION ============================== */
+var ANIM = { beats:[], i:0, t:0, busy:false, speed:1, queue:[], onDone:null };
+function animBusy(){ return ANIM.busy || ANIM.queue.length > 0; }
+
+function enqueue(prePos, ev, postPos, speed){
+  ANIM.queue.push({ ev:ev, post:postPos, speed:speed||1 });
+  if(!ANIM.busy) startNext();
+}
+function startNext(){
+  if(!ANIM.queue.length){
+    ANIM.busy = false;
+    var f = ANIM.onDone; ANIM.onDone = null;
+    if(f) f();
+    afterAnim();
+    return;
+  }
+  var item = ANIM.queue.shift();
+  ANIM.beats = buildBeats(item.ev);
+  ANIM.i = 0; ANIM.t = 0; ANIM.busy = true;
+  ANIM.speed = item.speed * (ANIM.queue.length > 1 ? 1.7 : 1);
+  ANIM.post = item.post;
+  if(ANIM.beats.length) beatStart(ANIM.beats[0]);
+  else finishItem();
+}
+function finishItem(){
+  if(ANIM.post){ syncVis(ANIM.post, false); }
+  TIDEANIM = null;
+  ROCKC.dirty = true;
+  startNext();
+}
+function buildBeats(ev){
+  var b = [], i, j, where = {};
+  for(i=0;i<ev.length;i++){
+    var e = ev[i];
+    if(e.t === 'move'){
+      var from = e.from;
+      for(j=0;j<e.path.length;j++){ b.push({ t:'step', id:e.id, from:from, to:e.path[j], dur:0.21 }); from = e.path[j]; }
+      where[e.id] = from;
+    }
+    else if(e.t === 'stay'){ where[e.id] = e.cell; b.push({ t:'wake', id:e.id, dur:0.16 }); }
+    else if(e.t === 'brace') b.push({ t:'brace', id:e.id, dur:0.34 });
+    else if(e.t === 'hold')  b.push({ t:'hold', id:e.id, dur:0.16 });
+    else if(e.t === 'shove'){
+      var at = (where[e.id] === undefined) ? currentCellOf(e.id) : where[e.id];
+      b.push({ t:'wind', id:e.id, dir:e.dir, at:at, dur:0.20 });
+      if(e.bump) b.push({ t:'bump', id:e.id, dir:e.dir, at:at, dur:0.30 });
+      else for(j=0;j<e.steps.length;j++) b.push({ t:'push', dir:e.dir, moves:e.steps[j], dur:0.155 });
+    }
+    else if(e.t === 'tide')  b.push({ t:'tide', from:e.from, to:e.to, cells:e.cells, swept:e.swept, dur:1.25 });
+    else if(e.t === 'end')   b.push({ t:'end', winner:e.winner, dur:0.20 });
+  }
+  return b;
+}
+function beatStart(bt){
+  var T = TERR(), i;
+  if(bt.t === 'step'){
+    var v = visFor(bt.id);
+    bt.ax = xOf(bt.from); bt.ay = yOf(bt.from); bt.al = T[bt.from];
+    bt.bx = xOf(bt.to);   bt.by = yOf(bt.to);   bt.bl = T[bt.to];
+    v.fdx = bt.bx - bt.ax; v.fdy = 0.30 + (bt.by - bt.ay)*0.55;
+    if(v.fdx === 0) v.fdx = (RULES.seatOf(bt.id) === 0) ? 0.25 : -0.25;
+    sfxScuff();
+    if(Math.random() < 0.4) breathPuff(bt.id);
+  }
+  else if(bt.t === 'wake'){ sfxBark(RULES.seatOf(bt.id), false); }
+  else if(bt.t === 'brace'){ sfxBark(RULES.seatOf(bt.id), true); }
+  else if(bt.t === 'hold'){ sfxBark(RULES.seatOf(bt.id), false); }
+  else if(bt.t === 'wind'){
+    var vv = visFor(bt.id);
+    vv.fdx = DX[bt.dir]; vv.fdy = 0.30 + DY[bt.dir]*0.55;
+    if(vv.fdx === 0) vv.fdx = (RULES.seatOf(bt.id) === 0) ? 0.25 : -0.25;
+  }
+  else if(bt.t === 'bump'){ sfxBump(); shake(0.30); }
+  else if(bt.t === 'push'){
+    sfxThump(); shake(0.45);
+    for(i=0;i<bt.moves.length;i++){
+      var m = bt.moves[i], vm = visFor(m.id);
+      vm.ax = xOf(m.from); vm.ay = yOf(m.from); vm.al = T[m.from];
+      if(m.off || m.to < 0){ vm.bx = vm.ax + DX[bt.dir]; vm.by = vm.ay + DY[bt.dir]; vm.bl = waterNow(); }
+      else { vm.bx = xOf(m.to); vm.by = yOf(m.to); vm.bl = m.swept ? waterNow() : T[m.to]; }
+      vm.fdx = -DX[bt.dir]; vm.fdy = 0.30 - DY[bt.dir]*0.4;
+      if(vm.fdx === 0) vm.fdx = 0.25;
+    }
+  }
+  else if(bt.t === 'tide'){
+    TIDEANIM = { from:bt.from, to:bt.to, p:0, cells:bt.cells.slice(), delay:{}, swept:bt.swept.slice(), done:{} };
+    var T2 = TERR();
+    for(i=0;i<bt.cells.length;i++){
+      var c = bt.cells[i];
+      /* the flood creeps in from open water, so the outermost ledges go first */
+      var d = 99;
+      for(var q=0;q<NCELL;q++){
+        if(T2[q] > bt.from) continue;
+        var dd = Math.abs(xOf(q)-xOf(c)) + Math.abs(yOf(q)-yOf(c));
+        if(dd < d) d = dd;
+      }
+      TIDEANIM.delay[c] = clamp((d-1)*0.13, 0, 0.52);
+    }
+    sfxTideWash();
+    toast('The tide takes level ' + bt.to + '.', 1800);
+  }
+  else if(bt.t === 'end'){ /* handled on completion */ }
+}
+function beatTick(bt, p){
+  var i, v;
+  if(bt.t === 'step'){
+    v = visFor(bt.id);
+    var e = easeInOut(p);
+    v.gx = lerp(bt.ax, bt.bx, e);
+    v.gy = lerp(bt.ay, bt.by, e);
+    v.lf = lerp(bt.al, bt.bl, e) + Math.sin(p*Math.PI)*0.42;
+    v.wob = Math.sin(p*Math.PI*2)*0.8;
+  }
+  else if(bt.t === 'wake' || bt.t === 'hold'){
+    v = visFor(bt.id); v.wob = Math.sin(p*Math.PI)*0.7;
+  }
+  else if(bt.t === 'brace'){
+    v = visFor(bt.id); v.br = p > 0.35 ? 1 : 0; v.wob = Math.sin(p*Math.PI*1.6)*0.5;
+  }
+  else if(bt.t === 'wind'){
+    v = visFor(bt.id);
+    var back = Math.sin(p*Math.PI)*0.20;
+    v.gx = xOf(bt.at) - DX[bt.dir]*back;
+    v.gy = yOf(bt.at) - DY[bt.dir]*back;
+  }
+  else if(bt.t === 'bump'){
+    v = visFor(bt.id);
+    var k = Math.sin(p*Math.PI*3)*0.10*(1-p);
+    v.gx = xOf(bt.at) + DX[bt.dir]*k;
+    v.gy = yOf(bt.at) + DY[bt.dir]*k;
+  }
+  else if(bt.t === 'push'){
+    for(i=0;i<bt.moves.length;i++){
+      var m = bt.moves[i]; v = visFor(m.id);
+      var ee = easeOut(p);
+      v.gx = lerp(v.ax, v.bx, ee); v.gy = lerp(v.ay, v.by, ee);
+      v.lf = lerp(v.al, v.bl, ee);
+      v.wob = Math.sin(p*Math.PI)*1.2;
+      if(m.swept && p > 0.62 && !v.swim) makeSwimmer(m.id, bt.dir);
+    }
+  }
+  else if(bt.t === 'tide'){
+    TIDEANIM.p = p;
+    var T3 = TERR();
+    for(i=0;i<TIDEANIM.swept.length;i++){
+      var id = TIDEANIM.swept[i], vs = VIS[id];
+      if(!vs || vs.swim) continue;
+      var cc = vs.gy*W + Math.round(vs.gx);
+      var lp = (p - (TIDEANIM.delay[cc] === undefined ? 0.2 : TIDEANIM.delay[cc]))/0.42;
+      if(lp > 0.5){
+        var away = (RULES.seatOf(id) === 0) ? 3 : 1;
+        makeSwimmer(id, away, true);
+      }
+    }
+    /* spray along the advancing foam front */
+    for(i=0;i<TIDEANIM.cells.length;i++){
+      var c2 = TIDEANIM.cells[i];
+      if(TIDEANIM.done[c2]) continue;
+      var lp2 = (p - TIDEANIM.delay[c2])/0.42;
+      if(lp2 > 0.28){
+        TIDEANIM.done[c2] = 1;
+        var pt = scr(xOf(c2), yOf(c2), TERR()[c2]);
+        puff(pt.x, pt.y + LAY.s*0.2, 5, 'spray', 60, 'rgba(224,244,240,.9)', 70);
+      }
+    }
+  }
+}
+function currentCellOf(id){
+  var s = G.pos && G.pos.s[id];
+  return (s && s.c >= 0) ? s.c : 0;
+}
+function makeSwimmer(id, dir, tide){
+  var v = visFor(id);
+  if(v.swim) return;
+  v.swim = true; v.swimT = 0; v.alpha = 1;
+  v.lf = waterNow();
+  var dx = DX[dir] || 0, dy = DY[dir] || 0;
+  v.vx = dx*0.55 + (Math.random()-0.5)*0.12;
+  v.vy = dy*0.55 + (Math.random()-0.5)*0.12 + 0.10;
+  var p = scr(v.gx, v.gy, v.lf);
+  puff(p.x, p.y, 18, 'spray', 150, 'rgba(228,246,242,.95)', 130);
+  puff(p.x, p.y, 10, 'foam', 55, 'rgba(200,232,228,.7)', 0);
+  sfxSplash(!tide);
+  shake(tide ? 0.35 : 0.6);
+  if(!tide) sfxBark(RULES.seatOf(id), true);
+}
+function breathPuff(id){
+  var v = VIS[id]; if(!v) return;
+  var p = scr(v.gx, v.gy, v.lf);
+  puff(p.x + v.fdx*LAY.s*0.24, p.y - LAY.s*0.18, 3, 'breath', 16, 'rgba(226,242,246,.55)', 22);
+}
+var SHAKE = 0;
+function shake(a){ SHAKE = Math.max(SHAKE, a); }
+
+function tickAnim(dt){
+  if(!ANIM.busy) return;
+  var bt = ANIM.beats[ANIM.i];
+  if(!bt){ finishItem(); return; }
+  ANIM.t += dt*ANIM.speed;
+  var p = clamp(ANIM.t/bt.dur, 0, 1);
+  beatTick(bt, p);
+  if(p >= 1){
+    beatTick(bt, 1);
+    if(bt.t === 'tide'){ TIDEANIM = null; ROCKC.dirty = true; }
+    ANIM.i++; ANIM.t = 0;
+    if(ANIM.i < ANIM.beats.length) beatStart(ANIM.beats[ANIM.i]);
+    else finishItem();
+  }
+}
+/* once the board has finished speaking, hand control back */
+function afterAnim(){
+  if(!G.pos) return;
+  syncVis(G.pos, false);
+  trackFlags();
+  if(G.pos.over){ if(!G.resultShown) endMatch(); syncHud(); return; }
+  clearSel();
+  autoSelect();
+  syncHud();
+  if(G.mode === 'ai' && G.pos.to !== G.mySeat) scheduleAI();
+  else if(G.mode === 'hotseat' && G.hotPass) showPass();
+  else if(G.mode === 'online') drainDeferred();
+  warnIfDrowning();
+}
+
+/* =========================== SELECTION =========================== */
+var SEL = { id:-1, dest:-1, reach:{}, act:0, dir:-1, hover:-1, hoverDir:-1, armed:false, origin:-1 };
+function clearSel(){ SEL.id = -1; SEL.dest = -1; SEL.reach = {}; SEL.act = 0; SEL.dir = -1; SEL.armed = false; SEL.origin = -1; }
+function controlSeat(){
+  if(!G.pos) return 0;
+  if(G.mode === 'hotseat') return G.pos.to;
+  return G.mySeat;
+}
+function myMoveNeeded(){
+  if(G.mode !== 'online') return true;
+  if(G.match && typeof G.match.yourMoveNeeded === 'boolean') return G.match.yourMoveNeeded;
+  return !!(G.pos && G.pos.to === G.mySeat);
+}
+function anyOverlayOpen(){
+  for(var i=0;i<OVS.length;i++) if($(OVS[i]).classList.contains('on')) return true;
+  return false;
+}
+function inputOpen(){
+  return G.screen === 'play' && G.pos && !G.pos.over && !animBusy() &&
+         !G.paused && !anyOverlayOpen() && !G.aiThinking &&
+         G.pos.to === controlSeat() && myMoveNeeded();
+}
+function mySeals(){
+  var out = [], seat = controlSeat();
+  for(var id=0; id<G.pos.s.length; id++){
+    if(RULES.seatOf(id) !== seat) continue;
+    var s = G.pos.s[id];
+    if(s.c >= 0 && !s.act) out.push(id);
+  }
+  return out;
+}
+function selectSeal(id){
+  if(!G.pos) return;
+  var s = G.pos.s[id];
+  if(!s || s.c < 0 || s.act || RULES.seatOf(id) !== G.pos.to) return;
+  SEL.id = id; SEL.origin = s.c; SEL.dest = s.c;
+  SEL.reach = RULES.reach(G.pos, id);
+  SEL.act = 0; SEL.dir = -1; SEL.armed = false;
+  sfxSelect();
+  syncHud();
+}
+function autoSelect(){
+  if(!inputOpen()) return;
+  if(SEL.id >= 0 && G.pos.s[SEL.id] && G.pos.s[SEL.id].c >= 0 && !G.pos.s[SEL.id].act) return;
+  var list = mySeals();
+  if(list.length) selectSeal(list[0]);
+}
+function cycleSeal(dir){
+  var list = mySeals();
+  if(!list.length) return;
+  var i = list.indexOf(SEL.id);
+  i = (i < 0) ? 0 : (i + (dir||1) + list.length) % list.length;
+  selectSeal(list[i]);
+}
+function ghostPos(){
+  var q = RULES.clone(G.pos);
+  q.s[SEL.id].c = SEL.dest;
+  q.s[SEL.id].br = 0;
+  return q;
+}
+function shoveOpts(){
+  if(SEL.id < 0 || SEL.dest < 0) return [];
+  return RULES.shoveDirs(ghostPos(), SEL.id, SEL.dest);
+}
+function setDest(c){
+  if(SEL.id < 0 || SEL.reach[c] === undefined) return false;
+  if(c !== SEL.dest){
+    SEL.dest = c; SEL.act = 0; SEL.dir = -1; SEL.armed = false;
+    sfxTick();
+    syncHud();
+  }
+  return true;
+}
+function armShove(dir){
+  var opts = shoveOpts();
+  for(var i=0;i<opts.length;i++) if(opts[i].d === dir){ SEL.act = 2; SEL.dir = dir; syncHud(); return true; }
+  return false;
+}
+function cycleShove(){
+  var opts = shoveOpts();
+  if(!opts.length){ sfxDeny(); toast('Nobody within reach to shove from there.', 1900); return; }
+  var i = -1;
+  if(SEL.act === 2) for(var k=0;k<opts.length;k++) if(opts[k].d === SEL.dir) i = k;
+  i = (i + 1) % opts.length;
+  SEL.act = 2; SEL.dir = opts[i].d;
+  sfxSelect();
+  syncHud();
+}
+function toggleBrace(){
+  if(SEL.id < 0) return;
+  SEL.act = (SEL.act === 1) ? 0 : 1; SEL.dir = -1;
+  sfxSelect();
+  syncHud();
+}
+
+/* ============================ COMMIT ============================ */
+function commit(){
+  if(!inputOpen() || SEL.id < 0) return;
+  var mv = { i:SEL.id, c:SEL.dest, a:SEL.act, d:SEL.act === 2 ? SEL.dir : -1 };
+  if(!RULES.legalMove(G.pos, mv)){ sfxDeny(); toast('That is not a legal activation.', 2200); return; }
+  var pre = G.pos;
+  var r = RULES.apply(pre, mv);
+  if(!r.ok){ sfxDeny(); return; }
+  /* achievement bookkeeping happens on OUR move, from the real events */
+  if(RULES.seatOf(mv.i) === controlSeat()) noteOwnMove(r.ev, pre);
+  clearSel();
+  G.pos = r.pos;
+  enqueue(pre, r.ev, r.pos, 1);
+  trackFlags();
+  if(G.mode === 'online') sendMove(mv, r.pos);
+  if(G.mode === 'hotseat'){
+    G.hotPass = !r.pos.over && (r.pos.to !== pre.to);
+  }
+  syncHud();
+}
+function noteOwnMove(ev, pre){
+  for(var i=0;i<ev.length;i++){
+    var e = ev[i];
+    if(e.t === 'shove' && e.dist >= 2 && e.swept && e.swept.length){
+      for(var k=0;k<e.swept.length;k++)
+        if(RULES.seatOf(e.swept[k]) !== controlSeat() && G.mode !== 'hotseat') unlock('undertow');
+    }
+  }
+}
+function trackFlags(){
+  if(!G.pos) return;
+  var me = (G.mode === 'hotseat') ? -1 : controlSeat();
+  if(me >= 0){
+    if(RULES.alive(G.pos, me) === 1 && RULES.alive(G.pos, 1-me) >= 2) G.wasLastBull = true;
+    if(G.pos.r >= TIDE.length-2) G.sawKingTide = true;
+  }
+}
+
+/* ============================== HUD ============================== */
+var OVS = ['ovStart','ovRules','ovLobby','ovWait','ovPause','ovPass','ovEnd'];
+function hideAll(){ for(var i=0;i<OVS.length;i++) $(OVS[i]).classList.remove('on'); }
+function show(id){ hideAll(); $(id).classList.add('on'); }
+var toastT = null;
+function toast(msg, ms){
+  var t = $('toast');
+  t.innerHTML = msg; t.classList.add('on');
+  if(toastT) clearTimeout(toastT);
+  toastT = setTimeout(function(){ t.classList.remove('on'); }, ms || 2400);
+}
+function podLabel(seat){
+  if(G.mode === 'online'){
+    if(seat === G.mySeat) return (AR.user || AR.name || 'You');
+    return G.oppName || 'Rival';
+  }
+  if(G.mode === 'ai') return seat === G.mySeat ? 'You' : (G.aiLevel === 'easy' ? 'Yearling' : 'Bull');
+  return POD[seat].name;
+}
+function podSub(seat){
+  if(G.mode === 'online') return seat === G.mySeat ? 'you · ' + POD[seat].name.toLowerCase() : POD[seat].name.toLowerCase() + ' pod';
+  return POD[seat].name + (seat === 0 ? ' · west' : ' · east');
+}
+function syncHud(){
+  var on = (G.screen === 'play' && G.pos);
+  $('hud').classList.toggle('on', !!on);
+  $('strip').classList.toggle('on', !!on && !isTouch());
+  $('tq').classList.add('on');
+  $('mute').classList.toggle('on', true);
+  $('mute').innerHTML = AU.muted ? '&#128263;' : '&#9835;';
+  var acts = $('acts');
+  acts.classList.toggle('on', !!(on && inputOpen()));
+
+  if(!on){ return; }
+  var p = G.pos, T = TERR();
+
+  /* ------------------------- tide forecast ------------------------- */
+  var bar = $('tideBar');
+  if(bar.childNodes.length !== TIDE.length){
+    bar.innerHTML = '';
+    for(var i=0;i<TIDE.length;i++){
+      var d = document.createElement('div'); d.className = 'tseg';
+      d.innerHTML = '<i>' + TIDE[i] + '</i>';
+      bar.appendChild(d);
+    }
+  }
+  for(var j=0;j<TIDE.length;j++){
+    var seg = bar.childNodes[j];
+    var hgt = 6 + (TIDE[j]/MAXE)*13;
+    seg.style.height = hgt.toFixed(1) + 'px';
+    seg.className = 'tseg' + (j === p.r ? ' now' : (j < p.r ? ' past' : '')) + (j === TIDE.length-1 ? ' dead' : '');
+  }
+  $('tideNum').textContent = 'Tide ' + p.w;
+  var nextW = TIDE[Math.min(p.r+1, TIDE.length-1)];
+  var left = RULES.unact(p, 0) + RULES.unact(p, 1);
+  var seals = left + ' ' + (left === 1 ? 'seal' : 'seals');
+  var doomed = 0;
+  for(var c=0;c<NCELL;c++) if(T[c] > p.w && T[c] <= nextW) doomed++;
+  var when;
+  if(nextW === p.w) when = 'holds &middot; then &rarr; ' + TIDE[Math.min(p.r+2, TIDE.length-1)];
+  else if(nextW >= MAXE) when = '<b>all floods</b> in ' + seals;
+  else when = '&rarr; <b>' + nextW + '</b> in ' + seals + (doomed ? (' &middot; ' + doomed + ' cells go under') : '');
+  $('tideWhen').innerHTML = when;
+
+  /* --------------------------- pod plates --------------------------- */
+  for(var seat=0; seat<2; seat++){
+    var el = $('pod'+seat);
+    el.className = 'pod p'+seat + (p.to === seat && !p.over ? ' act' : '');
+    $('nm'+seat).textContent = podLabel(seat);
+    $('sub'+seat).textContent = podSub(seat);
+    var pips = '';
+    for(var k=0;k<K.SEALS;k++){
+      var id = seat*K.SEALS + k, s = p.s[id];
+      pips += '<span class="pip ' + (s.c < 0 ? 'lost' : (s.act ? 'done' : '')) + '"></span>';
+    }
+    $('pips'+seat).innerHTML = pips;
+    var fl = $('flag'+seat);
+    var mine = (G.mode === 'hotseat') ? (p.to === seat) : (seat === controlSeat());
+    if(p.over){ fl.className = 'turnflag'; fl.innerHTML = '&nbsp;'; }
+    else if(p.to === seat){
+      if(G.mode === 'hotseat'){ fl.className = 'turnflag on you'; fl.textContent = 'To play'; }
+      else if(mine){ fl.className = 'turnflag on you'; fl.textContent = 'Your move'; }
+      else { fl.className = 'turnflag on wait';
+             fl.textContent = (G.mode === 'ai') ? 'Thinking' : 'Their move'; }
+    } else { fl.className = 'turnflag'; fl.innerHTML = '&nbsp;'; }
+  }
+
+  /* --------------------------- action bar --------------------------- */
+  var open = inputOpen();
+  var opts = open && SEL.id >= 0 ? shoveOpts() : [];
+  var bs = $('btnShove'), bb = $('btnBrace'), bd = $('btnDone'), bp = $('btnPrev');
+  bp.className = 'abtn' + (mySeals().length > 1 ? '' : ' dis');
+  bs.className = 'abtn' + (opts.length ? (SEL.act === 2 ? ' sel' : '') : ' dis');
+  bb.className = 'abtn' + (SEL.act === 1 ? ' sel' : '');
+  bd.className = 'abtn go';
+  bs.firstChild.textContent = opts.length && SEL.act === 2
+    ? ('Shove ' + K.DIRNAME[SEL.dir].charAt(0).toUpperCase() + K.DIRNAME[SEL.dir].slice(1))
+    : 'Shove';
+  bd.firstChild.textContent = SEL.act === 2 ? 'Shove!' : (SEL.act === 1 ? 'Brace!' : 'Done');
+}
+function warnIfDrowning(){
+  if(!G.pos || G.pos.over || G.mode === 'hotseat') return;
+  var p = G.pos, T = TERR();
+  var nextW = TIDE[Math.min(p.r+1, TIDE.length-1)];
+  if(nextW <= p.w) return;
+  var seat = controlSeat(), n = 0;
+  for(var id=0; id<p.s.length; id++){
+    if(RULES.seatOf(id) !== seat) continue;
+    var s = p.s[id];
+    if(s.c >= 0 && T[s.c] <= nextW) n++;
+  }
+  if(n && p.to === seat){ sfxBell(); toast(n === 1 ? 'One of your seals is on ground the next tide takes.' : n + ' of your seals are on ground the next tide takes.', 3000); }
+}
+
+/* ============================== RENDER ============================== */
+function drawSelection(g){
+  LABELS.length = 0;
+  if(!G.pos || SEL.id < 0 || !inputOpen()) return;
+  var T = TERR(), s = LAY.s, w = waterNow();
+  var pulse = 0.5 + 0.5*Math.sin(TIME*3.4);
+
+  /* every cell this seal may finish on */
+  for(var key in SEL.reach){
+    var c = key|0;
+    if(c === SEL.dest) continue;
+    var p = scr(xOf(c), yOf(c), T[c]);
+    var hov = (c === SEL.hover);
+    g.fillStyle = 'rgba(255,208,120,'+(hov ? 0.26 : 0.09 + 0.03*pulse)+')';
+    g.fillRect(p.x-s/2+2, p.y-s/2+2, s-4, s-4);
+    g.strokeStyle = 'rgba(255,214,140,'+(hov ? 0.90 : 0.34)+')';
+    g.lineWidth = Math.max(1, s*0.03);
+    g.strokeRect(p.x-s/2+2, p.y-s/2+2, s-4, s-4);
+    if(!hov){
+      g.fillStyle = 'rgba(255,232,180,.62)';
+      g.beginPath(); g.arc(p.x, p.y, s*0.055, 0, 6.2832); g.fill();
+    }
+  }
+
+  /* the origin, and the path the seal will waddle */
+  var o = scr(xOf(SEL.origin), yOf(SEL.origin), T[SEL.origin]);
+  g.strokeStyle = 'rgba(234,166,63,'+(0.45+0.25*pulse)+')';
+  g.lineWidth = Math.max(1.4, s*0.045);
+  g.strokeRect(o.x-s/2+1.5, o.y-s/2+1.5, s-3, s-3);
+
+  var path = SEL.reach[SEL.dest] || [];
+  if(path.length){
+    g.save();
+    g.setLineDash([s*0.13, s*0.10]);
+    g.lineDashOffset = -TIME*s*0.9;
+    g.strokeStyle = 'rgba(240,248,250,.80)';
+    g.lineWidth = Math.max(1.6, s*0.055);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(o.x, o.y);
+    var prev = SEL.origin;
+    for(var i=0;i<path.length;i++){
+      var q = scr(xOf(path[i]), yOf(path[i]), T[path[i]]);
+      g.lineTo(q.x, q.y);
+      prev = path[i];
+    }
+    g.stroke();
+    g.restore();
+  }
+
+  /* the ghost standing where it will end up */
+  var d = scr(xOf(SEL.dest), yOf(SEL.dest), T[SEL.dest]);
+  g.fillStyle = 'rgba(234,166,63,.20)';
+  g.fillRect(d.x-s/2+2, d.y-s/2+2, s-4, s-4);
+  g.strokeStyle = 'rgba(255,208,120,.95)';
+  g.lineWidth = Math.max(1.6, s*0.05);
+  g.strokeRect(d.x-s/2+2, d.y-s/2+2, s-4, s-4);
+  if(SEL.dest !== SEL.origin){
+    drawSeal(g, d.x, d.y - s*0.08, s, RULES.seatOf(SEL.id),
+      { alpha:0.42, fdx:(RULES.seatOf(SEL.id)===0?1:-1), fdy:0.3, braced:SEL.act===1, id:SEL.id });
+  }
+  /* is that landing going under at the next rise? */
+  var nextW = TIDE[Math.min(G.pos.r+1, TIDE.length-1)];
+  if(T[SEL.dest] <= nextW && nextW > w){
+    g.fillStyle = 'rgba(226,112,95,'+(0.55+0.35*pulse)+')';
+    g.font = 'bold ' + Math.round(s*0.30) + 'px ' + 'ui-sans-serif, system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('⚠', d.x, d.y - s*0.34);
+  }
+
+  /* --------------------- shove options and preview --------------------- */
+  var opts = shoveOpts();
+  for(var oi=0; oi<opts.length; oi++){
+    var op = opts[oi];
+    var armed = (SEL.act === 2 && SEL.dir === op.d) || (SEL.hoverDir === op.d);
+    drawShoveArrow(g, SEL.dest, op.d, armed, op.r);
+  }
+  var showDir = (SEL.act === 2) ? SEL.dir : SEL.hoverDir;
+  if(showDir >= 0){
+    for(var z=0; z<opts.length; z++) if(opts[z].d === showDir) drawShovePreview(g, opts[z].r, showDir);
+  }
+}
+function drawShoveArrow(g, from, dir, armed, res){
+  var T = TERR(), s = LAY.s;
+  var tx = xOf(from)+DX[dir], ty = yOf(from)+DY[dir];
+  var a = scr(xOf(from), yOf(from), T[from]);
+  var b = scr(tx, ty, T[ty*W+tx]);
+  var mx = lerp(a.x,b.x,0.56), my = lerp(a.y,b.y,0.56);
+  var ang = Math.atan2(b.y-a.y, b.x-a.x);
+  g.save();
+  g.translate(mx,my); g.rotate(ang);
+  var col = armed ? 'rgba(255,214,128,.98)' : 'rgba(234,166,63,.62)';
+  var sz = s*(armed ? 0.34 : 0.26);
+  g.fillStyle = col;
+  g.beginPath();
+  g.moveTo(sz*0.62, 0); g.lineTo(-sz*0.34, -sz*0.52); g.lineTo(-sz*0.12, 0); g.lineTo(-sz*0.34, sz*0.52);
+  g.closePath(); g.fill();
+  if(armed){
+    g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = Math.max(1, s*0.018); g.stroke();
+  }
+  g.restore();
+  /* the label rides above the seals, so it is queued for the pass after them */
+  if(armed && res) LABELS.push({ x: mx - DY[dir]*s*0.44, y: my - s*0.46 + DX[dir]*s*0.06,
+                                 txt: res.bump ? 'bump' : ('push ' + res.dist), bump: res.bump });
+}
+/* anything that must sit on top of every seal on the board */
+var LABELS = [];
+function drawLabels(g){
+  var s = LAY.s;
+  for(var i=0;i<LABELS.length;i++){
+    var L = LABELS[i];
+    g.font = 'bold ' + Math.round(s*0.21) + 'px ui-sans-serif, system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    var tw = g.measureText(L.txt).width;
+    g.fillStyle = 'rgba(6,13,16,.92)';
+    roundRect(g, L.x-tw/2-s*0.10, L.y-s*0.16, tw+s*0.20, s*0.32, s*0.08); g.fill();
+    g.strokeStyle = L.bump ? 'rgba(226,112,95,.7)' : 'rgba(255,214,140,.55)';
+    g.lineWidth = Math.max(1, s*0.018); g.stroke();
+    g.fillStyle = L.bump ? 'rgba(240,160,140,.98)' : 'rgba(255,228,168,.98)';
+    g.fillText(L.txt, L.x, L.y);
+  }
+  LABELS.length = 0;
+}
+/* the whole predicted outcome, straight out of the rules engine */
+function drawShovePreview(g, res, dir){
+  var T = TERR(), s = LAY.s, w = waterNow();
+  if(res.bump){
+    var cB = res.chain.length ? G.pos.s[res.chain[0]].c : -1;
+    if(cB >= 0){
+      var pB = scr(xOf(cB), yOf(cB), T[cB]);
+      g.strokeStyle = 'rgba(226,112,95,.9)'; g.lineWidth = Math.max(1.6, s*0.05);
+      g.strokeRect(pB.x-s/2+2, pB.y-s/2+2, s-4, s-4);
+    }
+    return;
+  }
+  var ends = res.end;
+  for(var i=0;i<res.chain.length;i++){
+    var id = res.chain[i];
+    var from = G.pos.s[id].c;
+    var to = ends[id];
+    var a = scr(xOf(from), yOf(from), T[from]);
+    /* the travel line */
+    g.save();
+    g.setLineDash([s*0.10, s*0.09]);
+    g.lineDashOffset = -TIME*s*1.4;
+    g.strokeStyle = 'rgba(255,196,120,.85)';
+    g.lineWidth = Math.max(1.4, s*0.045);
+    g.beginPath(); g.moveTo(a.x, a.y);
+    if(to >= 0){ var e = scr(xOf(to), yOf(to), Math.max(T[to], w)); g.lineTo(e.x, e.y); }
+    else {
+      var offx = xOf(from) + DX[dir]*1.1, offy = yOf(from) + DY[dir]*1.1;
+      var e2 = scr(offx, offy, w); g.lineTo(e2.x, e2.y);
+    }
+    g.stroke();
+    g.restore();
+    if(to >= 0 && T[to] > w){
+      var q = scr(xOf(to), yOf(to), T[to]);
+      g.strokeStyle = 'rgba(255,214,150,.9)'; g.lineWidth = Math.max(1.3, s*0.04);
+      g.strokeRect(q.x-s/2+3, q.y-s/2+3, s-6, s-6);
+      drawSeal(g, q.x, q.y - s*0.08, s, RULES.seatOf(id),
+        { alpha:0.34, fdx:-DX[dir]||0.3, fdy:0.3, id:id });
+      /* landing on ground the next rise takes is worth saying out loud */
+      var nw = TIDE[Math.min(G.pos.r+1, TIDE.length-1)];
+      if(T[to] <= nw && nw > w)
+        LABELS.push({ x:q.x, y:q.y - s*0.52, txt:'next tide', bump:false });
+    } else {
+      /* it goes in the water: mark the splash */
+      var sx = (to >= 0) ? xOf(to) : xOf(from)+DX[dir];
+      var sy = (to >= 0) ? yOf(to) : yOf(from)+DY[dir];
+      var sp = scr(sx, sy, w);
+      var pulse2 = 0.5+0.5*Math.sin(TIME*6);
+      g.strokeStyle = 'rgba(226,244,240,'+(0.65+0.3*pulse2)+')';
+      g.lineWidth = Math.max(1.5, s*0.05);
+      for(var r=0;r<2;r++){
+        g.beginPath();
+        g.ellipse(sp.x, sp.y, s*(0.18+r*0.13+pulse2*0.05), s*(0.09+r*0.06+pulse2*0.02), 0, 0, 6.2832);
+        g.stroke();
+      }
+      g.fillStyle = 'rgba(255,240,220,.95)';
+      g.font = 'bold ' + Math.round(s*0.30) + 'px ui-sans-serif, system-ui, sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('≈', sp.x, sp.y);
+    }
+  }
+}
+function drawHoverSeal(g){
+  if(!inputOpen() || SEL.hover < 0) return;
+  var o = RULES.occArr(G.pos), id = o[SEL.hover];
+  if(id < 0 || id === SEL.id) return;
+  if(RULES.seatOf(id) !== G.pos.to) return;
+  if(G.pos.s[id].act) return;
+  var T = TERR(), s = LAY.s;
+  var p = scr(xOf(SEL.hover), yOf(SEL.hover), T[SEL.hover]);
+  g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = Math.max(1.3, s*0.04);
+  g.strokeRect(p.x-s/2+3, p.y-s/2+3, s-6, s-6);
+}
+function drawSeals(g){
+  if(!G.pos) return;
+  var list = [];
+  for(var k in VIS) list.push(VIS[k]);
+  list.sort(function(a,b){ return (a.gy - b.gy) || (a.gx - b.gx); });
+  var s = LAY.s;
+  for(var i=0;i<list.length;i++){
+    var v = list[i];
+    var id = v.id|0;
+    var st = G.pos.s[id];
+    var p = scr(v.gx, v.gy, v.lf);
+    var sel = (id === SEL.id && inputOpen());
+    if(sel){
+      var pulse = 0.5+0.5*Math.sin(TIME*3.6);
+      g.strokeStyle = 'rgba(255,214,128,'+(0.55+0.4*pulse)+')';
+      g.lineWidth = Math.max(1.4, s*0.05);
+      g.beginPath(); g.ellipse(p.x, p.y + s*0.14, s*0.36, s*0.14, 0, 0, 6.2832); g.stroke();
+    }
+    /* a seal already woken this round rests with its eyes shut */
+    var spent = !v.swim && st && st.c >= 0 && st.act && !(sel);
+    drawSeal(g, p.x, p.y - s*0.08 - (sel?s*0.03:0), s, RULES.seatOf(id), {
+      fdx:v.fdx, fdy:v.fdy, braced:!!v.br, alpha:v.alpha,
+      swim:v.swim, swimT:v.swimT, wob:v.wob, spent:spent, id:id
+    });
+  }
+}
+/* a gull crossing the rock, because a skerry is never empty */
+var GULL = { t:-4, x:0, y:0, vx:0, dir:1 };
+function tickGull(dt){
+  GULL.t -= dt;
+  if(GULL.t < -0.001 && GULL.t > -900 && GULL.x === 0){
+    GULL.dir = Math.random() < 0.5 ? 1 : -1;
+    GULL.x = GULL.dir > 0 ? -60 : VW+60;
+    GULL.y = LAY.oy + Math.random()*H*LAY.s;
+    GULL.vx = GULL.dir*(90 + Math.random()*70);
+    if(Math.random() < 0.55) sfxGull();
+  }
+  if(GULL.x !== 0){
+    GULL.x += GULL.vx*dt;
+    if((GULL.dir > 0 && GULL.x > VW+70) || (GULL.dir < 0 && GULL.x < -70)){
+      GULL.x = 0; GULL.t = 9 + Math.random()*16;
+    }
+  }
+}
+function drawGull(g){
+  if(GULL.x === 0) return;
+  var s = LAY.s*0.42, f = Math.sin(TIME*7.5)*0.5;
+  g.save();
+  g.globalAlpha = 0.30;
+  g.translate(GULL.x, GULL.y + Math.sin(TIME*1.3)*6);
+  g.scale(GULL.dir, 1);
+  g.strokeStyle = '#04090b'; g.lineWidth = Math.max(1.4, s*0.16); g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(-s*0.9, -f*s*0.5); g.quadraticCurveTo(-s*0.4, -s*0.35 - f*s*0.2, 0, 0);
+  g.quadraticCurveTo(s*0.4, -s*0.35 - f*s*0.2, s*0.9, -f*s*0.5);
+  g.stroke();
+  g.restore();
+}
+function render(){
+  ctx.save();
+  if(SHAKE > 0.002){
+    ctx.translate((Math.random()-0.5)*SHAKE*9, (Math.random()-0.5)*SHAKE*9);
+  }
+  drawSea(ctx);
+  if(G.pos || G.seed){
+    if(ROCKC.dirty || ROCKC.w !== waterNow() || ROCKC.seed !== (G.pos ? G.pos.sd : G.seed)) buildRock();
+    ctx.drawImage(ROCKC.cv, 0, 0, VW, VH);
+    drawFoam(ctx);
+    if(!TIDEANIM && G.pos && !G.pos.over) drawFloodNext(ctx);
+    drawTideWash(ctx);
+    drawSelection(ctx);
+    drawHoverSeal(ctx);
+    drawSeals(ctx);
+    drawLabels(ctx);
+    drawParticles(ctx);
+  }
+  drawGull(ctx);
+  ctx.restore();
+}
+/* Safety net: our rules and the relay agree about whose turn it is because
+   every move carries an explicit nextSeat and the west pod opens, which is
+   also the relay's round-robin default.  If they ever drift apart the game
+   would otherwise sit locked, so notice it and ask the server again. */
+var MISMATCH = 0;
+function tickMismatch(dt){
+  if(G.mode !== 'online' || !G.pos || G.pos.over || animBusy() || G.screen !== 'play'){ MISMATCH = 0; return; }
+  var drift = (G.pos.to === G.mySeat) && G.match && G.match.yourMoveNeeded === false;
+  if(!drift){ MISMATCH = 0; return; }
+  MISMATCH += dt;
+  if(MISMATCH > 4){ MISMATCH = -20; refreshMatch(); }
+}
+var lastT = 0;
+function frame(ts){
+  requestAnimationFrame(frame);
+  if(!lastT) lastT = ts;
+  var dt = Math.min(0.05, (ts-lastT)/1000);
+  lastT = ts;
+  TIME += dt;
+  tickMismatch(dt);
+  SHAKE *= Math.pow(0.0015, dt);
+  tickAnim(dt);
+  tickVis(dt);
+  stepParticles(dt);
+  tickGull(dt);
+  resTick(dt);
+  /* Behind a full-screen overlay the canvas is under a backdrop blur, and
+     repainting it forces the compositor to redo that blur every frame for
+     motion nobody can see.  Paint one frame in four instead. */
+  OVTICK++;
+  if(!anyOverlayOpen() || (OVTICK & 3) === 0) render();
+}
+var OVTICK = 0;
+requestAnimationFrame(frame);
+
+/* ============================ GAME FLOW ============================ */
+function freshSeed(){ return (Math.random()*2147483000)|0; }
+function beginLocal(mode, seed, humanSeat){
+  stopWatch();
+  G.mode = mode; G.seed = seed; G.matchId = null; G.match = null;
+  G.mySeat = (mode === 'ai') ? (humanSeat === undefined ? 0 : humanSeat) : 0;
+  G.pos = RULES.create(seed);
+  G.screen = 'play'; G.resultShown = false; G.scored = false; G.paused = false;
+  G.wasLastBull = false; G.sawKingTide = false; G.hotPass = false;
+  G.deferred = null; G.aiThinking = false;
+  ANIM.queue.length = 0; ANIM.busy = false; ANIM.beats = []; TIDEANIM = null;
+  PART.length = 0;
+  VIS = {}; syncVis(G.pos, true);
+  clearSel();
+  hideAll(); layout(); ROCKC.dirty = true;
+  resumeAudio();
+  syncHud();
+  if(mode === 'hotseat'){ showPass(true); }
+  else if(mode === 'ai' && G.pos.to !== G.mySeat){ scheduleAI(); }
+  else { autoSelect(); syncHud(); }
+}
+function scheduleAI(){
+  if(!G.pos || G.pos.over || G.aiThinking) return;
+  if(G.pos.to === G.mySeat) return;
+  G.aiThinking = true;
+  syncHud();
+  setTimeout(function(){
+    if(!G.pos || G.pos.over || G.pos.to === G.mySeat){ G.aiThinking = false; syncHud(); return; }
+    var mv;
+    try{ mv = RULES.best(G.pos, G.aiLevel === 'easy' ? { depth:1 } : { width:12 }); }catch(e){ mv = null; }
+    if(!mv){ var all = RULES.moves(G.pos); mv = all[0]; }
+    G.aiThinking = false;
+    if(!mv){ return; }
+    var pre = G.pos;
+    var r = RULES.apply(pre, mv);
+    if(!r.ok){ return; }
+    G.pos = r.pos;
+    enqueue(pre, r.ev, r.pos, 1);
+    trackFlags();
+    syncHud();
+  }, 340 + Math.random()*260);
+}
+function showPass(first){
+  if(!G.pos || G.pos.over) return;
+  var seat = G.pos.to;
+  G.hotPass = false;
+  $('passKick').textContent = first ? 'Low water. Both pods are out.' : 'Hand the rock across';
+  $('passTitle').textContent = POD[seat].name + ' pod to play';
+  $('passBody').innerHTML = 'Tide <b>' + G.pos.w + '</b>, round <b>' + (G.pos.r+1) + '</b>. ' +
+    (first ? 'The <b>west</b> pod opens; after that the pods take turns opening each round. ' : '') +
+    '<b>' + RULES.unact(G.pos, seat) + '</b> of your seals still to wake this round.';
+  show('ovPass');
+  syncHud();
+}
+function endMatch(){
+  if(G.resultShown || !G.pos || !G.pos.over) return;
+  G.resultShown = true;
+  var p = G.pos, win = p.over.winner;
+  var mine = (G.mode === 'hotseat') ? -1 : controlSeat();
+  var iWon = (mine >= 0 && win === mine);
+  var left = [RULES.alive(p,0), RULES.alive(p,1)];
+
+  $('endKick').textContent = 'The tide has spoken';
+  if(mine < 0){
+    $('endTitle').textContent = 'The ' + POD[win].name.toLowerCase() + ' pod holds the skerry';
+    $('endBody').innerHTML = 'The ' + POD[1-win].name.toLowerCase() + ' pod is in the water, and not pleased about it.';
+  } else if(iWon){
+    $('endTitle').textContent = 'The skerry is yours';
+    $('endBody').innerHTML = 'You still have the rock under you. ' +
+      (G.mode === 'online' ? esc(G.oppName) : 'The rival pod') + ' is swimming.';
+  } else {
+    $('endTitle').textContent = 'Swept off';
+    $('endBody').innerHTML = 'The rock belongs to ' +
+      (G.mode === 'online' ? esc(G.oppName) : ('the ' + POD[win].name.toLowerCase() + ' pod')) +
+      ' now. There is always the next low water.';
+  }
+  var why = { swept:'last pod dry', higher:'both pods went under &mdash; the higher rock decided it',
+              unspent:'both pods went under &mdash; unspent activations decided it',
+              seat:'both pods went under, dead level &mdash; the east pod takes it' }[p.over.why] || 'last pod dry';
+  $('endStats').innerHTML =
+    '<div class="l">Skerry held by</div><div class="v">' + esc(podLabel(win)) + ' (' + POD[win].name.toLowerCase() + ')</div>' +
+    '<div class="l">Seals still dry</div><div class="v">' + left[win] + ' of ' + K.SEALS + '</div>' +
+    '<div class="l">Activations</div><div class="v">' + p.n + '</div>' +
+    '<div class="l">Rounds</div><div class="v">' + (p.r+1) + ' &middot; tide reached ' + p.w + '</div>' +
+    '<div class="l">Decided by</div><div class="v">' + why + '</div>';
+  $('endNote').innerHTML = (G.mode === 'online')
+    ? 'A rematch opens a brand new skerry and a brand new code to send.'
+    : 'Press <b>R</b> for a fresh rock any time.';
+  $('btnRematch').textContent = (G.mode === 'online') ? 'Rematch' : 'New skerry';
+
+  /* ---- leaderboard and badges: earned, guarded, idempotent ---- */
+  if(iWon && G.mode !== 'hotseat'){
+    if(!G.scored){
+      G.scored = true;
+      submitScore(p.n, { mode:G.mode, rounds:p.r+1, tide:p.w, left:left[win], seals:K.SEALS });
+    }
+    if(G.mode === 'online') unlock('first-skerry');
+    if(left[win] === K.SEALS) unlock('dry-pod');
+    if(G.wasLastBull) unlock('last-bull');
+    if(G.sawKingTide || p.r >= TIDE.length-2) unlock('king-tide');
+  }
+  sfxFanfare(mine < 0 ? true : iWon);
+  if(iWon || mine < 0) winSpray(win);
+  if(G.mode === 'online') stopWatch();
+  show('ovEnd');
+  syncHud();
+}
+function winSpray(seat){
+  for(var id=seat*K.SEALS; id<(seat+1)*K.SEALS; id++){
+    var v = VIS[id]; if(!v || v.swim) continue;
+    var p = scr(v.gx, v.gy, v.lf);
+    puff(p.x, p.y - LAY.s*0.2, 16, 'spray', 130, 'rgba(240,250,246,.95)', 150);
+  }
+}
+
+/* ============================== ONLINE ============================== */
+function stopWatch(){ if(G.unwatch){ try{ G.unwatch(); }catch(e){} G.unwatch = null; } }
+function startWatch(){
+  stopWatch();
+  if(!G.matchId) return;
+  try{
+    if(AR.a && AR.a.matches && typeof AR.a.matches.watch === 'function')
+      G.unwatch = AR.a.matches.watch(G.matchId, function(m){ if(m) applyMatch(m, true); });
+  }catch(e){}
+}
+function seatOfMatch(m){
+  if(typeof m.yourSeat === 'number') return m.yourSeat;
+  if(typeof m.seat === 'number') return m.seat;
+  if(m.players && AR.user){
+    for(var i=0;i<m.players.length;i++){
+      var p = m.players[i];
+      if(p && p.username === AR.user) return (typeof p.seat === 'number') ? p.seat : i;
+    }
+  }
+  return 0;
+}
+function oppNameOf(m, mySeat){
+  if(!m.players) return 'Rival pod';
+  for(var i=0;i<m.players.length;i++){
+    var p = m.players[i]; if(!p) continue;
+    var sq = (typeof p.seat === 'number') ? p.seat : i;
+    if(sq !== mySeat) return p.username || p.displayName || 'Rival pod';
+  }
+  return 'Rival pod';
+}
+function drainDeferred(){
+  var m = G.deferred;
+  if(!m) return;
+  G.deferred = null;
+  applyMatch(m, true);
+}
+function applyMatch(m, live){
+  if(!m) return;
+  /* whatever is playing on screen owns the board until it finishes —
+     including the echo of our own move coming back through the watch */
+  if(animBusy() && G.screen === 'play'){ G.deferred = m; G.match = m; return; }
+  G.match = m;
+  G.matchId = m.id || G.matchId;
+  G.mySeat = seatOfMatch(m);
+  G.oppName = oppNameOf(m, G.mySeat);
+  G.mode = 'online';
+
+  if(m.status === 'open'){
+    G.screen = 'wait';
+    $('waitCode').textContent = m.code || m.joinCode || '--------';
+    show('ovWait'); syncHud(); return;
+  }
+  if(m.status === 'abandoned'){ toast('That match was abandoned.', 3000); openLobby(); return; }
+
+  var st = m.state;
+  if(!st || st.v !== K.SCHEMA){
+    if(st) toast('That match was made with another version of Skerry.', 3600);
+    return;
+  }
+  var np = RULES.decode(st);
+  if(!np) return;
+
+  var fresh = (G.screen !== 'play' || !G.pos);
+  if(fresh){
+    G.pos = np; G.seed = np.sd;
+    G.screen = 'play'; G.resultShown = false; G.scored = false; G.paused = false;
+    G.wasLastBull = false; G.sawKingTide = (np.r >= TIDE.length-2);
+    ANIM.queue.length = 0; ANIM.busy = false; TIDEANIM = null; PART.length = 0;
+    VIS = {}; syncVis(G.pos, true);
+    clearSel();
+    hideAll(); layout(); ROCKC.dirty = true;
+    autoSelect();
+    startWatch();
+    syncHud();
+    if(m.status === 'finished' || G.pos.over) endMatch();
+    else warnIfDrowning();
+    return;
+  }
+  if(np.n === G.pos.n){
+    if((m.status === 'finished' || G.pos.over) && !G.resultShown) endMatch();
+    syncHud(); return;
+  }
+  if(np.n < G.pos.n){ syncHud(); return; }     /* our own move has not landed yet */
+
+  /* ---- replay everything that happened while we were away, in order ---- */
+  var hist = st.h || [], plan = [], want = G.pos.n;
+  while(want < np.n){
+    var found = null;
+    for(var i=0;i<hist.length;i++) if(hist[i].n === want){ found = hist[i]; break; }
+    if(!found) break;
+    plan.push(found); want++;
+  }
+  if(want === np.n && plan.length){
+    var cur = G.pos, ok = true, items = [];
+    for(var j=0;j<plan.length;j++){
+      var mv = { i:plan[j].i, c:plan[j].c, a:plan[j].a, d:plan[j].d };
+      var r = RULES.apply(cur, mv);
+      if(!r.ok){ ok = false; break; }
+      items.push({ pre:cur, ev:r.ev, post:r.pos });
+      cur = r.pos;
+    }
+    if(ok && RULES.sig(cur) === RULES.sig(np)){
+      G.pos = cur;
+      clearSel();
+      for(var q=0;q<items.length;q++) enqueue(items[q].pre, items[q].ev, items[q].post, items.length > 2 ? 1.5 : 1);
+      G.sawKingTide = G.sawKingTide || (cur.r >= TIDE.length-2);
+      syncHud();
+      return;
+    }
+  }
+  /* could not reconstruct it — trust the server and re-seat the board */
+  G.pos = np;
+  VIS = {}; syncVis(G.pos, true);
+  clearSel(); autoSelect();
+  ROCKC.dirty = true;
+  if(m.status === 'finished' || G.pos.over){ if(!G.resultShown) endMatch(); }
+  else warnIfDrowning();
+  syncHud();
+}
+function sendMove(mv, post){
+  if(!G.matchId) return;
+  var over = !!post.over;
+  var payload = {
+    turn: (G.match && typeof G.match.turn === 'number') ? G.match.turn : (post.n - 1),
+    move: { i:mv.i, c:mv.c, a:mv.a, d:mv.d },
+    state: RULES.encode(post),
+    status: over ? 'finished' : 'active',
+    nextSeat: over ? undefined : post.to
+  };
+  if(over) payload.result = { winner: post.over.winner, why: post.over.why, activations: post.n };
+  mcall('move', [G.matchId, payload]).then(function(r){
+    if(r && r.ok){ G.match = r.match; syncHud(); return; }
+    if(r && r.reason === 'CONFLICT'){ toast('The tide moved on &mdash; resyncing.', 3000); resync(); }
+    else if(r && r.reason === 'SIGNED_OUT'){ toast('Sign in on aimade.games to play online.', 3600); }
+    else toast((r && r.message) || 'That move did not reach the arcade.', 3400);
+  });
+}
+function resync(){
+  if(!G.matchId) return;
+  mcall('get', [G.matchId, {}]).then(function(r){
+    if(r && r.ok && r.match){
+      ANIM.queue.length = 0; ANIM.busy = false; ANIM.beats = []; TIDEANIM = null;
+      G.deferred = null; G.pos = null; G.screen = 'lobby'; G.resultShown = false;
+      applyMatch(r.match, false);
+    } else toast((r && r.message) || 'Could not reach that match.', 3200);
+  });
+}
+function refreshMatch(){
+  if(G.mode !== 'online' || !G.matchId || animBusy()) return;
+  mcall('get', [G.matchId, {}]).then(function(r){ if(r && r.ok && r.match) applyMatch(r.match, true); });
+}
+
+/* ============================== LOBBY ============================== */
+function openLobby(){
+  stopWatch();
+  G.screen = 'lobby'; G.mode = 'online'; G.pos = null; G.matchId = null; G.match = null;
+  ANIM.queue.length = 0; ANIM.busy = false; TIDEANIM = null;
+  var offline = AR.guest || !AR.online;
+  $('lobGreet').innerHTML = offline
+    ? 'Online matches need an account on aimade.games. <b>Vs the rival pod</b> and <b>Hotseat</b> play here and now without one.'
+    : ('Signed in as <b>' + esc(AR.name || AR.user) + '</b>. A match keeps for seven days, and every move resets the clock.');
+  $('btnCreate').disabled = offline;
+  $('btnJoin').disabled = offline;
+  $('joinInput').disabled = offline;
+  var iw = $('inviteWrap');
+  if(AR.pending && !offline){ iw.style.display = 'block'; $('inviteCode').textContent = AR.pending; }
+  else iw.style.display = 'none';
+  show('ovLobby'); syncHud();
+  loadMatchList();
+}
+function loadMatchList(){
+  var el = $('mlist');
+  if(AR.guest || !AR.online){
+    el.innerHTML = '<div class="tiny">Sign in at aimade.games to keep matches running across days &mdash; and to see them all, with a badge on the ones waiting for you.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="tiny"><span class="spin"></span> Reading the tide tables&hellip;</div>';
+  mcall('list', [{ status:'active' }]).then(function(r){
+    if(!r || !r.ok){ el.innerHTML = '<div class="tiny">' + esc((r && r.message) || 'Could not read your matches.') + '</div>'; return; }
+    var active = r.matches || [];
+    mcall('list', [{ status:'open' }]).then(function(r2){
+      var open = (r2 && r2.ok && r2.matches) || [];
+      var all = open.concat(active);
+      if(!all.length){
+        el.innerHTML = '<div class="tiny">No matches yet. Create one and send the code to a friend.</div>';
+        return;
+      }
+      el.innerHTML = '';
+      all.slice(0, 14).forEach(function(m){
+        var mine = seatOfMatch(m);
+        var opp = (m.status === 'open') ? 'Waiting for a second pod' : oppNameOf(m, mine);
+        var badge = (m.status === 'open') ? '<span class="badge open">Open</span>'
+          : (m.status === 'finished' ? '<span class="badge done">Done</span>'
+          : (m.yourMoveNeeded ? '<span class="badge you">Your move</span>' : '<span class="badge them">Their move</span>'));
+        var d = document.createElement('div'); d.className = 'mrow';
+        d.innerHTML = '<div class="who"><div class="t1">' + esc(opp) + '</div><div class="t2">' +
+          (m.status === 'open' ? ('code ' + esc(m.code || m.joinCode || ''))
+                               : ('activation ' + ((m.turn != null) ? m.turn+1 : '?'))) +
+          '</div></div>' + badge;
+        d.onclick = function(){ enterMatch(m.id); };
+        el.appendChild(d);
+      });
+    });
+  });
+}
+function enterMatch(id){
+  G.matchId = id; G.pos = null; G.screen = 'lobby';
+  toast('Opening the match&hellip;', 1400);
+  mcall('get', [id, {}]).then(function(r){
+    if(r && r.ok && r.match){ G.resultShown = false; G.scored = false; applyMatch(r.match, false); startWatch(); }
+    else toast((r && r.message) || 'Could not open that match.', 3200);
+  });
+}
+function createMatch(){
+  if(AR.guest || !AR.online){ toast('Sign in at aimade.games to play a friend.', 3200); return; }
+  $('btnCreate').disabled = true;
+  var p = RULES.create(freshSeed());
+  mcall('create', [{ maxPlayers:2, mode:'alternating', state:RULES.encode(p) }]).then(function(r){
+    $('btnCreate').disabled = false;
+    if(!r || !r.ok){ toast((r && r.message) || 'Could not open a match.', 3400); return; }
+    G.matchId = r.match.id; G.mySeat = 0; G.resultShown = false; G.scored = false; G.pos = null;
+    applyMatch(r.match, false);
+    startWatch();
+  });
+}
+function joinWith(code){
+  code = (code || '').trim().toUpperCase();
+  if(code.length !== 8){ toast('A join code is eight characters.', 2600); return; }
+  if(AR.guest || !AR.online){ toast('Sign in at aimade.games to play a friend.', 3200); return; }
+  toast('Hauling out&hellip;', 1600);
+  mcall('join', [code]).then(function(r){
+    if(!r || !r.ok){ toast((r && r.message) || 'That code did not work.', 3400); return; }
+    G.matchId = r.match.id; G.resultShown = false; G.scored = false; G.pos = null;
+    applyMatch(r.match, false);
+    startWatch();
+  });
+}
+function copyText(t, label){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ toast(label + ' copied.', 1900); },
+                                           function(){ toast(label + ': ' + t, 4200); });
+    } else toast(label + ': ' + t, 4200);
+  }catch(e){ toast(label + ': ' + t, 4200); }
+}
+
+/* ============================== INPUT ============================== */
+function isTouch(){ return document.body.classList.contains('touch'); }
+window.addEventListener('touchstart', function(){
+  if(!document.body.classList.contains('touch')){ document.body.classList.add('touch'); syncHud(); }
+}, { passive:true });
+window.addEventListener('pointerdown', function(e){
+  if(e.pointerType === 'touch' && !document.body.classList.contains('touch')){
+    document.body.classList.add('touch'); syncHud();
+  }
+}, { passive:true });
+
+function dirBetween(a, b){
+  var dx = xOf(b)-xOf(a), dy = yOf(b)-yOf(a);
+  for(var d=0;d<4;d++) if(DX[d] === dx && DY[d] === dy) return d;
+  return -1;
+}
+cv.addEventListener('pointermove', function(e){
+  if(e.pointerType === 'touch') return;
+  if(!inputOpen()){ SEL.hover = -1; SEL.hoverDir = -1; return; }
+  var c = pickCell(e.clientX, e.clientY);
+  if(c !== SEL.hover){ SEL.hover = c; if(c >= 0) sfxTick(); }
+  SEL.hoverDir = -1;
+  if(SEL.id >= 0 && c >= 0){
+    var d = dirBetween(SEL.dest, c);
+    if(d >= 0){
+      var opts = shoveOpts();
+      for(var i=0;i<opts.length;i++) if(opts[i].d === d) SEL.hoverDir = d;
+    }
+  }
+});
+cv.addEventListener('pointerleave', function(){ SEL.hover = -1; SEL.hoverDir = -1; });
+cv.addEventListener('pointerdown', function(e){
+  resumeAudio();
+  if(!inputOpen()) return;
+  var c = pickCell(e.clientX, e.clientY);
+  if(c < 0) return;
+  var touch = (e.pointerType === 'touch');
+  var occ = RULES.occArr(G.pos), who = occ[c];
+
+  /* 1 — picking one of your own unwoken seals */
+  if(who >= 0 && RULES.seatOf(who) === G.pos.to && !G.pos.s[who].act && who !== SEL.id){
+    selectSeal(who); SEL.armed = false; return;
+  }
+  if(SEL.id < 0) return;
+
+  /* 2 — a rival next to where the seal will stand: aim, then confirm */
+  var d = dirBetween(SEL.dest, c);
+  if(d >= 0 && who >= 0 && RULES.seatOf(who) !== G.pos.to){
+    if(SEL.act === 2 && SEL.dir === d && (!touch || SEL.armed)){ commit(); return; }
+    if(armShove(d)){ SEL.armed = true; sfxSelect(); if(!touch) commit(); return; }
+    sfxDeny();
+    toast('You cannot shove from below that ledge.', 2400);
+    return;
+  }
+  /* 3 — an empty cell within reach: move the ghost there */
+  if(SEL.reach[c] !== undefined){ setDest(c); SEL.armed = false; return; }
+  /* 4 — tapping the seal itself again clears the plan */
+  if(c === SEL.origin){ SEL.dest = SEL.origin; SEL.act = 0; SEL.dir = -1; SEL.armed = false; sfxTick(); syncHud(); return; }
+  sfxDeny();
+});
+
+function moveGhost(dx, dy){
+  if(SEL.id < 0) return;
+  var x = xOf(SEL.dest)+dx, y = yOf(SEL.dest)+dy;
+  if(x < 0 || x >= W || y < 0 || y >= H){ sfxDeny(); return; }
+  var c = y*W+x;
+  if(SEL.reach[c] !== undefined){ setDest(c); return; }
+  /* not reachable — but if a rival stands there, aim the shove at them */
+  var occ = RULES.occArr(G.pos);
+  var d = dirBetween(SEL.dest, c);
+  if(d >= 0 && occ[c] >= 0 && RULES.seatOf(occ[c]) !== G.pos.to){
+    if(armShove(d)) return;
+  }
+  sfxDeny();
+}
+function toggleMute(){
+  AU.muted = !AU.muted;
+  if(!AU.muted) resumeAudio();
+  try{ if(AU.sea) AU.sea.gain.value = AU.muted ? 0 : 0.030; }catch(e){}
+  toast(AU.muted ? 'Sea muted.' : 'Sea unmuted.', 1400);
+  syncHud();
+}
+function openControls(){
+  G.fromEnd = $('ovEnd').classList.contains('on');
+  if(G.screen === 'play' && !G.fromEnd){
+    G.paused = true;
+    $('pauseNote').innerHTML = (G.mode === 'online')
+      ? 'Nothing is lost by leaving &mdash; the match waits seven days for your move.'
+      : (G.mode === 'hotseat'
+          ? 'Hotseat: the board never turns. Silver holds the west shore, Umber the east, and the pass screen tells you whose turn it is.'
+          : 'The rival pod plays through the same rules engine you do, sees exactly what you see, and plays to win.');
+  } else $('pauseNote').textContent = '';
+  show('ovPause');
+  syncHud();
+}
+function closeControls(){
+  G.paused = false;
+  if(G.fromEnd){ G.fromEnd = false; show('ovEnd'); syncHud(); return; }
+  if(G.screen === 'play') hideAll();
+  else if(G.screen === 'lobby') show('ovLobby');
+  else if(G.screen === 'wait') show('ovWait');
+  else show('ovStart');
+  syncHud();
+  if(G.screen === 'play') autoSelect();
+}
+function currentOv(){
+  for(var i=0;i<OVS.length;i++) if($(OVS[i]).classList.contains('on')) return OVS[i];
+  return null;
+}
+function rulesBack(){
+  var from = G.rulesFrom;
+  hideAll();
+  if(from && from !== 'ovRules') $(from).classList.add('on');
+  else if(G.screen === 'play') G.paused = false;
+  else show('ovStart');
+  syncHud();
+}
+function doRestart(){
+  if(G.mode === 'online'){ openLobby(); return; }
+  G.restarts++;
+  if(G.mode === 'ai') beginLocal('ai', freshSeed(), G.mySeat === 0 ? 1 : 0);
+  else beginLocal('hotseat', freshSeed());
+  toast(G.mode === 'ai'
+    ? (G.mySeat === 0 ? 'You take the west shore.' : 'You take the east shore.')
+    : 'A fresh skerry.', 2200);
+}
+window.addEventListener('keydown', function(e){
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  var k = e.key, lower = (k || '').toLowerCase();
+  var tag = (e.target && e.target.tagName) || '';
+  if(tag === 'INPUT'){
+    if(k === 'Enter'){ joinWith($('joinInput').value); e.preventDefault(); }
+    return;
+  }
+  resumeAudio();
+  if(k === '?' || lower === 'h'){
+    e.preventDefault();
+    if($('ovPause').classList.contains('on')) closeControls(); else openControls();
+    return;
+  }
+  if(lower === 'm'){ e.preventDefault(); toggleMute(); return; }
+  if(lower === 'g'){
+    e.preventDefault();
+    if($('ovRules').classList.contains('on')) rulesBack();
+    else { G.rulesFrom = currentOv(); show('ovRules'); }
+    return;
+  }
+  if(k === 'Escape' || lower === 'p'){
+    e.preventDefault();
+    if($('ovRules').classList.contains('on')){ rulesBack(); return; }
+    if($('ovPause').classList.contains('on')){ closeControls(); return; }
+    if($('ovEnd').classList.contains('on')) return;
+    if(k === 'Escape' && inputOpen() && SEL.act !== 0){ SEL.act = 0; SEL.dir = -1; SEL.armed = false; sfxTick(); syncHud(); return; }
+    if(G.screen === 'play') openControls();
+    return;
+  }
+  if(lower === 'r'){
+    if($('ovEnd').classList.contains('on') || G.screen === 'play'){ e.preventDefault(); doRestart(); }
+    return;
+  }
+  if($('ovPause').classList.contains('on')){ if(k === 'Enter' || k === ' '){ e.preventDefault(); closeControls(); } return; }
+  if($('ovPass').classList.contains('on')){ if(k === 'Enter' || k === ' '){ e.preventDefault(); hideAll(); autoSelect(); syncHud(); } return; }
+  /* Enter is a shortcut only when the player has not tabbed onto a control:
+     native keyboard navigation of the overlays must keep working. */
+  var focused = document.activeElement && document.activeElement !== document.body &&
+                document.activeElement.tagName === 'BUTTON';
+  if($('ovEnd').classList.contains('on')){
+    if(k === 'Enter' && !focused){ e.preventDefault(); $('btnRematch').click(); }
+    return;
+  }
+  if($('ovStart').classList.contains('on')){
+    if(k === 'Enter' && !focused){ e.preventDefault(); $('btnAI').click(); }
+    return;
+  }
+  if(anyOverlayOpen()) return;
+  if(!inputOpen()) return;
+
+  if(k === 'Tab'){ e.preventDefault(); cycleSeal(e.shiftKey ? -1 : 1); return; }
+  if(lower === 's'){ e.preventDefault(); cycleShove(); return; }
+  if(lower === 'b'){ e.preventDefault(); toggleBrace(); return; }
+  if(lower === 'q'){ e.preventDefault(); if(SEL.id >= 0){ setDest(SEL.origin); SEL.act = 0; SEL.dir = -1; syncHud(); } return; }
+  if(k === 'Enter' || k === ' '){ e.preventDefault(); commit(); return; }
+  var dx = 0, dy = 0;
+  if(k === 'ArrowLeft')       dx = -1;
+  else if(k === 'ArrowRight') dx = 1;
+  else if(k === 'ArrowUp')    dy = -1;
+  else if(k === 'ArrowDown')  dy = 1;
+  else return;
+  e.preventDefault();
+  moveGhost(dx, dy);
+});
+
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden) return;
+  lastT = 0;
+  if(G.mode === 'online' && G.screen === 'play') refreshMatch();
+});
+window.addEventListener('focus', function(){
+  lastT = 0;
+  if(G.mode === 'online' && G.screen === 'play') refreshMatch();
+});
+
+/* ============================== WIRING ============================== */
+function bind(id, fn){
+  var el = $(id);
+  if(el) el.addEventListener('click', function(e){ e.preventDefault(); resumeAudio(); fn(); });
+}
+bind('btnOnline', function(){ openLobby(); });
+bind('btnAI',     function(){ beginLocal('ai', freshSeed(), 0); });
+bind('btnHot',    function(){ beginLocal('hotseat', freshSeed()); });
+bind('btnRules',  function(){ G.rulesFrom = 'ovStart'; show('ovRules'); });
+bind('btnRulesBack', function(){ rulesBack(); });
+bind('btnPauseRules', function(){ G.rulesFrom = 'ovPause'; show('ovRules'); });
+bind('btnLobbyBack', function(){ G.screen = 'start'; show('ovStart'); syncHud(); });
+bind('btnLobbyRefresh', function(){ loadMatchList(); });
+bind('btnCreate', function(){ createMatch(); });
+bind('btnJoin',   function(){ joinWith($('joinInput').value); });
+bind('btnInviteJoin', function(){ joinWith(AR.pending || ''); });
+bind('btnCopyCode', function(){ copyText($('waitCode').textContent, 'Join code'); });
+bind('btnCopyLink', function(){ copyText('https://aimade.games/g/skerry/play?code=' + $('waitCode').textContent, 'Invite link'); });
+bind('btnWaitBack', function(){ openLobby(); });
+bind('btnWaitLeave', function(){
+  if(!G.matchId){ openLobby(); return; }
+  mcall('leave', [G.matchId]).then(function(){ toast('Match abandoned.', 2200); openLobby(); });
+});
+bind('btnResume', function(){ closeControls(); });
+bind('btnPauseLeave', function(){
+  G.paused = false; stopWatch();
+  if(G.mode === 'online') openLobby();
+  else { G.screen = 'start'; G.pos = null; hideAll(); show('ovStart'); syncHud(); }
+});
+bind('btnPassGo', function(){ hideAll(); autoSelect(); syncHud(); });
+bind('btnRematch', function(){
+  if(G.mode === 'online'){
+    stopWatch();
+    openLobby();
+    if(!(AR.guest || !AR.online)) createMatch();
+  } else doRestart();
+});
+bind('btnEndLobby', function(){
+  stopWatch();
+  if(G.mode === 'online') openLobby();
+  else { G.screen = 'start'; G.pos = null; hideAll(); show('ovStart'); syncHud(); }
+});
+bind('btnPrev',  function(){ if(inputOpen()) cycleSeal(1); });
+bind('btnShove', function(){ if(inputOpen()) { if(SEL.act === 2) commit(); else cycleShove(); } });
+bind('btnBrace', function(){ if(inputOpen()) { if(SEL.act === 1) commit(); else toggleBrace(); } });
+bind('btnDone',  function(){ if(inputOpen()) commit(); });
+bind('tq',   function(){ openControls(); });
+bind('mute', function(){ toggleMute(); });
+bind('diffEasy', function(){ G.aiLevel = 'easy'; $('diffEasy').classList.add('on'); $('diffHard').classList.remove('on'); });
+bind('diffHard', function(){ G.aiLevel = 'hard'; $('diffHard').classList.add('on'); $('diffEasy').classList.remove('on'); });
+$('joinInput').addEventListener('input', function(){
+  this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);
+});
+
+/* start-screen pod portraits */
+(function(){
+  try{
+    paintMark($('plA'), 0, true);
+    paintMark($('plB'), 1, true);
+    paintMark($('mk0'), 0, false);
+    paintMark($('mk1'), 1, false);
+  }catch(e){}
+})();
+
+/* ------------- read-only handle for the console and the harness -------------
+   It exposes the engine and a little plumbing so the shipped file can be
+   driven headlessly.  Nothing in the game reads it. */
+window.SKERRY = {
+  rules: RULES,
+  state: function(){ return G; },
+  sel: function(){ return SEL; },
+  lay: function(){ return LAY; },
+  scr: scr,
+  cellScr: cellScr,
+  pickCell: pickCell,
+  inputOpen: inputOpen,
+  commit: commit,
+  selectSeal: selectSeal,
+  setDest: setDest,
+  armShove: armShove,
+  begin: beginLocal,
+  endMatch: endMatch,
+  applyMatch: function(m,l){ return applyMatch(m,l); },
+  animBusy: animBusy,
+  muted: function(){ return AU.muted; },
+  canvasFit: function(){
+    var b = cv.getBoundingClientRect();
+    return { fits: Math.round(b.width) === window.innerWidth && Math.round(b.height) === window.innerHeight,
+             cssW:Math.round(b.width), cssH:Math.round(b.height),
+             w:cv.width, h:cv.height, dpr:DPR, res:RES, pxr:PXR() };
+  },
+  render: render,
+  tide: function(){ return TIDEANIM; },
+  res: function(){ return RES; },
+  audio: function(){ return { ready:AU.ready, muted:AU.muted, running: !!(AU.ctx && AU.ctx.state === 'running') }; },
+  stats: function(){ return { parts:PART.length, vis:Object.keys(VIS).length, rockW:ROCKC.w, dirty:ROCKC.dirty, foam:FOAM.length, builds:BUILDS }; }
+};
+
+/* ============================== BOOT ============================== */
+resize();
+syncHud();
+/* an idle rock behind the start screen so the first frame is never empty */
+(function(){
+  G.seed = freshSeed();
+  G.pos = RULES.create(G.seed);
+  G.screen = 'start';
+  syncVis(G.pos, true);
+  ROCKC.dirty = true;
+})();
+arcadeBoot(function(){
+  var g = $('greet');
+  if(!AR.guest && AR.name){
+    g.innerHTML = 'Hello, <b>' + esc(AR.name) + '</b>. Your matches keep for seven days; aimade.games/matches badges the ones waiting on you.';
+  } else if(AR.online){
+    g.innerHTML = 'Playing as a guest. <b>Vs the rival pod</b> and <b>Hotseat</b> work straight away; sign in to play a friend across days.';
+  } else {
+    g.innerHTML = 'Playing offline. <b>Vs the rival pod</b> and <b>Hotseat</b> work here; matches against a friend need the arcade.';
+  }
+  var offline = (AR.guest || !AR.online);
+  $('btnOnline').className = offline ? 'alt' : 'go';
+  $('btnAI').className     = offline ? 'go'  : 'alt';
+  $('startNote').innerHTML = offline
+    ? 'Online matches need an account on aimade.games. Everything else on this screen plays right now.'
+    : '';
+  if(AR.pending && !offline){
+    toast('You have an invite &mdash; open &ldquo;Play a friend&rdquo;.', 4200);
+    $('startNote').innerHTML = '<b>You followed an invite.</b> Open &ldquo;Play a friend&rdquo; and the code is waiting for one tap.';
+  }
+  syncHud();
+});
+</script>
+</body>
+</html>
