@@ -1,0 +1,1422 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>KEYLOG</title>
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#14251d;}
+#wrap{position:fixed;inset:0;}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+#hud{position:absolute;inset:0;pointer-events:none;font-family:Georgia,'Times New Roman',serif;color:#efe6d4;}
+.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(14,26,20,.94);
+ border:1px solid #4a5c47;padding:22px 30px;max-width:min(480px,88vw);max-height:86vh;overflow-y:auto;pointer-events:auto;text-align:center;box-shadow:0 12px 60px rgba(0,0,0,.6);}
+h1{font-size:44px;margin:0 0 2px;letter-spacing:.24em;font-weight:normal;color:#e8c98a;}
+h2{font-size:22px;margin:0 0 10px;letter-spacing:.14em;font-weight:normal;color:#e8c98a;}
+.sub{font-size:14px;color:#b8c4ae;margin:0 0 14px;line-height:1.45;}
+.ctl{font-size:13px;color:#cdd6c2;text-align:left;line-height:1.7;margin:10px auto 14px;display:inline-block;}
+.ctl b{color:#e8c98a;font-weight:normal;display:inline-block;min-width:120px;}
+button{font-family:inherit;font-size:16px;letter-spacing:.1em;background:#7a4a26;color:#f4ead6;border:1px solid #a9713d;
+ padding:9px 34px;cursor:pointer;margin:4px;}
+button:hover{background:#8d5730;}
+button.small{font-size:13px;padding:6px 18px;}
+#lb{font-size:12px;color:#9fae95;margin-top:12px;line-height:1.6;}
+#lb em{font-style:normal;color:#c9b98a;letter-spacing:.12em;}
+#who{font-size:11px;color:#7d8b74;margin-top:8px;}
+#topbar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:10px 12px;font-size:14px;}
+#score{background:rgba(14,26,20,.72);padding:5px 12px;border:1px solid #3c4c3a;letter-spacing:.06em;}
+#right{display:flex;gap:8px;align-items:flex-start;}
+#jamno{background:rgba(14,26,20,.72);padding:5px 12px;border:1px solid #3c4c3a;}
+#gauge{width:14px;height:74px;background:rgba(14,26,20,.72);border:1px solid #3c4c3a;position:relative;}
+#gfill{position:absolute;left:0;right:0;bottom:0;background:#4d7f88;height:0%;}
+#dyn{background:rgba(14,26,20,.72);padding:5px 10px;border:1px solid #3c4c3a;color:#e0a13d;letter-spacing:.15em;}
+#hint{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);
+ font-size:13px;color:#d8dcc8;background:rgba(14,26,20,.78);padding:5px 14px;border:1px solid #3c4c3a;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis;}
+#pauseBtn{position:absolute;top:10px;left:50%;transform:translateX(-50%);pointer-events:auto;background:rgba(14,26,20,.72);
+ border:1px solid #3c4c3a;color:#cdd6c2;font-size:12px;padding:5px 12px;cursor:pointer;letter-spacing:.1em;}
+#toasts{position:absolute;top:64px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;}
+.toast{background:rgba(30,42,30,.92);border:1px solid #6b7a52;color:#e8dfc8;padding:6px 16px;font-size:13px;animation:tfade 3s forwards;}
+@keyframes tfade{0%{opacity:0;transform:translateY(-6px)}10%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+#tbtns{position:absolute;right:calc(10px + env(safe-area-inset-right));bottom:calc(64px + env(safe-area-inset-bottom));display:none;flex-direction:column;gap:12px;pointer-events:auto;}
+.tb{width:74px;height:74px;border-radius:50%;background:rgba(30,42,30,.8);border:2px solid #6b7a52;color:#e8dfc8;
+ font-size:13px;letter-spacing:.08em;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;}
+.tb.on{background:rgba(122,74,38,.9);border-color:#c9903f;}
+.hidden{display:none!important;}
+kbd{display:none;}
+</style>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="hud">
+  <div id="topbar" class="hidden">
+    <div id="score">MILL 0</div>
+    <div id="right"><div id="dyn">||</div><div id="jamno">JAM 1</div><div id="gauge"><div id="gfill"></div></div></div>
+  </div>
+  <button id="pauseBtn" class="hidden">PAUSE</button>
+  <div id="hint" class="hidden"></div>
+  <div id="toasts"></div>
+  <div id="tbtns"><div class="tb" id="tbDyn">DYN</div></div>
+  <div class="panel" id="title">
+    <h1>KEYLOG</h1>
+    <p class="sub">Spring drive, 1890s. The timber has jammed at the narrows and the water is rising behind it. One log carries the whole pile. Sound the jam, find that log, pull it, and be off the timber when it moves. The mill pays by the log.</p>
+    <div class="ctl">
+      <b>Move</b> arrow keys, WASD, or tap a log<br>
+      <b>Sound a log</b> step on it, or X for one in reach<br>
+      <b>Pry</b> hold SPACE or press and hold on a log<br>
+      <b>Dynamite</b> Q, then a log. Two sticks per drive<br>
+      <b>Balance a ride</b> LEFT and RIGHT, or tap either side<br>
+      <b>Pause</b> P or ESC &nbsp;&nbsp;<b>Restart</b> R
+    </div>
+    <p class="sub" style="font-size:12.5px">A loose log thuds. A packed log knocks. A bound log rings high and will not move by hand. Pull off the logs pressing on it first.</p>
+    <button id="playBtn">PLAY</button>
+    <div id="lb"></div>
+    <div id="who"></div>
+  </div>
+  <div class="panel hidden" id="pause">
+    <h2>PAUSED</h2>
+    <div class="ctl">
+      <b>Move</b> arrow keys, WASD, or tap a log<br>
+      <b>Sound a log</b> step on it, or X for one in reach<br>
+      <b>Pry</b> hold SPACE or press and hold on a log<br>
+      <b>Dynamite</b> Q, then a log<br>
+      <b>Balance a ride</b> LEFT and RIGHT, or tap either side<br>
+      <b>Restart</b> R
+    </div>
+    <p class="sub" style="font-size:12.5px">The ring tells the load. Thud is loose, knock is packed, a high ring is bound solid. Easing the logs above a bound log lightens it. When the key log goes, everything on it goes too.</p>
+    <button id="resumeBtn">RESUME</button>
+    <button id="restartBtn2" class="small">RESTART</button>
+  </div>
+  <div class="panel hidden" id="over">
+    <h2 id="overTitle">SWEPT AWAY</h2>
+    <p class="sub" id="overStats"></p>
+    <button id="restartBtn">RESTART</button>
+    <div id="lb2"></div>
+  </div>
+</div>
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+'use strict';
+// ============================== rng ==============================
+function mulberry(seed){var t=seed>>>0;return function(){t+=0x6D2B79F5;var r=Math.imul(t^t>>>15,1|t);r^=r+Math.imul(r^r>>>7,61|r);return((r^r>>>14)>>>0)/4294967296;};}
+var urlSeed=(function(){try{var m=/[?&]seed=(\d+)/.exec(location.search);return m?+m[1]:null;}catch(e){return null;}})();
+// ============================== audio ==============================
+var AU={ctx:null,master:null,riverG:null,started:false};
+function auInit(){
+  if(AU.started)return;
+  try{
+    var C=window.AudioContext||window.webkitAudioContext;if(!C)return;
+    AU.ctx=new C();AU.master=AU.ctx.createGain();AU.master.gain.value=.7;AU.master.connect(AU.ctx.destination);
+    // river bed: looped filtered noise
+    var len=AU.ctx.sampleRate*2,buf=AU.ctx.createBuffer(1,len,AU.ctx.sampleRate),d=buf.getChannelData(0);
+    for(var i=0;i<len;i++)d[i]=Math.random()*2-1;
+    var src=AU.ctx.createBufferSource();src.buffer=buf;src.loop=true;
+    var lp=AU.ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=420;lp.Q.value=.4;
+    AU.riverG=AU.ctx.createGain();AU.riverG.gain.value=.10;
+    src.connect(lp);lp.connect(AU.riverG);AU.riverG.connect(AU.master);src.start();
+    AU.started=true;
+  }catch(e){}
+}
+function auResume(){try{if(AU.ctx&&AU.ctx.state==='suspended')AU.ctx.resume();}catch(e){}}
+function riverLevel(v){try{if(AU.riverG)AU.riverG.gain.setTargetAtTime(v,AU.ctx.currentTime,.4);}catch(e){}}
+function tone(freq,dur,vol,type,decay){
+  try{
+    if(!AU.ctx)return;var t=AU.ctx.currentTime;
+    var o=AU.ctx.createOscillator(),g=AU.ctx.createGain();
+    o.type=type||'sine';o.frequency.value=freq;
+    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0001,t+(decay||dur));
+    o.connect(g);g.connect(AU.master);o.start(t);o.stop(t+dur+.05);
+  }catch(e){}
+}
+function noiseBurst(dur,vol,fc,q){
+  try{
+    if(!AU.ctx)return;var t=AU.ctx.currentTime;
+    var len=Math.max(1,AU.ctx.sampleRate*dur|0),buf=AU.ctx.createBuffer(1,len,AU.ctx.sampleRate),d=buf.getChannelData(0);
+    for(var i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+    var s=AU.ctx.createBufferSource();s.buffer=buf;
+    var f=AU.ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=fc;f.Q.value=q||1;
+    var g=AU.ctx.createGain();g.gain.value=vol;
+    s.connect(f);f.connect(g);g.connect(AU.master);s.start(t);
+  }catch(e){}
+}
+function sfxRing(tier){ // 0 loose thud, 1 packed knock, 2 bound ring
+  if(tier===0){noiseBurst(.09,.5,180,1.2);tone(120,.12,.25,'sine');}
+  else if(tier===1){noiseBurst(.06,.45,420,2);tone(300,.22,.22,'triangle');}
+  else{tone(640,.7,.3,'triangle',.7);tone(957,.5,.12,'sine',.5);noiseBurst(.04,.3,900,3);}
+}
+function sfxHop(){noiseBurst(.05,.28,320,1.5);}
+function sfxSplash(){noiseBurst(.3,.5,700,.8);tone(180,.2,.12,'sine');}
+function sfxCreak(){tone(90+Math.random()*60,.6,.12,'sawtooth',.6);}
+function sfxPry(p){tone(140+p*160,.1,.14,'sawtooth',.1);}
+function sfxBreak(){
+  noiseBurst(1.4,.8,300,.6);tone(70,1.2,.4,'sine',1.2);
+  for(var i=0;i<7;i++)(function(i){setTimeout(function(){noiseBurst(.08,.4,240+Math.random()*300,1.5);},i*130+Math.random()*80);})(i);
+}
+function sfxBoom(){noiseBurst(1.8,1,120,.5);tone(50,1.5,.6,'sine',1.5);noiseBurst(.4,.5,1400,1);}
+function sfxBadge(){tone(660,.14,.2,'triangle');setTimeout(function(){tone(880,.25,.2,'triangle');},130);}
+function sfxWhistle(){tone(1040,.5,.14,'sine',.5);setTimeout(function(){tone(1040,.7,.14,'sine',.7);},600);}
+// ============================== arcade sdk (guarded) ==============================
+var arcade=null,badgesMine={};
+function sdkReady(){
+  try{
+    if(window.Arcade&&Arcade.ready){
+      Arcade.ready().then(function(a){
+        arcade=a;
+        try{
+          var w=document.getElementById('who');
+          if(a.player&&!a.player.isGuest&&a.player.displayName)w.textContent='signed in as '+a.player.displayName;
+          else w.textContent='playing as guest';
+        }catch(e){}
+        try{a.achievements.mine().then(function(r){if(r&&r.ok&&r.unlocked)r.unlocked.forEach(function(s){badgesMine[s]=1;});}).catch(function(){});}catch(e){}
+        loadBoard('lb');
+      }).catch(function(){});
+    }
+  }catch(e){}
+}
+function loadBoard(elId){
+  try{
+    if(!arcade)return;
+    arcade.scores.top({limit:5,period:'all'}).then(function(b){
+      if(!b||!b.ok||!b.entries||!b.entries.length)return;
+      var el=document.getElementById(elId);if(!el)return;
+      var h='<em>MOST LOGS TO THE MILL, ALL TIME</em><br>';
+      b.entries.forEach(function(e){h+=e.rank+'. '+((e.player&&e.player.username)||'anon')+': '+e.score+'<br>';});
+      el.innerHTML=h;
+    }).catch(function(){});
+  }catch(e){}
+}
+function unlock(slug){
+  if(badgesMine[slug])return;badgesMine[slug]=1;
+  try{
+    if(!arcade)return;
+    arcade.achievements.unlock(slug).then(function(r){
+      if(r&&r.ok&&r.firstTime&&r.achievement){toast((r.achievement.emoji||'')+' '+r.achievement.name);sfxBadge();}
+    }).catch(function(){});
+  }catch(e){}
+}
+function submitScore(score,meta){try{if(arcade)arcade.scores.submit(score,meta).catch(function(){});}catch(e){}}
+function toast(txt){
+  var el=document.createElement('div');el.className='toast';el.textContent=txt;
+  var box=document.getElementById('toasts');box.appendChild(el);
+  setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},3100);
+  while(box.children.length>3)box.removeChild(box.firstChild);
+}
+// ============================== geometry ==============================
+function clamp(v,a,b){return v<a?a:v>b?b:v;}
+function lerp(a,b,t){return a+(b-a)*t;}
+// log OBB corners
+function logCorners(L){
+  var c=Math.cos(L.a),s=Math.sin(L.a),hx=c*L.hl,hy=s*L.hl,wx=-s*L.hw,wy=c*L.hw;
+  return [[L.x+hx+wx,L.y+hy+wy],[L.x+hx-wx,L.y+hy-wy],[L.x-hx-wx,L.y-hy-wy],[L.x-hx+wx,L.y-hy+wy]];
+}
+function obbOverlap(A,B){ // SAT for two logs
+  var ca=logCorners(A),cb=logCorners(B);
+  var axes=[[Math.cos(A.a),Math.sin(A.a)],[-Math.sin(A.a),Math.cos(A.a)],[Math.cos(B.a),Math.sin(B.a)],[-Math.sin(B.a),Math.cos(B.a)]];
+  for(var i=0;i<4;i++){
+    var ax=axes[i][0],ay=axes[i][1],mina=1e9,maxa=-1e9,minb=1e9,maxb=-1e9,j,p;
+    for(j=0;j<4;j++){p=ca[j][0]*ax+ca[j][1]*ay;if(p<mina)mina=p;if(p>maxa)maxa=p;}
+    for(j=0;j<4;j++){p=cb[j][0]*ax+cb[j][1]*ay;if(p<minb)minb=p;if(p>maxb)maxb=p;}
+    if(maxa<minb||maxb<mina)return false;
+  }
+  return true;
+}
+function obbCircle(L,cx,cy,r){ // closest point on OBB to circle center
+  var c=Math.cos(L.a),s=Math.sin(L.a),dx=cx-L.x,dy=cy-L.y;
+  var u=dx*c+dy*s,v=-dx*s+dy*c;
+  var uu=clamp(u,-L.hl,L.hl),vv=clamp(v,-L.hw,L.hw);
+  var px=L.x+uu*c-vv*s,py=L.y+uu*s+vv*c;
+  var ddx=cx-px,ddy=cy-py;
+  return ddx*ddx+ddy*ddy<r*r;
+}
+function nearestOnLog(L,px,py){
+  var c=Math.cos(L.a),s=Math.sin(L.a),dx=px-L.x,dy=py-L.y;
+  var u=clamp(dx*c+dy*s,-L.hl+8,L.hl-8);
+  return {x:L.x+u*c,y:L.y+u*s,u:u};
+}
+// ============================== constants ==============================
+var CX=0,CHW=560;                 // channel center x, width
+var XL=CX-CHW/2,XR=CX+CHW/2;      // banks
+var JAM_GAP=1500;                 // distance between narrows
+var HOP_R=104,REACH=96;
+var PRY_TIME=1.05;
+var FLOW=34;                      // pool current px/s
+var FLUSH_V=330;
+// load tiers (in log-weight units). bound grows with jam depth; water multiplies load.
+var T_PACKED=1.05;
+function boundT(jam){return 8.5+jam.idx*0.8;}
+// ============================== game state ==============================
+var G=null,S='title';             // 'title','play','over'
+var paused=false,pauseFromBlur=false;
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var vw=0,vh=0,dpr=1,scale=1;
+function newGame(){
+  hoverLog=null;pdownLog=null;pointerPry=false;touchBal=0;
+  var seed=urlSeed!=null?urlSeed:(Date.now()&0xffffffff);
+  G={
+    seed:seed,rng:mulberry(seed),
+    score:0,jamNo:0,jams:[],logs:[],free:[],
+    player:{x:XL-26,y:0,foot:null,fu:0,hopT:0,hx:0,hy:0,tx:0,ty:0,face:1,soaked:0,stun:0},
+    cam:{y:0,x:0},
+    pry:{on:false,t:0,log:-1},
+    dyn:{sticks:2,armed:false,placed:-1,fuse:0,x:0,y:0},
+    ride:{on:false,log:-1,bal:0,t:0,bump:0},
+    quickBal:0,
+    water:0,waterT:0,
+    flush:{on:false,t:0},
+    walkout:0,
+    jamsBroken:0,fellIn:0,priesThisJam:0,firstPryOfJam:true,
+    bestRide:0,milestone:100,
+    time:0,over:false,overWhy:'',
+    hintT:0,hint:'',
+    parts:[],
+  };
+  nextJam();
+  var j=G.jams[0];
+  G.player.y=j.y-20;G.player.x=XL-26;G.player.foot=null;
+  G.cam.y=G.player.y;G.cam.x=0;
+  setHint('Step onto the jam. Each log rings its load when you land.');
+}
+// ============================== jam generation ==============================
+function nextJam(){
+  var ji=G.jamNo,rng=G.rng;
+  var y=(ji+1)*JAM_GAP;
+  var gap=Math.max(112,158-ji*6);
+  var jam={idx:ji,y:y,gap:gap,boulders:[],logs:[],broken:false,overtopped:false};
+  // boulder clusters narrowing the channel
+  function cluster(side){
+    var edge=side<0?XL:XR;
+    var innerX=side<0?CX-gap/2:CX+gap/2;
+    var n=2+(rng()*2|0);
+    for(var i=0;i<n;i++){
+      var t=i/(n-1||1);
+      var bx=lerp(innerX,edge+side*-8,t)+ (rng()-.5)*16;
+      var by=y+(rng()-.5)*70;
+      var r=26+rng()*20;
+      jam.boulders.push({x:bx,y:by,r:r});
+    }
+  }
+  cluster(-1);cluster(1);
+  // drop logs upstream until target settled
+  var target=Math.min(40,15+ji*3);
+  var tries=0;
+  while(jam.logs.length<target&&tries<target*7){
+    tries++;
+    dropLog(jam,rng);
+  }
+  computeLoads(jam);
+  G.jams.push(jam);
+  G.jamNo++;
+  G.water=0;
+  G.waterT=Math.max(46,84-ji*3);
+}
+function dropLog(jam,rng){
+  var len=88+rng()*66,hw=5.5+rng()*2.6;
+  var gx=(rng()+rng()+rng())/3-.5; // funnel toward the gap
+  var L={x:clamp(CX+gx*(CHW+80),CX-CHW/2+70,CX+CHW/2-70),y:jam.y-900,a:(rng()-.5)*.8,hl:len/2,hw:hw,
+    supports:[],ground:false,settled:true,tone:.35+rng()*.5,deadhead:rng()<0.12&&jam.idx>1,
+    vx:0,vy:0,va:0,state:'jam',id:-1};
+  if(L.deadhead){L.hw+=1.5;}
+  // find current top of pile to start just above
+  var topY=jam.y-40;
+  for(var i=0;i<jam.logs.length;i++)topY=Math.min(topY,jam.logs[i].y-80);
+  L.y=topY-60-rng()*40;
+  // fall downstream
+  var it=0,contact=null;
+  while(it++<900){
+    L.y+=4;
+    if(L.y>jam.y+140)return false; // slipped through, ignore
+    contact=firstContact(jam,L);
+    if(contact)break;
+  }
+  if(!contact)return false;
+  // pivot: rotate around, trying to gain a second contact while pressing down
+  var rotDir=(L.x<contact.x)?-1:1; // end past the snag swings downstream
+  if(Math.abs(L.x-contact.x)<6)rotDir=rng()<.5?-1:1;
+  var got2=false,steps=0;
+  while(steps++<46){
+    var oldA=L.a,oldX=L.x,oldY=L.y;
+    L.a+=rotDir*0.045;L.y+=1.6;
+    var cons=allContacts(jam,L);
+    if(cons.length>=2){got2=true;break;}
+    if(cons.length===0){ // slipped off, resume falling
+      var it2=0,c2=null;
+      while(it2++<400){L.y+=4;if(L.y>jam.y+140)return false;c2=firstContact(jam,L);if(c2)break;}
+      if(!c2)return false;
+      contact=c2;
+      rotDir=(L.x<contact.x)?-1:1;
+    }
+  }
+  // resolve overlap: back off until barely touching
+  for(var k=0;k<12;k++){
+    var cs=allContacts(jam,L);
+    if(cs.length<=2&&k>0)break;
+    L.y-=1.2;
+  }
+  var fin=allContacts(jam,L);
+  if(fin.length===0){L.y+=2;fin=allContacts(jam,L);}
+  if(fin.length===0)return false;
+  // record supports
+  L.supports=[];L.ground=false;
+  for(var i2=0;i2<Math.min(3,fin.length);i2++){
+    var c=fin[i2];
+    if(c.type==='log')L.supports.push(c.ref);
+    else L.ground=true;
+  }
+  if(L.supports.length===0&&!L.ground)return false;
+  L.id=jam.logs.length;
+  jam.logs.push(L);
+  return true;
+}
+function firstContact(jam,L){
+  var cs=allContacts(jam,L);
+  return cs.length?cs[0]:null;
+}
+function allContacts(jam,L){
+  var out=[],i;
+  // banks
+  var corners=logCorners(L);
+  for(i=0;i<4;i++){
+    if(corners[i][0]<XL+4){out.push({type:'bank',x:XL,y:L.y});break;}
+  }
+  for(i=0;i<4;i++){
+    if(corners[i][0]>XR-4){out.push({type:'bank',x:XR,y:L.y});break;}
+  }
+  for(i=0;i<jam.boulders.length;i++){
+    var b=jam.boulders[i];
+    if(obbCircle(L,b.x,b.y,b.r+2))out.push({type:'boulder',x:b.x,y:b.y});
+  }
+  for(i=0;i<jam.logs.length;i++){
+    var o=jam.logs[i];
+    if(o.state!=='jam')continue;
+    if(Math.abs(o.y-L.y)>200||Math.abs(o.x-L.x)>240)continue;
+    if(obbOverlap(L,o))out.push({type:'log',ref:o,x:o.x,y:o.y});
+  }
+  return out;
+}
+// load: each log's own weight plus everything pressing on it from upstream,
+// split among its supports; bank and boulder absorb their share.
+function computeLoads(jam){
+  var logs=jam.logs,i;
+  for(i=0;i<logs.length;i++){logs[i].incoming=0;logs[i].supports=logs[i].supports.filter(function(s){return s.state==='jam';});}
+  var wf=1+G.water*0.9;
+  for(i=logs.length-1;i>=0;i--){
+    var L=logs[i];
+    if(L.state!=='jam')continue;
+    var wt=(L.deadhead?1.8:1)*(L.hl/60);
+    var carried=(wt+L.incoming)*wf;
+    var nsup=L.supports.length+(L.ground?1:0);
+    if(nsup>0){
+      var share=carried/nsup;
+      for(var j=0;j<L.supports.length;j++)L.supports[j].incoming+=share/wf;
+    }
+  }
+  var bt=boundT(jam);
+  for(i=0;i<logs.length;i++){
+    var l=logs[i];
+    l.load=l.incoming*wf;
+    l.tier=l.load<T_PACKED?0:(l.load<bt?1:2);
+  }
+}
+// a log holds only while a chain of supports reaches rock or bank.
+// remove the cut log and everything that loses its path to ground goes free.
+function freedBySet(jam,removedIds){
+  var logs=jam.logs,stable={},changed=true,i,j;
+  while(changed){
+    changed=false;
+    for(i=0;i<logs.length;i++){
+      var L=logs[i];
+      if(L.state!=='jam'||removedIds[L.id]||stable[L.id])continue;
+      var ok=L.ground;
+      if(!ok)for(j=0;j<L.supports.length;j++){
+        var s=L.supports[j];
+        if(s.state==='jam'&&!removedIds[s.id]&&stable[s.id]){ok=true;break;}
+      }
+      if(ok){stable[L.id]=true;changed=true;}
+    }
+  }
+  var out=[];
+  for(i=0;i<logs.length;i++){
+    var l=logs[i];
+    if(l.state==='jam'&&!stable[l.id])out.push(l);
+  }
+  return out;
+}
+function freedByRemoval(jam,k){
+  var r={};r[k.id]=true;
+  return freedBySet(jam,r);
+}
+function jamRemaining(jam){
+  var n=0;for(var i=0;i<jam.logs.length;i++)if(jam.logs[i].state==='jam')n++;
+  return n;
+}
+// ============================== footholds & movement ==============================
+function curJam(){return G.jams[G.jams.length-1];}
+function footholds(px,py,r){
+  var out=[],jam=curJam(),i;
+  for(i=0;i<jam.logs.length;i++){
+    var L=jam.logs[i];
+    if(L.state!=='jam')continue;
+    var n=nearestOnLog(L,px,py);
+    var d=Math.hypot(n.x-px,n.y-py);
+    if(d<r)out.push({type:'log',log:L,x:n.x,y:n.y,u:n.u,d:d});
+  }
+  for(i=0;i<jam.boulders.length;i++){
+    var b=jam.boulders[i];
+    var d2=Math.hypot(b.x-px,b.y-py);
+    if(d2<r+b.r*0.4)out.push({type:'boulder',b:b,x:b.x,y:b.y,d:d2});
+  }
+  // free drifting logs nearby (for hopping off a ride)
+  for(i=0;i<G.free.length;i++){
+    var F=G.free[i];
+    if(F.gone)continue;
+    var nf=nearestOnLog(F,px,py);
+    var df=Math.hypot(nf.x-px,nf.y-py);
+    if(df<r)out.push({type:'free',log:F,x:nf.x,y:nf.y,u:nf.u,d:df});
+  }
+  // banks: nearest point straight across, plus slight up/down steps
+  [[XL-26,-1],[XR+26,1]].forEach(function(bk){
+    for(var dy=-70;dy<=70;dy+=70){
+      var bx=bk[0],by=py+dy;
+      var d3=Math.hypot(bx-px,by-py);
+      if(d3<r)out.push({type:'bank',x:bx,y:by,d:d3});
+    }
+  });
+  return out;
+}
+function hopTo(f){
+  var p=G.player;
+  p.hopT=0.22;p.hx=p.x;p.hy=p.y;p.tx=f.x;p.ty=f.y;
+  p.face=f.x>p.x?1:-1;
+  if(f.type==='log'||f.type==='free'){p.foot=f.log;p.fu=f.u;}
+  else p.foot=null;
+  p.footType=f.type;
+  sfxHop();
+}
+function tryHopDir(dx,dy){
+  var p=G.player;
+  if(p.hopT>0||G.ride.on)return;
+  var onBank=!p.foot&&(p.x<XL||p.x>XR);
+  var range=onBank?150:HOP_R;
+  // search around the point the player is hopping toward, so a long log can be walked
+  var tx=p.x+dx*76,ty=p.y+dy*76;
+  var cands=footholds(tx,ty,90).filter(function(f){
+    var vx=f.x-p.x,vy=f.y-p.y,d=Math.hypot(vx,vy);
+    if(d<16||d>range)return false;
+    return (vx*dx+vy*dy)/d>0.35;
+  });
+  if(!cands.length)return;
+  cands.sort(function(a,b){
+    var da=Math.hypot(a.x-tx,a.y-ty);
+    var db=Math.hypot(b.x-tx,b.y-ty);
+    return da-db;
+  });
+  hopTo(cands[0]);
+  if(cands[0].type==='log')soundLog(cands[0].log,true);
+}
+function tryHopPoint(wx,wy){
+  var p=G.player;
+  if(p.hopT>0)return false;
+  if(G.ride.on){ // hop off a ride toward a point
+    var cands0=footholds(p.x,p.y,HOP_R).filter(function(f){return f.type!=='free'||f.log!==G.ride.logRef;});
+    if(!cands0.length)return false;
+    cands0.sort(function(a,b){return Math.hypot(a.x-wx,a.y-wy)-Math.hypot(b.x-wx,b.y-wy);});
+    var c0=cands0[0];
+    if(Math.hypot(c0.x-wx,c0.y-wy)<80){endRide(false);hopTo(c0);return true;}
+    return false;
+  }
+  var cands=footholds(wx,wy,60);
+  if(!cands.length)return false;
+  cands.sort(function(a,b){return a.d-b.d;});
+  var f=cands[0];
+  var d=Math.hypot(f.x-p.x,f.y-p.y);
+  if(d<14)return false;
+  if(d<=HOP_R){hopTo(f);if(f.type==='log')soundLog(f.log,true);return true;}
+  // farther: hop one step toward it
+  var vx=(f.x-p.x)/d,vy=(f.y-p.y)/d;
+  tryHopDir(vx,vy);
+  return true;
+}
+// ============================== sounding, prying, dynamite ==============================
+function soundLog(L,soft){
+  if(!L||L.state!=='jam')return;
+  sfxRing(L.tier);
+  L.pulse=1;
+  L.known=true;
+}
+function adjacentLogAt(wx,wy){
+  var p=G.player,jam=curJam();
+  var best=null,bd=1e9;
+  for(var i=0;i<jam.logs.length;i++){
+    var L=jam.logs[i];
+    if(L.state!=='jam')continue;
+    var n=nearestOnLog(L,wx,wy);
+    var dCur=Math.hypot(n.x-wx,n.y-wy);
+    if(dCur>34)continue;
+    var nP=nearestOnLog(L,p.x,p.y);
+    var dP=Math.hypot(nP.x-p.x,nP.y-p.y);
+    if(dP>REACH)continue;
+    if(L===p.foot)continue; // cannot pry the log underfoot
+    if(dCur<bd){bd=dCur;best=L;}
+  }
+  return best;
+}
+function startPry(L){
+  if(!L||G.pry.on||G.player.hopT>0||G.player.stun>0)return;
+  soundLog(L,true);
+  if(L.tier===2){
+    setHint('Bound solid. Pull off the logs pressing on it first, or use dynamite.');
+    L.shake=0.5;
+    return;
+  }
+  G.pry={on:true,t:0,log:L};
+  G.player.face=L.x>G.player.x?1:-1;
+}
+function finishPry(){
+  var L=G.pry.log;
+  G.pry.on=false;
+  if(!L||L.state!=='jam')return;
+  G.priesThisJam++;
+  releaseLog(L,false);
+}
+function releaseLog(L,byBlast){
+  var jam=curJam();
+  var freed=freedByRemoval(jam,L);
+  var remain=jamRemaining(jam);
+  var isBreak=freed.length>=Math.max(6,Math.ceil(remain*0.45))||(remain-freed.length)<=2;
+  for(var i=0;i<freed.length;i++)setFree(freed[i],isBreak);
+  computeLoads(jam);
+  settleShift(jam);
+  if(isBreak){
+    breakJam(jam,byBlast);
+  }else{
+    sfxCreak();
+    if(freed.length>1)setHint(freed.length+' logs away. The jam holds.');
+    else setHint('One log away. The jam holds.');
+    G.firstPryOfJam=false;
+    // player standing on a freed log: quick balance
+    if(G.player.foot&&G.player.foot.state==='free'&&!G.ride.on){
+      G.quickBal=1.1;
+      setHint('The log under you came loose.');
+    }
+  }
+}
+function setFree(L,fast){
+  L.state='free';
+  L.vx=(G.rng()-.5)*30;L.vy=fast?60:FLOW;L.va=(G.rng()-.5)*.6;
+  L.fast=fast;L.gone=false;L.burned=!!L.noScore;
+  G.free.push(L);
+}
+function settleShift(jam){ // cosmetic settle of remaining logs
+  for(var i=0;i<jam.logs.length;i++){
+    var L=jam.logs[i];
+    if(L.state!=='jam')continue;
+    L.y+=1+G.rng()*3;L.a+=(G.rng()-.5)*.03;
+    L.known=false; // loads changed; rings must be read again
+  }
+}
+function breakJam(jam,byBlast){
+  jam.broken=true;
+  G.jamsBroken++;
+  sfxBreak();
+  riverLevel(.3);
+  G.flush={on:true,t:0};
+  // everything left goes too, staggered
+  for(var i=0;i<jam.logs.length;i++){
+    var L=jam.logs[i];
+    if(L.state==='jam'){L.state='pend';L.pendT=0.15+G.rng()*0.7;}
+  }
+  if(G.firstPryOfJam&&!byBlast&&G.priesThisJam===1)unlock('clean-pull');
+  if(byBlast)unlock('powder-work');
+  if(G.jamsBroken>=3&&G.fellIn===0)unlock('dry-boots');
+  // player on the timber when it goes: ride
+  if(G.player.foot&&(G.player.foot.state==='free'||G.player.foot.state==='pend')&&!G.ride.on){
+    startRide(G.player.foot);
+  }
+  setHint(byBlast?'The powder did it. The jam is moving.':'That was the key log. The jam is moving.');
+}
+function armDyn(){
+  if(G.dyn.sticks<=0){setHint('No dynamite left.');return;}
+  G.dyn.armed=!G.dyn.armed;
+  setHint(G.dyn.armed?'Dynamite armed. Choose a log within reach.':'Dynamite put away.');
+  tbDynBtn.classList.toggle('on',G.dyn.armed);
+}
+function placeDyn(L){
+  if(!L)return;
+  G.dyn.armed=false;tbDynBtn.classList.remove('on');
+  G.dyn.sticks--;
+  G.dyn.placed=L.id;G.dyn.fuse=2.6;G.dyn.log=L;
+  G.dyn.x=L.x;G.dyn.y=L.y;
+  setHint('Fuse lit. Get clear.');
+  tone(880,.1,.15,'square');
+}
+function detonate(){
+  var jam=curJam(),L=G.dyn.log;
+  sfxBoom();
+  shakeT=0.7;
+  var bx=G.dyn.x,by=G.dyn.y;
+  for(var i=0;i<26;i++)G.parts.push({x:bx+(G.rng()-.5)*40,y:by+(G.rng()-.5)*40,vx:(G.rng()-.5)*380,vy:(G.rng()-.5)*380-80,t:.6+G.rng()*.6,c:i%3===0?'#e0a13d':'#c9c2b2'});
+  // logs at the blast are splintered and worth nothing; the arch loses them all the same
+  var removedIds={};
+  for(var j=0;j<jam.logs.length;j++){
+    var o=jam.logs[j];
+    if(o.state!=='jam')continue;
+    var d=Math.hypot(o.x-bx,o.y-by);
+    if(d<110){o.noScore=true;o.burnMark=true;removedIds[o.id]=true;}
+    else if(d<250){o.burnMark=true;}
+  }
+  var freedList=freedBySet(jam,removedIds);
+  var remain=jamRemaining(jam);
+  var isBreak=freedList.length>=Math.max(6,Math.ceil(remain*0.4))||(remain-freedList.length)<=2;
+  for(var f=0;f<freedList.length;f++)setFree(freedList[f],isBreak);
+  computeLoads(jam);
+  if(isBreak)breakJam(jam,true);
+  else settleShift(jam);
+  // player caught in it
+  var pd=Math.hypot(G.player.x-bx,G.player.y-by);
+  if(pd<150){
+    if(playerOverWater()){sweep('The blast threw you into the river.');}
+    else{G.player.stun=1.6;setHint('Too close. That rang your ears.');}
+  }
+  G.dyn.placed=-1;G.dyn.log=null;
+}
+// ============================== riding & falling ==============================
+function startRide(L){
+  G.ride={on:true,logRef:L,bal:0,t:0,bump:0.8+G.rng()};
+  G.player.foot=L;G.player.footType='free';
+  setHint('Stay up. LEFT and RIGHT to balance, or hop for the bank.');
+}
+function endRide(fell){
+  if(G.ride.t>G.bestRide)G.bestRide=G.ride.t;
+  G.ride.on=false;
+}
+function playerOverWater(){
+  var p=G.player;
+  if(p.x<XL+6||p.x>XR-6)return false;
+  var fs=footholds(p.x,p.y,26);
+  for(var i=0;i<fs.length;i++)if(fs[i].d<24)return false;
+  return true;
+}
+function sweep(why){
+  if(G.over)return;
+  G.over=true;G.overWhy=why;
+  sfxSplash();
+  endGame();
+}
+function soak(){
+  G.fellIn++;
+  G.player.soaked=8;
+  sfxSplash();
+  setHint('You went in. Soaked boots slow you for a few seconds.');
+  // climb onto nearest foothold
+  var fs=footholds(G.player.x,G.player.y,160);
+  if(fs.length){fs.sort(function(a,b){return a.d-b.d;});hopTo(fs[0]);}
+  else{G.player.x=XL-26;G.player.foot=null;}
+}
+// ============================== water & overtop ==============================
+function overtop(jam){
+  jam.overtopped=true;
+  sfxBreak();
+  setHint('Water over the jam. It went on its own, and half the timber is lost in the banks.');
+  // half the logs wedge into the banks and never reach the mill
+  var alive=[];
+  for(var i=0;i<jam.logs.length;i++)if(jam.logs[i].state==='jam')alive.push(jam.logs[i]);
+  for(var j=0;j<alive.length;j++){
+    if(j%2===0)alive[j].noScore=true;
+  }
+  jam.broken=true;G.jamsBroken++;
+  G.flush={on:true,t:0,rough:true};
+  for(var k=0;k<jam.logs.length;k++){
+    var L=jam.logs[k];
+    if(L.state==='jam'){L.state='pend';L.pendT=G.rng()*0.6;}
+  }
+  riverLevel(.3);
+  if(G.player.foot&&G.player.footType!=='boulder'&&G.player.x>XL&&G.player.x<XR){
+    startRide(G.player.foot);
+    G.ride.rough=true;
+  }
+}
+// ============================== game over / next ==============================
+function endGame(){
+  S='over';
+  document.getElementById('overTitle').textContent=G.overWhy.indexOf('river')>=0||G.overWhy.indexOf('under')>=0?'SWEPT AWAY':'DRIVE OVER';
+  document.getElementById('overStats').innerHTML=
+    'Logs to the mill: <b style="color:#e8c98a">'+G.score+'</b><br>Jams broken: '+G.jamsBroken+
+    (G.bestRide>1?'<br>Longest ride: '+G.bestRide.toFixed(1)+' s':'')+
+    '<br><span style="color:#93a089;font-size:12px">'+G.overWhy+'</span>';
+  show('over');hide('topbar');hide('hint');hide('pauseBtn');
+  submitScore(G.score,{jams:G.jamsBroken,ride:+G.bestRide.toFixed(1)});
+  if(G.score>=300)unlock('boom-full');
+  setTimeout(function(){loadBoard('lb2');},900);
+}
+function finishFlush(rode){
+  // whatever is still afloat reaches the mill with you
+  for(var i=0;i<G.free.length;i++){
+    var F=G.free[i];
+    if(F.gone)continue;
+    F.gone=true;
+    if(!F.burned&&!F.wasCounted){F.wasCounted=true;addScore(1);}
+  }
+  G.free=[];
+  var jam=curJam();
+  for(var j=0;j<jam.logs.length;j++)if(jam.logs[j].state==='pend'){jam.logs[j].state='free';if(!jam.logs[j].noScore)addScore(1);}
+  G.flush.on=false;riverLevel(.10);
+  afterFlushNext(rode);
+}
+function addScore(n){
+  G.score+=n;scoreEl.textContent='MILL '+G.score;
+  if(G.score>=G.milestone){sfxWhistle();toast(G.milestone+' logs to the mill');G.milestone+=100;}
+  if(G.score>=300)unlock('boom-full');
+}
+function afterFlushNext(rode){
+  // move to the next narrows
+  nextJam();
+  var jam=curJam();
+  G.firstPryOfJam=true;G.priesThisJam=0;
+  if(rode){
+    var top=topOfJam(jam);
+    G.player.x=CX;G.player.y=top-60;G.player.foot=null;
+    var fs=footholds(G.player.x,G.player.y,220);
+    if(fs.length){fs.sort(function(a,b){return a.d-b.d;});hopTo(fs[0]);}
+    setHint('Rode it down. Jam '+G.jamNo+'.');
+  }else{
+    G.player.x=G.player.x<CX?XL-26:XR+26;
+    G.player.y=jam.y-20;G.player.foot=null;
+    G.water=0.15; // the walk down gave the water a head start
+    setHint('Jam '+G.jamNo+'. The water got a head start while you walked down.');
+  }
+}
+function topOfJam(jam){
+  var top=jam.y;
+  for(var i=0;i<jam.logs.length;i++)if(jam.logs[i].state==='jam')top=Math.min(top,jam.logs[i].y);
+  return top;
+}
+// ============================== update ==============================
+var keys={},shakeT=0;
+function update(dt){
+  if(S!=='play'||paused)return;
+  G.time+=dt;
+  var p=G.player,jam=curJam();
+  // ambient creaks scale with water
+  if(!jam.broken&&G.rng()<dt*(0.15+G.water*0.9))sfxCreak();
+  // water rise
+  if(!jam.broken){
+    G.water+=dt/G.waterT;
+    if(G.water>=1&&!jam.overtopped){G.water=1;overtop(jam);}
+    if(Math.floor((G.water*G.waterT))%10===0){} // no-op
+    computeLoadsThrottle(jam,dt);
+  }
+  // hop animation
+  if(p.hopT>0){
+    p.hopT-=dt;
+    var t=1-clamp(p.hopT/0.22,0,1);
+    p.x=lerp(p.hx,p.tx,t);
+    p.y=lerp(p.hy,p.ty,t);
+    if(p.hopT<=0){p.x=p.tx;p.y=p.ty;}
+  }else if(p.foot&&(p.foot.state==='free'||p.foot.state==='pend')&&!G.ride.on){
+    // standing on something that started moving outside a flush
+    if(p.foot.state==='free'&&!p.foot.fast){
+      // gentle drifter: carried along
+      var n=nearestOnLog(p.foot,p.x,p.y);
+      p.x=n.x;p.y=n.y;
+      if(p.foot.y>jam.y+320&&G.quickBal<=0){ // drifting away: step to safety check
+        G.quickBal=0.9;
+      }
+    }
+  }else if(p.foot&&p.foot.state==='jam'){
+    var n2=nearestOnLog(p.foot,p.x,p.y);
+    p.x=n2.x;p.y=n2.y;
+  }
+  if(p.stun>0)p.stun-=dt;
+  if(p.soaked>0)p.soaked-=dt;
+  // keyboard movement (held)
+  if(!G.ride.on&&p.hopT<=0&&p.stun<=0&&!G.pry.on){
+    var mv=null;
+    if(keys.ArrowLeft||keys.a)mv=[-1,0];
+    else if(keys.ArrowRight||keys.d)mv=[1,0];
+    else if(keys.ArrowUp||keys.w)mv=[0,-1];
+    else if(keys.ArrowDown||keys.s)mv=[0,1];
+    if(mv){
+      p.moveCool=(p.moveCool||0)-dt;
+      if(p.moveCool<=0){
+        tryHopDir(mv[0],mv[1]);
+        p.moveCool=(p.soaked>0?0.34:0.16);
+      }
+    }else p.moveCool=0;
+  }
+  // prying
+  if(G.pry.on){
+    var L=G.pry.log;
+    if(!keys[' ']&&!pointerPry){G.pry.on=false;}
+    else if(!L||L.state!=='jam'){G.pry.on=false;}
+    else{
+      G.pry.t+=dt*(p.soaked>0?0.72:1);
+      if(G.rng()<dt*8)sfxPry(G.pry.t/PRY_TIME);
+      if(G.pry.t>=PRY_TIME)finishPry();
+    }
+  }
+  // quick balance after a small release underfoot
+  if(G.quickBal>0){
+    G.quickBal-=dt;
+    if(G.quickBal<=0){
+      // did the player hop off in time?
+      if(p.foot&&p.foot.state!=='jam'&&p.hopT<=0){
+        soak();
+        var fs=footholds(p.x,p.y,180).filter(function(f){return f.type!=='free';});
+        if(fs.length){fs.sort(function(a,b){return a.d-b.d;});hopTo(fs[0]);}
+      }
+    }
+  }
+  // dynamite fuse
+  if(G.dyn.fuse>0){
+    G.dyn.fuse-=dt;
+    if(G.dyn.log&&G.dyn.log.state==='jam'){G.dyn.x=G.dyn.log.x;G.dyn.y=G.dyn.log.y;}
+    if(G.rng()<dt*14)G.parts.push({x:G.dyn.x+(G.rng()-.5)*8,y:G.dyn.y-6,vx:(G.rng()-.5)*30,vy:-40-G.rng()*30,t:.5,c:'#ffd97a'});
+    if(G.dyn.fuse<=0)detonate();
+  }
+  // free logs drift / flush
+  var flushing=G.flush.on;
+  if(flushing)G.flush.t+=dt;
+  for(var i=G.free.length-1;i>=0;i--){
+    var F=G.free[i];
+    if(F.gone){G.free.splice(i,1);continue;}
+    var vmax=F.fast?FLUSH_V*(G.flush.rough?1.25:1):FLOW+26;
+    F.vy=Math.min(vmax,F.vy+dt*(F.fast?260:30));
+    F.x+=F.vx*dt;F.y+=F.vy*dt;
+    F.vx*=(1-dt*1.4);
+    // straighten into the current
+    var targ=Math.PI/2*(F.a>0?1:-1);
+    if(F.fast)F.a+=(targ-F.a)*dt*1.2;
+    F.a+=F.va*dt;F.va*=(1-dt*1.6);
+    if(F.x<XL+F.hw+10){F.x=XL+F.hw+10;F.vx=Math.abs(F.vx)*.4;}
+    if(F.x>XR-F.hw-10){F.x=XR-F.hw-10;F.vx=-Math.abs(F.vx)*.4;}
+    if(F.y>jam.y+700&&!(G.ride.on&&G.ride.logRef===F)){
+      F.gone=true;
+      if(!F.burned&&!F.wasCounted){F.wasCounted=true;addScore(1);}
+    }
+  }
+  // pending logs join flush
+  for(var j2=0;j2<jam.logs.length;j2++){
+    var P=jam.logs[j2];
+    if(P.state==='pend'){
+      P.pendT-=dt;
+      if(P.pendT<=0)setFree(P,true);
+    }
+  }
+  // flush finished?
+  if(flushing&&!G.ride.on){
+    var moving=0;
+    for(var k3=0;k3<G.free.length;k3++)if(!G.free[k3].gone)moving++;
+    var pend=0;
+    for(var k4=0;k4<jam.logs.length;k4++)if(jam.logs[k4].state==='pend')pend++;
+    if(moving===0&&pend===0)finishFlush(false);
+  }
+  // riding
+  if(G.ride.on){
+    var R=G.ride,F2=R.logRef;
+    R.t+=dt;
+    if(R.t>G.bestRide)G.bestRide=R.t;
+    var n3=nearestOnLog(F2,p.x,p.y);
+    p.x=n3.x;p.y=n3.y;
+    // balance dynamics
+    var push=(keys.ArrowLeft||keys.a?-1:0)+(keys.ArrowRight||keys.d?1:0)+touchBal;
+    var rough=(R.rough?1.7:1);
+    R.bump-=dt;
+    if(R.bump<=0){R.bal+=(G.rng()-.5)*0.5*rough;R.bump=0.5+G.rng()*0.9;noiseBurst(.06,.3,260,1.5);}
+    R.bal+=R.bal*dt*1.35*rough+(G.rng()-.5)*dt*0.9*rough+push*dt*2.4;
+    R.bal=clamp(R.bal,-1.4,1.4);
+    if(Math.abs(R.bal)>=1){
+      endRide(true);
+      sweep('Lost your footing in the white water and went under.');
+      return;
+    }
+    if(flushing&&F2.y>jam.y+JAM_GAP-300){
+      // rode it all the way down to the next narrows
+      unlock('long-ride');
+      endRide(false);
+      finishFlush(true);
+    }else if(!flushing){
+      // drifted clear on a lone log outside a flush: step off when it slows
+      if(F2.gone){endRide(false);G.quickBal=0.9;}
+    }
+  }
+  // fell between logs? (not while hopping/riding)
+  if(!G.ride.on&&p.hopT<=0&&G.quickBal<=0&&p.x>XL+6&&p.x<XR-6){
+    if(!p.foot||p.foot.state==='dead'){
+      if(playerOverWater()){
+        if(flushing){sweep('Open water in a running flush. It pulled you under.');return;}
+        else soak();
+      }
+    }
+  }
+  // particles
+  for(var pi=G.parts.length-1;pi>=0;pi--){
+    var pt=G.parts[pi];
+    pt.t-=dt;pt.x+=pt.vx*dt;pt.y+=pt.vy*dt;pt.vy+=140*dt;
+    if(pt.t<=0)G.parts.splice(pi,1);
+  }
+  if(shakeT>0)shakeT-=dt;
+  // camera: bias upstream toward the pile in calm water, downstream during a flush
+  var focusY=p.y-70,focusX=clamp(p.x,CX-160,CX+160);
+  if(G.ride.on||G.flush.on){focusY=p.y+120;}
+  G.cam.y+=(focusY-G.cam.y)*Math.min(1,dt*4);
+  G.cam.x+=(focusX*0.35-G.cam.x)*Math.min(1,dt*3);
+  // HUD
+  gfill.style.height=(G.water*100).toFixed(0)+'%';
+  gfill.style.background=G.water>0.75?'#c25b41':'#4d7f88';
+  dynEl.textContent=G.dyn.sticks===2?'| |':(G.dyn.sticks===1?'|':'0');
+  if(G.hintT>0){G.hintT-=dt;if(G.hintT<=0)hintEl.classList.add('hidden');}
+}
+var loadCool=0;
+function computeLoadsThrottle(jam,dt){
+  loadCool-=dt;
+  if(loadCool<=0){computeLoads(jam);loadCool=1.0;}
+}
+// ============================== render ==============================
+var flowPhase=0;
+function render(dt){
+  flowPhase+=dt;
+  ctx.save();
+  ctx.clearRect(0,0,vw,vh);
+  // scale: fit channel with margin
+  var portrait=vh>vw;
+  scale=portrait?vw/720:Math.min(vh/760,vw/1400)*1.35;
+  scale=clamp(scale,0.42,1.5);
+  var sx=vw/2-(G?G.cam.x:0)*scale,sy=vh*0.44-(G?G.cam.y:0)*scale;
+  if(shakeT>0){sx+=(Math.random()-.5)*14*shakeT;sy+=(Math.random()-.5)*14*shakeT;}
+  ctx.translate(sx,sy);ctx.scale(scale,scale);
+  var jam=G?curJam():null;
+  var topWorld=(G?G.cam.y:0)-vh/scale,botWorld=(G?G.cam.y:0)+vh/scale;
+  // banks
+  ctx.fillStyle='#16281d';
+  ctx.fillRect(CX-3000,topWorld,3000+XL-CX,botWorld-topWorld);
+  ctx.fillRect(XR,topWorld,3000,botWorld-topWorld);
+  // water
+  var wgrad=ctx.createLinearGradient(XL,0,XR,0);
+  var deep=G&&G.flush.on?'#31555a':'#1d3a3f';
+  wgrad.addColorStop(0,'#254a4d');wgrad.addColorStop(.5,deep);wgrad.addColorStop(1,'#254a4d');
+  ctx.fillStyle=wgrad;
+  ctx.fillRect(XL,topWorld,XR-XL,botWorld-topWorld);
+  // rising water stain behind jam, feathered at the pile
+  if(G&&jam&&!jam.broken&&G.water>0.02){
+    var stainEnd=topOfJam(jam)+80;
+    if(stainEnd>topWorld){
+      var sg=ctx.createLinearGradient(0,stainEnd-260,0,stainEnd);
+      var sa=0.10+G.water*0.26;
+      sg.addColorStop(0,'rgba(77,127,136,'+sa+')');
+      sg.addColorStop(1,'rgba(77,127,136,0)');
+      ctx.fillStyle=sg;
+      ctx.fillRect(XL,topWorld,XR-XL,stainEnd-topWorld);
+    }
+  }
+  // flow streaks
+  ctx.strokeStyle='rgba(207,228,226,0.10)';ctx.lineWidth=2;
+  var speedS=G&&G.flush.on?600:70;
+  for(var i=0;i<26;i++){
+    var lx=XL+30+((i*97)%(XR-XL-60));
+    var off=((flowPhase*speedS+i*173)%700);
+    var ly=topWorld+((i*331)%700)+off;
+    while(ly<botWorld){
+      ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(lx+(G&&G.flush.on?4:0),ly+(G&&G.flush.on?46:18));ctx.stroke();
+      ly+=700;
+    }
+  }
+  // whitewater foam during flush
+  if(G&&G.flush.on){
+    ctx.fillStyle='rgba(220,236,232,0.16)';
+    for(var f=0;f<40;f++){
+      var fx=XL+((f*127)%(XR-XL));
+      var fy=topWorld+(((f*271)+flowPhase*820)%(botWorld-topWorld));
+      ctx.beginPath();ctx.arc(fx,fy,3+(f%4),0,7);ctx.fill();
+    }
+  }
+  // bank details: spruce crowns in clusters, with stumps by the water
+  for(var t=Math.floor(topWorld/140)*140;t<botWorld;t+=140){
+    var jx=Math.sin(t*0.7)*22,k3=(t/140)|0;
+    var r0=26+(k3%3)*7;
+    ctx.fillStyle='#0f1c14';
+    ctx.beginPath();ctx.arc(XL-70+jx,t,r0,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(XL-104+jx,t+34,r0*0.7,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(XR+76-jx,t+70,r0*0.92,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(XR+114-jx,t+104,r0*0.66,0,7);ctx.fill();
+    ctx.fillStyle='#182a1c';
+    ctx.beginPath();ctx.arc(XL-62+jx,t-8,r0*0.5,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(XR+84-jx,t+60,r0*0.46,0,7);ctx.fill();
+  }
+  ctx.fillStyle='#233c2b';
+  for(var t2=Math.floor(topWorld/220)*220;t2<botWorld;t2+=220){
+    ctx.beginPath();ctx.arc(XL-24,t2+40,10,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(XR+26,t2+150,9,0,7);ctx.fill();
+  }
+  // bank walk edge
+  ctx.fillStyle='#2c4432';
+  ctx.fillRect(XL-42,topWorld,42,botWorld-topWorld);
+  ctx.fillRect(XR,topWorld,42,botWorld-topWorld);
+  if(G){
+    // all jams' boulders in view
+    for(var jj=0;jj<G.jams.length;jj++){
+      var J=G.jams[jj];
+      if(J.y<topWorld-200||J.y>botWorld+200)continue;
+      for(var b=0;b<J.boulders.length;b++)drawBoulder(J.boulders[b]);
+    }
+    // wake crescents just downstream of each boulder
+    if(jam){
+      for(var b2=0;b2<jam.boulders.length;b2++){
+        var bb=jam.boulders[b2];
+        var wob=Math.sin(flowPhase*3.2+b2*1.7)*1.6;
+        ctx.strokeStyle='rgba(214,232,228,0.28)';ctx.lineWidth=2.5;
+        ctx.beginPath();ctx.arc(bb.x,bb.y+wob,bb.r+3,0.25*Math.PI,0.75*Math.PI);ctx.stroke();
+        ctx.strokeStyle='rgba(214,232,228,0.14)';ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(bb.x,bb.y+wob*0.5,bb.r+9,0.3*Math.PI,0.7*Math.PI);ctx.stroke();
+      }
+    }
+    // jam logs
+    for(var jl=0;jl<G.jams.length;jl++){
+      var J2=G.jams[jl];
+      for(var li=0;li<J2.logs.length;li++){
+        var L=J2.logs[li];
+        if(L.state==='jam'||L.state==='pend'){
+          if(L.y>topWorld-160&&L.y<botWorld+160)drawLog(L,false);
+        }
+      }
+    }
+    // free logs
+    for(var fi=0;fi<G.free.length;fi++){
+      var F=G.free[fi];
+      if(!F.gone&&F.y>topWorld-160&&F.y<botWorld+160)drawLog(F,true);
+    }
+    // dynamite
+    if(G.dyn.fuse>0){
+      ctx.fillStyle='#b0322a';
+      ctx.fillRect(G.dyn.x-6,G.dyn.y-3,12,6);
+      ctx.fillStyle='#ffd97a';
+      ctx.beginPath();ctx.arc(G.dyn.x+7,G.dyn.y-4+Math.sin(flowPhase*20)*1.5,2,0,7);ctx.fill();
+    }
+    // pry target highlight
+    if(hoverLog&&hoverLog.state==='jam'&&S==='play'){
+      ctx.save();ctx.translate(hoverLog.x,hoverLog.y);ctx.rotate(hoverLog.a);
+      ctx.strokeStyle='rgba(232,201,138,0.7)';ctx.lineWidth=2.5;
+      ctx.strokeRect(-hoverLog.hl-3,-hoverLog.hw-3,hoverLog.hl*2+6,hoverLog.hw*2+6);
+      ctx.restore();
+    }
+    // pry progress
+    if(G.pry.on&&G.pry.log){
+      var PL=G.pry.log;
+      ctx.strokeStyle='#e8c98a';ctx.lineWidth=4;
+      ctx.beginPath();ctx.arc(PL.x,PL.y,26,-Math.PI/2,-Math.PI/2+Math.PI*2*(G.pry.t/PRY_TIME));ctx.stroke();
+    }
+    // quick-balance warning ring
+    if(G.quickBal>0){
+      ctx.strokeStyle='rgba(224,92,78,'+(0.4+0.5*Math.sin(flowPhase*14))+')';ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(G.player.x,G.player.y,30,0,7);ctx.stroke();
+    }
+    // particles
+    for(var pi2=0;pi2<G.parts.length;pi2++){
+      var pt=G.parts[pi2];
+      ctx.fillStyle=pt.c;ctx.globalAlpha=clamp(pt.t*2,0,1);
+      ctx.fillRect(pt.x-2,pt.y-2,4,4);
+    }
+    ctx.globalAlpha=1;
+    drawPlayer();
+    // ride balance meter
+    if(G.ride.on){
+      var p=G.player;
+      ctx.save();ctx.translate(p.x,p.y-46);
+      ctx.fillStyle='rgba(14,26,20,0.8)';ctx.fillRect(-42,-6,84,12);
+      ctx.strokeStyle='#3c4c3a';ctx.strokeRect(-42,-6,84,12);
+      var bx2=clamp(G.ride.bal,-1,1)*38;
+      ctx.fillStyle=Math.abs(G.ride.bal)>0.7?'#e05c4e':'#e8c98a';
+      ctx.fillRect(bx2-3,-6,6,12);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+function drawBoulder(b){
+  if(!b.pts){ // jagged outline, fixed per boulder
+    b.pts=[];
+    var rr=mulberry((b.x*73+b.y*131)|0);
+    for(var i=0;i<9;i++){
+      var an=i/9*Math.PI*2;
+      var rad=b.r*(0.78+rr()*0.3);
+      b.pts.push([Math.cos(an)*rad,Math.sin(an)*rad]);
+    }
+  }
+  ctx.save();ctx.translate(b.x,b.y);
+  ctx.fillStyle='#39413c';
+  ctx.beginPath();ctx.moveTo(b.pts[0][0],b.pts[0][1]);
+  for(var j=1;j<9;j++)ctx.lineTo(b.pts[j][0],b.pts[j][1]);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='#4a534d';
+  ctx.beginPath();ctx.moveTo(b.pts[0][0]*.62-b.r*.12,b.pts[0][1]*.62-b.r*.16);
+  for(var k=1;k<9;k++)ctx.lineTo(b.pts[k][0]*.62-b.r*.12,b.pts[k][1]*.62-b.r*.16);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle='#59635c';
+  ctx.beginPath();ctx.moveTo(b.pts[0][0]*.3-b.r*.2,b.pts[0][1]*.3-b.r*.26);
+  for(var m=1;m<9;m++)ctx.lineTo(b.pts[m][0]*.3-b.r*.2,b.pts[m][1]*.3-b.r*.26);
+  ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+function drawLog(L,free){
+  ctx.save();
+  var bob=free?0:Math.sin(flowPhase*1.7+L.x*0.05)*1.2;
+  if(L.shake>0){L.shake-=0.016;ctx.translate((Math.random()-.5)*3,0);}
+  ctx.translate(L.x,L.y+bob);ctx.rotate(L.a);
+  var base=L.deadhead?'#4d3a28':(L.burnMark?'#5a4630':'#8a5a34');
+  var hi=L.deadhead?'#5d4832':(L.burnMark?'#6b5236':'#a06b3e');
+  // body
+  ctx.fillStyle=base;
+  roundRectFill(-L.hl,-L.hw,L.hl*2,L.hw*2,L.hw);
+  ctx.fillStyle=hi;
+  roundRectFill(-L.hl,-L.hw,L.hl*2,L.hw*0.9,L.hw*0.8);
+  // bark lines
+  ctx.strokeStyle='rgba(60,38,20,0.5)';ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(-L.hl*0.7,-L.hw*0.2);ctx.lineTo(L.hl*0.6,-L.hw*0.15);
+  ctx.moveTo(-L.hl*0.5,L.hw*0.4);ctx.lineTo(L.hl*0.75,L.hw*0.35);
+  ctx.stroke();
+  // end grain
+  ctx.fillStyle='#c99e63';
+  ctx.beginPath();ctx.arc(L.hl,0,L.hw*0.92,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(-L.hl,0,L.hw*0.92,0,7);ctx.fill();
+  ctx.strokeStyle='#8a6437';ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(L.hl,0,L.hw*0.5,0,7);ctx.stroke();
+  ctx.beginPath();ctx.arc(-L.hl,0,L.hw*0.5,0,7);ctx.stroke();
+  ctx.restore();
+  // sounding pulse ring (world space)
+  if(L.pulse>0){
+    L.pulse-=0.02;
+    var col=L.tier===0?'125,196,125':(L.tier===1?'224,179,78':'224,92,78');
+    ctx.strokeStyle='rgba('+col+','+clamp(L.pulse,0,1)+')';
+    ctx.lineWidth=3;
+    var rr=18+(1-L.pulse)*34;
+    ctx.beginPath();ctx.arc(L.x,L.y,rr,0,7);ctx.stroke();
+  }
+  // known-load readout: tier-colored edge while the reading is fresh
+  if(L.known&&!free&&L.state==='jam'){
+    var col2=L.tier===0?'rgba(125,196,125,0.55)':(L.tier===1?'rgba(224,179,78,0.6)':'rgba(224,92,78,0.7)');
+    ctx.save();ctx.translate(L.x,L.y+bob);ctx.rotate(L.a);
+    ctx.strokeStyle=col2;ctx.lineWidth=2;
+    ctx.strokeRect(-L.hl-1.5,-L.hw-1.5,L.hl*2+3,L.hw*2+3);
+    ctx.restore();
+    var col3=L.tier===0?'#7dc47d':(L.tier===1?'#e0b34e':'#e05c4e');
+    ctx.fillStyle=col3;
+    ctx.beginPath();ctx.arc(L.x,L.y+bob,3.2,0,7);ctx.fill();
+  }
+}
+function roundRectFill(x,y,w,h,r){
+  r=Math.min(r,h/2,w/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);
+  ctx.fill();
+}
+function drawPlayer(){
+  var p=G.player;
+  ctx.save();ctx.translate(p.x,p.y);
+  var hop=p.hopT>0?Math.sin((1-p.hopT/0.22)*Math.PI)*10:0;
+  ctx.translate(0,-hop);
+  var lean=G.ride.on?G.ride.bal*0.5:0;
+  ctx.rotate(lean);
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.beginPath();ctx.ellipse(0,8+hop,9,4,0,0,7);ctx.fill();
+  // legs
+  ctx.strokeStyle='#2b2b33';ctx.lineWidth=3.4;
+  ctx.beginPath();ctx.moveTo(-3,6);ctx.lineTo(-4,-2);ctx.moveTo(3,6);ctx.lineTo(4,-2);ctx.stroke();
+  // body: red shirt
+  ctx.fillStyle=p.soaked>0?'#8d3a30':'#c33d2e';
+  ctx.fillRect(-5,-12,10,11);
+  // peavey pole
+  ctx.strokeStyle='#7a5a34';ctx.lineWidth=2;
+  var pa=G.pry.on?Math.sin(flowPhase*18)*0.2-0.8:-0.5;
+  ctx.beginPath();ctx.moveTo(p.face*3,-6);ctx.lineTo(p.face*3+Math.cos(pa)*p.face*20,-6+Math.sin(pa)*20);ctx.stroke();
+  ctx.strokeStyle='#9b9f9c';ctx.lineWidth=2.4;
+  ctx.beginPath();ctx.moveTo(p.face*3+Math.cos(pa)*p.face*20,-6+Math.sin(pa)*20);
+  ctx.lineTo(p.face*3+Math.cos(pa)*p.face*25,-6+Math.sin(pa)*25);ctx.stroke();
+  // head + cap
+  ctx.fillStyle='#d9a878';
+  ctx.beginPath();ctx.arc(0,-16,4.4,0,7);ctx.fill();
+  ctx.fillStyle='#3a3f45';
+  ctx.fillRect(-4.6,-21,9.2,3.4);
+  ctx.restore();
+  if(p.stun>0){
+    ctx.strokeStyle='rgba(255,217,122,0.8)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(p.x,p.y-24,8+Math.sin(flowPhase*10)*2,0,7);ctx.stroke();
+  }
+}
+// ============================== input ==============================
+var pointerPry=false,hoverLog=null,touchBal=0;
+var tbDynBtn=document.getElementById('tbDyn');
+var scoreEl=document.getElementById('score'),gfill=document.getElementById('gfill'),
+    dynEl=document.getElementById('dyn'),hintEl=document.getElementById('hint'),jamnoEl=document.getElementById('jamno');
+function setHint(t){G.hint=t;G.hintT=4.5;hintEl.textContent=t;hintEl.classList.remove('hidden');jamnoEl.textContent='JAM '+G.jamNo;}
+function screenToWorld(px,py){
+  var portrait=vh>vw;
+  var sc=portrait?vw/720:Math.min(vh/760,vw/1400)*1.35;
+  sc=clamp(sc,0.42,1.5);
+  return {x:(px-vw/2)/sc+G.cam.x,y:(py-vh*0.44)/sc+G.cam.y};
+}
+addEventListener('keydown',function(e){
+  if(e.repeat){keys[e.key]=true;return;}
+  keys[e.key]=true;
+  auInit();auResume();
+  if(e.key==='p'||e.key==='P'||e.key==='Escape'){
+    if(S==='play'){togglePause();e.preventDefault();}
+    return;
+  }
+  if(e.key==='r'||e.key==='R'){
+    if(S==='play'||S==='over')restart();
+    return;
+  }
+  if(S==='title'&&(e.key==='Enter'||e.key===' ')){startPlay();e.preventDefault();return;}
+  if(S==='over'&&e.key==='Enter'){restart();return;}
+  if(S!=='play'||paused)return;
+  if(e.key===' '){
+    e.preventDefault();
+    if(!G.pry.on){
+      var L=nearestAdjacent();
+      if(L){
+        if(G.dyn.armed){placeDyn(L);}
+        else startPry(L);
+      }
+    }
+  }
+  if(e.key==='q'||e.key==='Q')armDyn();
+  if(e.key==='x'||e.key==='X'){var L2=nearestAdjacent();if(L2)soundLog(L2);}
+  // a single tap hops immediately; holding continues through the update loop
+  if(!G.ride.on&&!G.pry.on&&G.player.stun<=0){
+    var dir=null;
+    if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A')dir=[-1,0];
+    else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D')dir=[1,0];
+    else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W')dir=[0,-1];
+    else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S')dir=[0,1];
+    if(dir){tryHopDir(dir[0],dir[1]);G.player.moveCool=0.26;}
+  }
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].indexOf(e.key)>=0)e.preventDefault();
+});
+addEventListener('keyup',function(e){keys[e.key]=false;});
+function nearestAdjacent(){
+  var p=G.player,jam=curJam(),best=null,bd=1e9;
+  // prefer log under cursor if valid
+  if(hoverLog&&hoverLog.state==='jam'&&hoverLog!==p.foot){
+    var n0=nearestOnLog(hoverLog,p.x,p.y);
+    if(Math.hypot(n0.x-p.x,n0.y-p.y)<=REACH)return hoverLog;
+  }
+  for(var i=0;i<jam.logs.length;i++){
+    var L=jam.logs[i];
+    if(L.state!=='jam'||L===p.foot)continue;
+    var n=nearestOnLog(L,p.x,p.y);
+    var d=Math.hypot(n.x-p.x,n.y-p.y);
+    if(d<=REACH&&d<bd){bd=d;best=L;}
+  }
+  return best;
+}
+var pdown=false,pdownT=0,pdownX=0,pdownY=0,pdownLog=null,longT=null;
+cv.addEventListener('pointerdown',function(e){
+  auInit();auResume();
+  if(S!=='play'||paused)return;
+  pdown=true;pdownX=e.clientX;pdownY=e.clientY;pdownT=performance.now();
+  var w=screenToWorld(e.clientX,e.clientY);
+  if(G.ride.on){
+    touchBal=e.clientX<vw/2?-1:1;
+    // also try hop toward tapped foothold
+    tryHopPoint(w.x,w.y);
+    return;
+  }
+  pdownLog=adjacentLogAt(w.x,w.y);
+  if(pdownLog&&G.dyn.armed){placeDyn(pdownLog);pdownLog=null;return;}
+  if(pdownLog){
+    // begin pry on hold
+    longT=setTimeout(function(){
+      if(pdown&&pdownLog){pointerPry=true;startPry(pdownLog);}
+    },240);
+  }
+});
+cv.addEventListener('pointermove',function(e){
+  if(S!=='play')return;
+  var w=screenToWorld(e.clientX,e.clientY);
+  hoverLog=adjacentLogAt(w.x,w.y);
+});
+addEventListener('pointerup',function(e){
+  touchBal=0;
+  if(longT){clearTimeout(longT);longT=null;}
+  if(!pdown)return;
+  pdown=false;
+  var wasQuick=performance.now()-pdownT<240;
+  pointerPry=false;
+  if(S!=='play'||paused)return;
+  if(G.ride.on)return;
+  if(wasQuick){
+    var w=screenToWorld(e.clientX,e.clientY);
+    if(pdownLog){soundLog(pdownLog);}
+    else tryHopPoint(w.x,w.y);
+  }
+  pdownLog=null;
+});
+addEventListener('pointercancel',function(){touchBal=0;pointerPry=false;pdown=false;if(longT){clearTimeout(longT);longT=null;}});
+tbDynBtn.addEventListener('pointerdown',function(e){e.stopPropagation();armDyn();});
+// touch device: show DYN button
+if('ontouchstart' in window)document.getElementById('tbtns').style.display='flex';
+// ============================== screens ==============================
+function show(id){document.getElementById(id).classList.remove('hidden');}
+function hide(id){document.getElementById(id).classList.add('hidden');}
+function startPlay(){
+  auInit();auResume();riverLevel(.10);
+  newGame();
+  S='play';paused=false;
+  hide('title');hide('over');hide('pause');
+  show('topbar');show('pauseBtn');
+  scoreEl.textContent='MILL 0';
+  jamnoEl.textContent='JAM 1';
+}
+function restart(){
+  hide('over');hide('pause');paused=false;
+  startPlay();
+}
+function togglePause(){
+  if(S!=='play')return;
+  paused=!paused;
+  if(paused)show('pause');else{hide('pause');auResume();}
+}
+document.getElementById('playBtn').addEventListener('click',startPlay);
+document.getElementById('restartBtn').addEventListener('click',restart);
+document.getElementById('restartBtn2').addEventListener('click',restart);
+document.getElementById('resumeBtn').addEventListener('click',togglePause);
+document.getElementById('pauseBtn').addEventListener('click',togglePause);
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden&&S==='play'&&!paused){paused=true;pauseFromBlur=true;show('pause');}
+});
+// ============================== resize & loop ==============================
+function resize(){
+  dpr=Math.min(window.devicePixelRatio||1,3);
+  vw=innerWidth;vh=innerHeight;
+  cv.width=Math.round(vw*dpr);cv.height=Math.round(vh*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener('resize',resize);
+resize();
+var lastT=0;
+function frame(t){
+  var dt=Math.min(0.05,(t-lastT)/1000||0.016);
+  lastT=t;
+  if(G){update(dt);render(dt);}
+  else{
+    // title backdrop: still river
+    ctx.save();ctx.clearRect(0,0,vw,vh);
+    ctx.fillStyle='#14251d';ctx.fillRect(0,0,vw,vh);
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+sdkReady();
+// title backdrop world
+newGame();S='title';
+// debug hook for automated verification
+window.__KL={
+  get:function(){return G;},
+  state:function(){return S;},
+  jam:function(){return curJam();},
+  freedCount:function(L){return freedByRemoval(curJam(),L).length;},
+  start:startPlay,
+  hop:tryHopPoint,
+  pry:startPry,
+  finishPry:finishPry,
+  release:releaseLog,
+  setWater:function(v){G.water=v;},
+};
+</script>
