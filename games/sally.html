@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>SALLY</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#151019; }
+  #c { display:block; width:100vw; height:100vh; touch-action:none; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+'use strict';
+(function(){
+
+// ---------- constants ----------
+var W = 1600, H = 1000;
+var PLAYER_BELL = 2;
+var PERFECT_MS = 0.048, GOOD_MS = 0.100;
+var DROP_AFTER = 0.30;           // s past ideal before the bell fires itself
+var MAX_DROPS = 3;
+
+// bell prime frequencies, bell 1 (treble) highest. Six-bell ring in G.
+var FREQ6 = [659.26, 587.33, 523.25, 493.88, 440.00, 392.00];
+var FREQ4 = [523.25, 493.88, 440.00, 392.00];   // four-bell ring ends on the tenor
+var BELL_COL = ['#e8534a', '#e8a13c', '#5fb460', '#5a9fd4', '#a678c8', '#c8c8c8'];
+
+var canvas = document.getElementById('c');
+var ctx = canvas.getContext('2d');
+var dpr = 1, cw = 0, ch = 0;
+var portrait = false, scaleT = 1, offX = 0, offY = 0;
+var WW = W, HH = H, LAY = null;
+
+function computeLayout(){
+  if (!portrait){
+    WW = 1600; HH = 1000;
+    LAY = {
+      cx: 580, feedbackY: 512,
+      frieze: { x0: 240, span: 680, y: 92 },
+      player: { x: 580, y: 690, s: 1.3 },
+      arc: { x0: 150, span: 860, yBase: 500, amp: 55 },
+      beamW: 1160, win: [[60, 250], [1060, 250]], glow: [580, 640],
+      strip: { cx: 580, y: 916 },
+      panel: { x: 1200, y: 168, w: 366, h: 760, maxRows: 10 },
+      menuY: 0
+    };
+  } else {
+    WW = 1000; HH = 1600;
+    LAY = {
+      cx: 500, feedbackY: 470,
+      frieze: { x0: 150, span: 700, y: 92 },
+      player: { x: 500, y: 620, s: 1.15 },
+      arc: { x0: 100, span: 800, yBase: 440, amp: 50 },
+      beamW: 1000, win: [[70, 240], [870, 240]], glow: [500, 580],
+      strip: { cx: 500, y: 902 },
+      panel: { x: 80, y: 1006, w: 840, h: 560, maxRows: 7 },
+      menuY: 260
+    };
+  }
+}
+function resize(){
+  dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  cw = window.innerWidth; ch = window.innerHeight;
+  canvas.width = Math.round(cw * dpr);
+  canvas.height = Math.round(ch * dpr);
+  canvas.style.width = cw + 'px';
+  canvas.style.height = ch + 'px';
+  portrait = ch > cw * 1.15;
+  computeLayout();
+  scaleT = Math.min(cw / WW, ch / HH);
+  offX = (cw - WW * scaleT) / 2;
+  offY = (ch - HH * scaleT) / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function toWorld(px, py){
+  return { x: (px - offX) / scaleT, y: (py - offY) / scaleT };
+}
+
+// ---------- audio ----------
+var AC = null, master = null, muted = false, noiseBuf = null;
+function audioInit(){
+  if (AC) return;
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = 0.85; master.connect(AC.destination);
+    var len = AC.sampleRate * 1.2;
+    noiseBuf = AC.createBuffer(1, len, AC.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  } catch (e) { AC = null; }
+}
+function audioResume(){ if (AC && AC.state === 'suspended') AC.resume(); }
+
+// partials of a church bell: hum, prime, tierce, quint, nominal, superquint
+var PART_R = [0.5, 1.0, 1.19, 1.5, 2.0, 2.74];
+var PART_G = [0.42, 1.0, 0.38, 0.2, 0.5, 0.10];
+var PART_D = [3.0, 1.7, 1.2, 0.9, 0.55, 0.3];
+function bellSound(freq, vel, pan, dull){
+  if (!AC || muted) return;
+  var t = AC.currentTime;
+  var out = AC.createGain(); out.gain.value = vel;
+  if (AC.createStereoPanner){
+    var p = AC.createStereoPanner(); p.pan.value = pan;
+    out.connect(p); p.connect(master);
+  } else out.connect(master);
+  var sizeK = 392 / freq;                       // bigger bell rings longer
+  for (var i = 0; i < PART_R.length; i++){
+    if (dull && i > 2) continue;
+    var o = AC.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = freq * PART_R[i] * (1 + (Math.random() - 0.5) * 0.004);
+    var g = AC.createGain();
+    var pk = PART_G[i] * 0.2 * (dull ? 0.4 : 1);
+    var dur = PART_D[i] * (0.7 + 0.5 * sizeK) * (dull ? 0.35 : 1);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(pk, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0004, t + dur);
+    o.connect(g); g.connect(out);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  var n = AC.createBufferSource(); n.buffer = noiseBuf;
+  var f = AC.createBiquadFilter(); f.type = 'bandpass';
+  f.frequency.value = dull ? freq * 1.2 : freq * 2.6; f.Q.value = 1.4;
+  var ng = AC.createGain();
+  ng.gain.setValueAtTime(vel * (dull ? 0.25 : 0.5), t);
+  ng.gain.exponentialRampToValueAtTime(0.0005, t + 0.035);
+  n.connect(f); f.connect(ng); ng.connect(out);
+  n.start(t); n.stop(t + 0.05);
+}
+function creak(){
+  if (!AC || muted) return;
+  var t = AC.currentTime;
+  var n = AC.createBufferSource(); n.buffer = noiseBuf;
+  var f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(500, t);
+  f.frequency.linearRampToValueAtTime(180, t + 0.09);
+  var g = AC.createGain();
+  g.gain.setValueAtTime(0.05, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  n.connect(f); f.connect(g); g.connect(master);
+  n.start(t); n.stop(t + 0.12);
+}
+function knock(){
+  if (!AC || muted) return;
+  var t = AC.currentTime;
+  var o = AC.createOscillator(); o.type = 'square'; o.frequency.value = 210;
+  var g = AC.createGain();
+  g.gain.setValueAtTime(0.14, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.1);
+  var o2 = AC.createOscillator(); o2.type = 'square'; o2.frequency.value = 300;
+  var g2 = AC.createGain();
+  g2.gain.setValueAtTime(0.1, t + 0.1);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  o2.connect(g2); g2.connect(master);
+  o2.start(t + 0.1); o2.stop(t + 0.22);
+}
+function uiClick(){
+  if (!AC || muted) return;
+  var t = AC.currentTime;
+  var o = AC.createOscillator(); o.type = 'triangle'; o.frequency.value = 760;
+  var g = AC.createGain();
+  g.gain.setValueAtTime(0.06, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.06);
+}
+
+// ---------- arcade sdk (guarded) ----------
+var arcade = null, bestScore = 0;
+try {
+  if (window.Arcade && Arcade.ready) Arcade.ready().then(function(a){
+    arcade = a;
+    try {
+      a.scores.me({ period:'all' }).then(function(r){
+        if (r && r.ok && r.entry) bestScore = Math.max(bestScore, r.entry.score);
+      });
+    } catch (e) {}
+  });
+} catch (e) {}
+function unlock(slug){ try { if (arcade) arcade.achievements.unlock(slug); } catch (e) {} }
+function submitScore(score, meta){ try { if (arcade) arcade.scores.submit(score, meta); } catch (e) {} }
+
+// ---------- method engine (place notation) ----------
+function rounds(n){ var r = []; for (var i = 1; i <= n; i++) r.push(i); return r; }
+function applyNotation(row, nota){
+  var n = row.length, out = row.slice(), i;
+  if (nota === 'x'){
+    for (i = 0; i + 1 < n; i += 2){ out[i] = row[i + 1]; out[i + 1] = row[i]; }
+    return out;
+  }
+  var hold = {};
+  for (i = 0; i < nota.length; i++) hold[parseInt(nota.charAt(i), 10)] = true;
+  i = 0;
+  while (i < n){
+    if (hold[i + 1]){ i++; continue; }
+    if (i + 1 < n && !hold[i + 2]){ out[i] = row[i + 1]; out[i + 1] = row[i]; i += 2; }
+    else i++;
+  }
+  return out;
+}
+// a stream yields {nota, call?} per generated row; call marks a lead-head row
+function makeStream(stage, stageIdx){
+  if (stage.method === 'rounds') return function(){ return { nota: null }; };
+  if (stage.method === 'hunt'){
+    var n = stage.bells, k = 0;
+    return function(){ var s = (k % 2 === 0) ? 'x' : ('1' + n); k++; return { nota: s }; };
+  }
+  // plain bob minor: lead = x16 x16 x16 x16 x16 x + lead end (12 changes)
+  var idx = 0, leadNum = 0;
+  return function(){
+    var pos = idx % 12; idx++;
+    if (pos % 2 === 0 && pos < 11) return { nota: 'x' };
+    if (pos < 11) return { nota: '16' };
+    var call;
+    if (stageIdx === 3) call = (leadNum === 1) ? 'bob' : 'plain';
+    else {
+      if (leadNum === 0) call = 'plain';
+      else {
+        var r = Math.random();
+        call = r < 0.38 ? 'plain' : (r < 0.78 ? 'bob' : 'single');
+      }
+    }
+    leadNum++;
+    return { nota: call === 'bob' ? '14' : (call === 'single' ? '1234' : '12'), call: call };
+  };
+}
+
+// ---------- stages ----------
+var STAGES = [
+  { name:'Rounds on four',      bells:4, method:'rounds', rows:8,  beat:0.46, marker:1 },
+  { name:'Plain hunt on four',  bells:4, method:'hunt',   rows:9,  beat:0.44, marker:1 },
+  { name:'Plain hunt on six',   bells:6, method:'hunt',   rows:13, beat:0.41, marker:0.4 },
+  { name:'Plain Bob Minor',     bells:6, method:'bob',    rows:25, beat:0.39, marker:0 },
+  { name:'The touch',           bells:6, method:'bob',    rows:Infinity, beat:0.37, marker:0 }
+];
+
+// ---------- game state ----------
+var mode = 'menu';           // menu | ring | stand
+var paused = false, helpOpen = false;
+var G = null;
+var toasts = [];
+var flashes = [];
+var buttons = [];
+var rowsRungMarks = [];
+
+function newGame(){
+  rowsRungMarks = [];
+  toasts = []; flashes = [];
+  G = {
+    stageIdx: 0,
+    score: 0, mult: 1, perfectStreak: 0, bestStreak: 0,
+    drops: 0, rowsRung: 0, blowsRung: 0,
+    perfects: 0, goods: 0, wides: 0,
+    callsAnswered: 0, leadDropped: false, leadClean: true,
+    announcedCall: null,
+    time: 0,
+    banner: null,
+    stage: null, stream: null,
+    rowQueue: [], lastGen: null,
+    strikes: [],
+    rowsLeft: 0,
+    beat: 0.45, marker: 1,
+    over: false,
+    anim: {},
+    lastPull: -9, lastGrade: '', lastErr: 0,
+    unlocked: {}
+  };
+  for (var i = 1; i <= 6; i++) G.anim[i] = -9;
+  startStage(0, 1.2);
+}
+
+function startStage(idx, delay){
+  var st = STAGES[idx];
+  G.stageIdx = idx;
+  G.stage = st;
+  G.beat = st.beat;
+  G.marker = st.marker;
+  G.stream = makeStream(st, idx);
+  G.rowsLeft = st.rows;
+  G.leadDropped = false; G.leadClean = true; G.announcedCall = null;
+  G.rowQueue = [];
+  G.strikes = [];
+  var start = G.time + delay + 2.6;
+  G.lastGen = { order: rounds(st.bells), start: start, stroke: 0, genIdx: 0, leadEnd: null };
+  G.rowQueue.push(G.lastGen);
+  extendQueue();
+  G.banner = { lines: [st.name, 'Look to. Treble’s going. Gone.'], until: G.time + delay + 2.3 };
+}
+
+function genNextRow(){
+  var lg = G.lastGen, st = G.stage;
+  var t = lg.start + st.bells * G.beat + ((lg.stroke === 1) ? G.beat : 0);
+  var res = G.stream();
+  var order = res.nota ? applyNotation(lg.order, res.nota) : lg.order.slice();
+  var row = {
+    order: order, start: t, stroke: (lg.stroke + 1) % 2,
+    genIdx: lg.genIdx + 1, leadEnd: res.call || null, announce: null
+  };
+  if (res.call && res.call !== 'plain'){
+    // announce two rows before the altered row is rung
+    var target = row.genIdx - 2, found = false;
+    for (var i = 0; i < G.rowQueue.length; i++){
+      if (G.rowQueue[i].genIdx === target){ G.rowQueue[i].announce = res.call; found = true; break; }
+    }
+    if (!found) row.announce = res.call;
+  }
+  G.rowQueue.push(row);
+  G.lastGen = row;
+}
+function extendQueue(){
+  while (G.rowQueue.length < 14) genNextRow();
+}
+
+function promoteRow(){
+  var st = G.stage;
+  var row = G.rowQueue.shift();
+  if (row.announce) announceCall(row.announce);
+  if (row.leadEnd) processLeadEnd(row);
+  for (var i = 0; i < row.order.length; i++){
+    var b = row.order[i];
+    G.strikes.push({
+      bell: b, t: row.start + i * G.beat, place: i,
+      rowT: row.start, rb: G.beat, stroke: row.stroke,
+      player: (b === PLAYER_BELL), fired: false, resolved: (b !== PLAYER_BELL),
+      aiErr: (b === PLAYER_BELL) ? 0 : (gauss() * 0.011)
+    });
+  }
+  rowsRungMarks.push(row.start + st.bells * G.beat);
+  G.rowsLeft--;
+  extendQueue();
+}
+function processLeadEnd(row){
+  if (row.leadEnd !== 'plain' && !G.leadDropped){
+    G.callsAnswered++;
+    if (G.callsAnswered >= 5 && !G.unlocked['bobbed']){ G.unlocked['bobbed'] = 1; unlock('bobbed'); }
+  }
+  if (G.leadClean && G.blowsRung > 0){ G.score += 500; toast('True lead. +500'); }
+  G.leadClean = true; G.leadDropped = false;
+  G.announcedCall = null;
+  if (G.stage.rows === Infinity && G.beat > 0.30){
+    G.beat = Math.max(0.30, G.beat - 0.010);
+    // retime queued rows to the quicker beat, chaining from this row
+    var prev = row;
+    for (var k = 0; k < G.rowQueue.length; k++){
+      G.rowQueue[k].start = prev.start + G.stage.bells * G.beat + ((prev.stroke === 1) ? G.beat : 0);
+      prev = G.rowQueue[k];
+    }
+  }
+}
+function announceCall(call){
+  var word = call === 'bob' ? 'Bob!' : 'Single!';
+  G.banner = { lines: [word], until: G.time + 1.5, call: true };
+  G.announcedCall = call;
+  knock();
+}
+function gauss(){
+  var u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function stageAdvanceCheck(){
+  if (G.stage.rows === Infinity || G.rowsLeft > 0) return;
+  if (G.strikes.length || rowsRungMarks.length) return;
+  if (G.stageIdx === 0 && !G.unlocked['first-blows']){ G.unlocked['first-blows'] = 1; unlock('first-blows'); }
+  if (G.stageIdx === 2 && !G.unlocked['hunting']){ G.unlocked['hunting'] = 1; unlock('hunting'); }
+  startStage(G.stageIdx + 1, 0.3);
+}
+
+// ---------- input: the pull ----------
+function pull(){
+  if (mode !== 'ring' || paused || helpOpen || G.over) return;
+  creak();
+  var now = G.time;
+  var best = null, bestAbs = 1e9;
+  for (var i = 0; i < G.strikes.length; i++){
+    var s = G.strikes[i];
+    if (!s.player || s.resolved) continue;
+    var d = Math.abs(now - s.t);
+    if (d < bestAbs){ bestAbs = d; best = s; }
+  }
+  var maxReach = G.beat * 0.62;
+  if (!best || bestAbs > maxReach){
+    bellSound(freqOf(PLAYER_BELL), 0.35, 0, true);
+    G.lastGrade = 'clip'; G.lastPull = now; G.lastErr = 0;
+    G.perfectStreak = 0; G.mult = 1;
+    return;
+  }
+  best.resolved = true; best.fired = true;
+  G.anim[PLAYER_BELL] = now;
+  bellSound(freqOf(PLAYER_BELL), 0.95, 0, false);
+  var err = now - best.t;
+  G.lastErr = err; G.lastPull = now;
+  G.blowsRung++;
+  var a = Math.abs(err);
+  if (a <= PERFECT_MS){
+    G.perfectStreak++; G.perfects++;
+    if (G.perfectStreak > G.bestStreak) G.bestStreak = G.perfectStreak;
+    G.mult = 1 + Math.min(3, Math.floor(G.perfectStreak / 8));
+    G.score += 100 * G.mult;
+    G.lastGrade = 'perfect';
+    if (G.perfectStreak >= 24 && !G.unlocked['ropesight']){ G.unlocked['ropesight'] = 1; unlock('ropesight'); }
+  } else if (a <= GOOD_MS){
+    G.perfectStreak = 0; G.mult = 1; G.goods++;
+    G.score += 60; G.lastGrade = 'good';
+  } else {
+    G.perfectStreak = 0; G.mult = 1; G.wides++;
+    G.score += 10; G.lastGrade = 'wide'; G.leadClean = false;
+  }
+}
+function freqOf(bell){
+  var st = G ? G.stage : STAGES[0];
+  return (st.bells === 4 ? FREQ4 : FREQ6)[bell - 1];
+}
+function panOf(bell){
+  var st = G.stage;
+  return -0.7 + 1.4 * (bell - 1) / (st.bells - 1);
+}
+
+// ---------- update ----------
+var lastNow = performance.now();
+function update(){
+  var now = performance.now();
+  var dt = Math.min(0.05, (now - lastNow) / 1000);
+  lastNow = now;
+  var i;
+  for (i = toasts.length - 1; i >= 0; i--){ toasts[i].t += dt; if (toasts[i].t > 3) toasts.splice(i, 1); }
+  for (i = flashes.length - 1; i >= 0; i--){ flashes[i].t += dt; if (flashes[i].t > 1) flashes.splice(i, 1); }
+  if (mode !== 'ring' || paused || helpOpen) return;
+  G.time += dt;
+
+  while (G.rowQueue.length && G.rowsLeft > 0 && G.rowQueue[0].start <= G.time + G.beat * 1.5){
+    promoteRow();
+  }
+  for (i = 0; i < G.strikes.length; i++){
+    var s = G.strikes[i];
+    if (!s.fired && !s.player && G.time >= s.t + s.aiErr){
+      s.fired = true;
+      G.anim[s.bell] = G.time;
+      bellSound(freqOf(s.bell), s.bell === 1 ? 0.8 : 0.72, panOf(s.bell), false);
+    }
+    if (s.player && !s.resolved && G.time > s.t + DROP_AFTER){
+      s.resolved = true; s.fired = true;
+      G.anim[PLAYER_BELL] = G.time;
+      bellSound(freqOf(PLAYER_BELL), 0.5, 0, true);
+      G.drops++; G.perfectStreak = 0; G.mult = 1;
+      G.leadClean = false; G.leadDropped = true;
+      G.lastGrade = 'dropped'; G.lastPull = G.time; G.lastErr = 0;
+      flashes.push({ text: 'Dropped', t: 0 });
+      if (G.drops >= MAX_DROPS){ standBand(); return; }
+    }
+  }
+  // prune only rows that ended a while ago, so the whole current row stays drawable
+  var nb = G.stage.bells;
+  G.strikes = G.strikes.filter(function(st){ return st.rowT + nb * st.rb + 0.5 > G.time; });
+  while (rowsRungMarks.length && rowsRungMarks[0] <= G.time){
+    rowsRungMarks.shift(); G.rowsRung++;
+    if (G.rowsRung >= 120 && !G.unlocked['long-touch']){ G.unlocked['long-touch'] = 1; unlock('long-touch'); }
+  }
+  stageAdvanceCheck();
+}
+function toast(text){ toasts.push({ text: text, t: 0 }); if (toasts.length > 3) toasts.shift(); }
+
+function standBand(){
+  G.over = true;
+  mode = 'stand';
+  submitScore(G.score, { rows: G.rowsRung, streak: G.bestStreak, calls: G.callsAnswered });
+  if (G.score > bestScore) bestScore = G.score;
+}
+
+// ---------- drawing ----------
+function roundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+var bgCanvas = null;
+function drawChamber(){
+  if (!bgCanvas || bgCanvas.width !== WW){
+    bgCanvas = document.createElement('canvas');
+    bgCanvas.width = WW; bgCanvas.height = HH;
+    var b = bgCanvas.getContext('2d');
+    var keep = ctx; ctx = b;
+    var g = ctx.createLinearGradient(0, 0, 0, HH);
+    g.addColorStop(0, '#241b2e');
+    g.addColorStop(0.5, '#2e2333');
+    g.addColorStop(1, '#1c1522');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, WW, HH);
+    ctx.strokeStyle = 'rgba(255,240,220,0.035)';
+    ctx.lineWidth = 2;
+    for (var y = 212; y < HH; y += 88){
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WW, y); ctx.stroke();
+      for (var x = ((y / 88) % 2 < 1 ? 0 : 110); x < WW; x += 220){
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 88); ctx.stroke();
+      }
+    }
+    var rg = ctx.createRadialGradient(LAY.glow[0], LAY.glow[1], 60, LAY.glow[0], LAY.glow[1], 720);
+    rg.addColorStop(0, 'rgba(255,190,110,0.10)');
+    rg.addColorStop(1, 'rgba(255,190,110,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, WW, HH);
+    drawWindow(LAY.win[0][0], LAY.win[0][1]); drawWindow(LAY.win[1][0], LAY.win[1][1]);
+    ctx.fillStyle = '#3a2c26';
+    ctx.fillRect(0, 168, LAY.beamW, 26);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(0, 194, LAY.beamW, 6);
+    ctx = keep;
+  }
+  ctx.drawImage(bgCanvas, 0, 0);
+}
+function drawWindow(x, y){
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, y + 150);
+  ctx.lineTo(x, y + 40);
+  ctx.arc(x + 30, y + 40, 30, Math.PI, 0);
+  ctx.lineTo(x + 60, y + 150);
+  ctx.closePath();
+  var g = ctx.createLinearGradient(0, y, 0, y + 150);
+  g.addColorStop(0, '#101a30'); g.addColorStop(1, '#1c2c4a');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = '#4a3a30'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillRect(x + 14, y + 34, 2, 2); ctx.fillRect(x + 40, y + 70, 2, 2); ctx.fillRect(x + 26, y + 110, 2, 2);
+  ctx.restore();
+}
+function ropeX(bell, n){
+  if (bell === PLAYER_BELL) return { x: LAY.player.x, y: LAY.player.y, s: LAY.player.s };
+  var order = [], i;
+  for (i = 1; i <= n; i++) if (i !== PLAYER_BELL) order.push(i);
+  var idx = order.indexOf(bell);
+  var x = LAY.arc.x0 + LAY.arc.span * (idx + 0.5) / (n - 1);
+  var y = LAY.arc.yBase - Math.sin(Math.PI * (idx + 0.5) / (n - 1)) * LAY.arc.amp;
+  return { x: x, y: y, s: 0.85 };
+}
+function drawRopes(){
+  var n = G.stage.bells, i;
+  var list = [];
+  for (i = 1; i <= n; i++) list.push(i);
+  list.sort(function(a, b){ return ropeX(a, n).y - ropeX(b, n).y; });
+  for (var k = 0; k < list.length; k++) drawRope(list[k], n);
+}
+function drawRope(bell, n){
+  var p = ropeX(bell, n);
+  var since = G.time - G.anim[bell];
+  var dip = 0;
+  if (since >= 0 && since < 0.5){
+    var u = since / 0.5;
+    dip = Math.sin(Math.PI * Math.min(1, u * 1.6)) * 44 * (1 - u * 0.3);
+  }
+  var sy = p.y + dip * p.s;
+  var swid = 16 * p.s, shei = 112 * p.s;
+  ctx.strokeStyle = '#c8b494';
+  ctx.lineWidth = 4 * p.s;
+  ctx.beginPath(); ctx.moveTo(p.x, 198); ctx.lineTo(p.x, sy - shei / 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(p.x, sy + shei / 2); ctx.lineTo(p.x, sy + shei / 2 + 80 * p.s); ctx.stroke();
+  ctx.lineWidth = 2.5 * p.s;
+  ctx.beginPath(); ctx.moveTo(p.x, sy + shei / 2 + 80 * p.s);
+  ctx.quadraticCurveTo(p.x + 14 * p.s, sy + shei / 2 + 116 * p.s, p.x + 4 * p.s, sy + shei / 2 + 136 * p.s);
+  ctx.stroke();
+  // sally: striped grip
+  ctx.save();
+  roundRect(p.x - swid, sy - shei / 2, swid * 2, shei, swid);
+  ctx.fillStyle = '#d8d2c4'; ctx.fill();
+  ctx.clip();
+  var stripes = ['#b8433c', '#3c5c9c', '#d8d2c4'];
+  for (var s = -3; s < 4; s++){
+    ctx.fillStyle = stripes[((s % 3) + 3) % 3];
+    ctx.save();
+    ctx.translate(p.x, sy + s * 24 * p.s + dip * 0.15);
+    ctx.rotate(-0.35);
+    ctx.fillRect(-44, -8 * p.s, 88, 16 * p.s);
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.strokeStyle = BELL_COL[bell - 1];
+  ctx.lineWidth = 3 * p.s;
+  roundRect(p.x - swid, sy - shei / 2, swid * 2, shei, swid);
+  ctx.stroke();
+  ctx.fillStyle = bell === PLAYER_BELL ? '#ffd890' : 'rgba(240,230,214,0.75)';
+  ctx.font = 'bold ' + Math.round(24 * p.s + 4) + 'px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(String(bell), p.x, sy + shei / 2 + 32 * p.s + 26);
+  if (bell === PLAYER_BELL){
+    ctx.fillStyle = 'rgba(255,216,144,0.85)';
+    ctx.font = '600 19px system-ui,sans-serif';
+    ctx.fillText('YOU', p.x, sy - shei / 2 - 14);
+  }
+  if (bell === PLAYER_BELL && G.marker > 0 && !G.over){
+    var next = nextPlayerStrike();
+    if (next){
+      var rem = next.t - G.time;
+      if (rem < G.beat * 3 && rem > -0.1){
+        var rr = Math.max(0, rem) / (G.beat * 3);
+        var rad = 44 + rr * 180;
+        ctx.strokeStyle = 'rgba(255,216,144,' + (G.marker * (0.9 - rr * 0.5)).toFixed(3) + ')';
+        ctx.lineWidth = rem < 0.06 ? 7 : 3.5;
+        ctx.beginPath(); ctx.arc(p.x, sy, rad, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+  }
+}
+function nextPlayerStrike(){
+  var best = null;
+  for (var i = 0; i < G.strikes.length; i++){
+    var s = G.strikes[i];
+    if (s.player && !s.resolved && (best === null || s.t < best.t)) best = s;
+  }
+  return best;
+}
+function drawFrieze(){
+  var n = G.stage.bells;
+  for (var b = 1; b <= n; b++){
+    var x = LAY.frieze.x0 + (b - 1) * (LAY.frieze.span / (n - 1));
+    var since = G.time - G.anim[b];
+    var rot = 0;
+    if (since >= 0 && since < 0.6) rot = Math.sin(since * 14) * 0.5 * (1 - since / 0.6);
+    ctx.save();
+    ctx.translate(x, 92);
+    ctx.rotate(rot);
+    ctx.fillStyle = (since >= 0 && since < 0.25) ? '#ffe0a0' : '#8a7350';
+    ctx.beginPath();
+    ctx.moveTo(-16, 18);
+    ctx.quadraticCurveTo(-18, -14, 0, -18);
+    ctx.quadraticCurveTo(18, -14, 16, 18);
+    ctx.lineTo(20, 24); ctx.lineTo(-20, 24);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#4a3a28';
+    ctx.beginPath(); ctx.arc(0, 27, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = BELL_COL[b - 1];
+    ctx.font = 'bold 17px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(b), x, 148);
+  }
+}
+function currentRowStrikes(){
+  if (!G.strikes.length) return [];
+  var by = {}, i;
+  for (i = 0; i < G.strikes.length; i++){
+    var s = G.strikes[i];
+    var key = Math.round(s.rowT * 1000);
+    (by[key] = by[key] || []).push(s);
+  }
+  var keys = Object.keys(by).map(Number).sort(function(a, b){ return a - b; });
+  for (var k = 0; k < keys.length; k++){
+    var row = by[keys[k]];
+    var end = keys[k] / 1000 + G.stage.bells * row[0].rb;
+    if (end > G.time - 0.1) return row.sort(function(a, b){ return a.place - b.place; });
+  }
+  return by[keys[keys.length - 1]].sort(function(a, b){ return a.place - b.place; });
+}
+function drawRowStrip(){
+  var n = G.stage.bells;
+  var row = currentRowStrikes();
+  if (!row.length) return;
+  var bw = 72, gap = 12, total = n * bw + (n - 1) * gap;
+  var x0 = LAY.strip.cx - total / 2, y = LAY.strip.y;
+  ctx.font = '600 15px system-ui,sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(240,230,214,0.5)';
+  ctx.fillText(row[0].stroke === 0 ? 'handstroke' : 'backstroke', x0, y - 12);
+  for (var i = 0; i < row.length; i++){
+    var s = row[i];
+    var x = x0 + i * (bw + gap);
+    var lit = s.fired || G.time >= s.t;
+    roundRect(x, y, bw, 54, 9);
+    ctx.fillStyle = lit ? 'rgba(255,224,160,0.16)' : 'rgba(0,0,0,0.3)';
+    ctx.fill();
+    ctx.strokeStyle = s.player ? '#ffd890' : 'rgba(240,230,214,0.25)';
+    ctx.lineWidth = s.player ? 3 : 1.5;
+    ctx.stroke();
+    ctx.fillStyle = lit ? '#ffe8c0' : BELL_COL[s.bell - 1];
+    ctx.font = 'bold 30px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(s.bell), x + bw / 2, y + 39);
+  }
+  var rowStart = row[0].rowT, rb = row[0].rb;
+  var rowEnd = rowStart + (n - 1) * rb;
+  if (G.time >= rowStart - rb && G.time <= rowEnd + rb * 0.6){
+    var u = (G.time - rowStart) / ((n - 1) * rb);
+    u = Math.max(-0.08, Math.min(1.08, u));
+    var cx = x0 + u * ((n - 1) * (bw + gap)) + bw / 2;
+    ctx.strokeStyle = 'rgba(255,216,144,0.7)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(cx, y - 6); ctx.lineTo(cx, y + 60); ctx.stroke();
+  }
+}
+function drawBlueLine(){
+  var n = G.stage.bells;
+  var px = LAY.panel.x, pw = LAY.panel.w, py = LAY.panel.y, ph = LAY.panel.h;
+  roundRect(px, py, pw, ph, 14);
+  ctx.fillStyle = 'rgba(16,10,20,0.72)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(200,180,148,0.3)';
+  ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = 'rgba(240,230,214,0.55)';
+  ctx.font = '600 16px system-ui,sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('THE LINE', px + 18, py + 30);
+  ctx.textAlign = 'right';
+  ctx.fillText(G.stage.name.toUpperCase(), px + pw - 18, py + 30);
+  var rows = [];
+  var cur = currentRowStrikes();
+  if (cur.length) rows.push({ order: cur.map(function(s){ return s.bell; }), live: cur });
+  for (var q = 0; q < G.rowQueue.length && rows.length < LAY.panel.maxRows; q++){
+    rows.push({ order: G.rowQueue[q].order });
+  }
+  var colW = (pw - 80) / n, rx0 = px + 52, ry0 = py + 74, rh = 64;
+  var pPath = [], tPath = [];
+  for (var r = 0; r < rows.length; r++){
+    var y = ry0 + r * rh;
+    if (y > py + ph - 40) break;
+    var alpha = r === 0 ? 1 : Math.max(0.25, 0.8 - r * 0.08);
+    for (var i = 0; i < rows[r].order.length; i++){
+      var b = rows[r].order[i];
+      var x = rx0 + i * colW + colW / 2;
+      if (b === PLAYER_BELL) pPath.push({ x: x, y: y });
+      if (b === 1) tPath.push({ x: x, y: y });
+      var struck = r === 0 && rows[r].live && (rows[r].live[i].fired || G.time >= rows[r].live[i].t);
+      ctx.fillStyle = b === PLAYER_BELL ? 'rgba(255,216,144,' + alpha + ')'
+        : (struck ? 'rgba(255,232,192,0.95)' : 'rgba(200,190,178,' + (alpha * 0.8).toFixed(3) + ')');
+      ctx.font = (b === PLAYER_BELL ? 'bold ' : '') + '26px "SF Mono",Menlo,Consolas,monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(b), x, y);
+    }
+    if (r === 0){
+      ctx.strokeStyle = 'rgba(255,216,144,0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px + 14, y + 14); ctx.lineTo(px + pw - 14, y + 14); ctx.stroke();
+    }
+  }
+  drawPath(tPath, 'rgba(232,83,74,0.35)', 3);
+  drawPath(pPath, 'rgba(255,216,144,0.8)', 4);
+  if (G.announcedCall){
+    ctx.fillStyle = '#ffb060';
+    ctx.font = 'bold 19px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(G.announcedCall.toUpperCase() + ' AT THE LEAD END', px + pw / 2, py + ph - 16);
+  }
+}
+function drawPath(path, col, w){
+  if (path.length < 2) return;
+  ctx.strokeStyle = col;
+  ctx.lineWidth = w;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(path[0].x, path[0].y - 9);
+  for (var i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y - 9);
+  ctx.stroke();
+}
+function drawHUD(){
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f0e6d6';
+  ctx.font = 'bold 34px system-ui,sans-serif';
+  ctx.fillText(String(G.score), 36, 56);
+  ctx.font = '600 15px system-ui,sans-serif';
+  ctx.fillStyle = 'rgba(240,230,214,0.65)';
+  ctx.fillText('SCORE', 36, 80);
+  if (G.mult > 1){
+    ctx.fillStyle = '#ffd890';
+    ctx.font = 'bold 26px system-ui,sans-serif';
+    ctx.fillText('×' + G.mult, 160, 56);
+  }
+  for (var i = 0; i < MAX_DROPS; i++){
+    var x = 42 + i * 30, y = 100;
+    var lost = i < G.drops;
+    ctx.strokeStyle = lost ? 'rgba(232,83,74,0.4)' : '#c8b494';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 22); ctx.stroke();
+    ctx.fillStyle = lost ? 'rgba(232,83,74,0.4)' : '#b8433c';
+    roundRect(x - 4, y + 4, 8, 12, 4); ctx.fill();
+    if (lost){
+      ctx.strokeStyle = '#e8534a'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(x - 8, y - 2); ctx.lineTo(x + 8, y + 26); ctx.stroke();
+    }
+  }
+  ctx.fillStyle = 'rgba(240,230,214,0.65)';
+  ctx.font = '600 16px system-ui,sans-serif';
+  ctx.fillText('rows ' + G.rowsRung, 36, 156);
+  ctx.fillText('streak ' + G.perfectStreak, 36, 178);
+  if (G.time - G.lastPull < 0.9 && G.lastGrade){
+    var gcol = { perfect: '#8fe89a', good: '#ffd890', wide: '#ffa060', dropped: '#e8534a', clip: '#c0b0b0' }[G.lastGrade];
+    ctx.fillStyle = gcol;
+    ctx.font = 'bold 24px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    var label = G.lastGrade === 'perfect' ? 'Perfect'
+      : G.lastGrade === 'good' ? ('Good, ' + (G.lastErr > 0 ? 'late' : 'early'))
+      : G.lastGrade === 'wide' ? (G.lastErr > 0 ? 'Late' : 'Early')
+      : G.lastGrade === 'clip' ? 'No slot there' : 'Dropped';
+    ctx.fillText(label, LAY.cx, LAY.feedbackY);
+  }
+  drawButtons();
+  ctx.textAlign = 'center';
+  for (i = 0; i < toasts.length; i++){
+    var a = Math.min(1, 3 - toasts[i].t);
+    ctx.fillStyle = 'rgba(255,232,192,' + (a * 0.9).toFixed(3) + ')';
+    ctx.font = '600 20px system-ui,sans-serif';
+    ctx.fillText(toasts[i].text, LAY.cx, 258 + i * 28);
+  }
+  if (G.banner && G.time < G.banner.until){
+    ctx.textAlign = 'center';
+    if (G.banner.call){
+      ctx.fillStyle = '#ffb060';
+      ctx.font = 'bold 64px system-ui,sans-serif';
+      ctx.fillText(G.banner.lines[0], LAY.cx, 384);
+    } else {
+      ctx.fillStyle = '#f0e6d6';
+      ctx.font = 'bold 44px system-ui,sans-serif';
+      ctx.fillText(G.banner.lines[0], LAY.cx, 350);
+      if (G.banner.lines[1]){
+        ctx.fillStyle = 'rgba(240,230,214,0.7)';
+        ctx.font = '600 24px system-ui,sans-serif';
+        ctx.fillText(G.banner.lines[1], LAY.cx, 392);
+      }
+    }
+  }
+  for (i = 0; i < flashes.length; i++){
+    var f = flashes[i];
+    ctx.fillStyle = 'rgba(232,83,74,' + ((1 - f.t) * 0.9).toFixed(3) + ')';
+    ctx.font = 'bold 40px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, LAY.cx, 440 - f.t * 30);
+  }
+}
+function addButton(x, y, w, h, id, label){
+  buttons.push({ x: x, y: y, w: w, h: h, id: id });
+  roundRect(x, y, w, h, 10);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(200,180,148,0.5)';
+  ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#f0e6d6';
+  ctx.font = '600 20px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, x + w / 2, y + h / 2 + 7);
+}
+function drawButtons(){
+  addButton(WW - 138, 24, 54, 44, 'pause', paused ? '▶' : '‖');
+  addButton(WW - 206, 24, 54, 44, 'help', '?');
+  addButton(WW - 274, 24, 54, 44, 'mute', muted ? '×' : '♪');
+}
+function drawMenu(){
+  drawChamberStatic();
+  var mx = WW / 2, my = LAY.menuY;
+  var small = WW < 1200;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f0e6d6';
+  ctx.font = 'bold 110px system-ui,sans-serif';
+  ctx.fillText('SALLY', mx, my + 280);
+  ctx.fillStyle = 'rgba(240,230,214,0.8)';
+  ctx.font = '600 ' + (small ? 24 : 28) + 'px system-ui,sans-serif';
+  if (small){
+    ctx.fillText('Change ringing. You ring the second bell,', mx, my + 336);
+    ctx.fillText('the band rings the rest.', mx, my + 368);
+  } else {
+    ctx.fillText('Change ringing. You ring the second bell, the band rings the rest.', mx, my + 340);
+  }
+  ctx.font = '600 ' + (small ? 19 : 22) + 'px system-ui,sans-serif';
+  ctx.fillStyle = 'rgba(240,230,214,0.6)';
+  ctx.fillText('Each row, every bell strikes once at a steady beat.', mx, my + 414);
+  ctx.fillText('Strike in your slot. The line panel shows your path.', mx, my + 446);
+  ctx.fillText('Miss three blows and the conductor stands the band.', mx, my + 478);
+  addButton(mx - 130, my + 550, 260, 74, 'play', 'Play');
+  addButton(mx - 130, my + 650, 260, 54, 'help', 'Controls');
+  ctx.fillStyle = 'rgba(240,230,214,0.55)';
+  ctx.font = '600 20px system-ui,sans-serif';
+  ctx.fillText('Pull: Space, click, or tap', mx, my + 760);
+  if (bestScore > 0) ctx.fillText('Best score: ' + bestScore, mx, my + 792);
+}
+var bg2Canvas = null;
+function drawChamberStatic(){
+  if (!bg2Canvas || bg2Canvas.width !== WW){
+    bg2Canvas = document.createElement('canvas');
+    bg2Canvas.width = WW; bg2Canvas.height = HH;
+    var b = bg2Canvas.getContext('2d');
+    var g = b.createLinearGradient(0, 0, 0, HH);
+    g.addColorStop(0, '#241b2e'); g.addColorStop(1, '#1c1522');
+    b.fillStyle = g; b.fillRect(0, 0, WW, HH);
+    var rg = b.createRadialGradient(WW / 2, HH / 2, 60, WW / 2, HH / 2, 800);
+    rg.addColorStop(0, 'rgba(255,190,110,0.08)');
+    rg.addColorStop(1, 'rgba(255,190,110,0)');
+    b.fillStyle = rg; b.fillRect(0, 0, WW, HH);
+  }
+  ctx.drawImage(bg2Canvas, 0, 0);
+}
+function drawStand(){
+  drawChamberStatic();
+  var mx = WW / 2, my = LAY.menuY;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f0e6d6';
+  ctx.font = 'bold 84px system-ui,sans-serif';
+  ctx.fillText('Stand.', mx, my + 240);
+  ctx.font = 'bold 48px system-ui,sans-serif';
+  ctx.fillStyle = '#ffd890';
+  ctx.fillText(String(G.score), mx, my + 330);
+  ctx.fillStyle = 'rgba(240,230,214,0.8)';
+  ctx.font = '600 24px system-ui,sans-serif';
+  var lines = [
+    'Rows rung: ' + G.rowsRung,
+    'Perfect ' + G.perfects + ' · good ' + G.goods + ' · wide ' + G.wides,
+    'Best streak: ' + G.bestStreak,
+    'Calls answered: ' + G.callsAnswered
+  ];
+  for (var i = 0; i < lines.length; i++) ctx.fillText(lines[i], mx, my + 400 + i * 40);
+  if (bestScore > 0){
+    ctx.fillStyle = 'rgba(240,230,214,0.55)';
+    ctx.fillText('Best: ' + bestScore, mx, my + 590);
+  }
+  addButton(mx - 130, my + 650, 260, 70, 'restart', 'Restart');
+}
+function drawHelp(){
+  ctx.fillStyle = 'rgba(10,6,14,0.82)';
+  ctx.fillRect(0, 0, WW, HH);
+  var pw = Math.min(760, WW - 80), ph = 700;
+  var px = WW / 2 - pw / 2, py = (HH - ph) / 2 - 40;
+  roundRect(px, py, pw, ph, 18);
+  ctx.fillStyle = '#241b2e'; ctx.fill();
+  ctx.strokeStyle = 'rgba(200,180,148,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f0e6d6';
+  ctx.font = 'bold 34px system-ui,sans-serif';
+  ctx.fillText('Controls', px + 44, py + 64);
+  ctx.font = '600 23px system-ui,sans-serif';
+  var rows = [
+    ['Pull the rope', 'Space, click, or tap'],
+    ['Pause', 'P'],
+    ['Restart', 'R'],
+    ['Mute', 'M'],
+    ['This panel', 'H']
+  ];
+  for (var i = 0; i < rows.length; i++){
+    ctx.fillStyle = 'rgba(240,230,214,0.65)';
+    ctx.fillText(rows[i][0], px + 44, py + 116 + i * 40);
+    ctx.fillStyle = '#ffd890';
+    ctx.fillText(rows[i][1], px + 330, py + 116 + i * 40);
+  }
+  ctx.fillStyle = '#f0e6d6';
+  ctx.font = 'bold 26px system-ui,sans-serif';
+  ctx.fillText('How it works', px + 44, py + 346);
+  ctx.font = '500 21px system-ui,sans-serif';
+  ctx.fillStyle = 'rgba(240,230,214,0.75)';
+  var help = [
+    'Each row, every bell strikes once at a steady beat. Yours is bell 2.',
+    'The order changes every row. The line panel shows where your blow falls.',
+    'After every backstroke row the band leaves a one-beat gap.',
+    'A call of Bob or Single alters the path at the lead end. Watch the line.',
+    'Perfect blows build a multiplier. A missed blow is one of three you get.'
+  ];
+  for (i = 0; i < help.length; i++) ctx.fillText(help[i], px + 44, py + 388 + i * 36);
+  addButton(px + pw / 2 - 100, py + ph - 76, 200, 52, 'closehelp', 'Close');
+}
+
+function render(){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#151019';
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.translate(offX, offY);
+  ctx.scale(scaleT, scaleT);
+  buttons = [];
+  if (mode === 'menu'){ drawMenu(); }
+  else if (mode === 'stand'){ drawStand(); }
+  else {
+    drawChamber();
+    drawFrieze();
+    drawRopes();
+    drawRowStrip();
+    drawBlueLine();
+    drawHUD();
+    if (paused && !helpOpen){
+      ctx.fillStyle = 'rgba(10,6,14,0.6)';
+      ctx.fillRect(0, 0, WW, HH);
+      ctx.fillStyle = '#f0e6d6';
+      ctx.font = 'bold 60px system-ui,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Paused', WW / 2, HH / 2 - 20);
+      ctx.font = '600 24px system-ui,sans-serif';
+      ctx.fillStyle = 'rgba(240,230,214,0.7)';
+      ctx.fillText('Space to resume · R to restart', WW / 2, HH / 2 + 30);
+      drawButtons();
+    }
+  }
+  if (helpOpen) drawHelp();
+}
+
+// ---------- loop ----------
+function frame(){
+  update();
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- input wiring ----------
+function hitButton(wx, wy){
+  for (var i = buttons.length - 1; i >= 0; i--){
+    var b = buttons[i];
+    if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) return b.id;
+  }
+  return null;
+}
+function act(id){
+  uiClick();
+  if (id === 'play' || id === 'restart'){
+    if (mode === 'ring' && G && G.score > 0 && !G.over){
+      submitScore(G.score, { rows: G.rowsRung, streak: G.bestStreak, calls: G.callsAnswered });
+      if (G.score > bestScore) bestScore = G.score;
+    }
+    mode = 'ring'; paused = false; helpOpen = false; newGame();
+  }
+  else if (id === 'pause'){ paused = !paused; }
+  else if (id === 'help'){ helpOpen = true; }
+  else if (id === 'closehelp'){ helpOpen = false; }
+  else if (id === 'mute'){ muted = !muted; }
+}
+function pointerDown(px, py){
+  audioInit(); audioResume();
+  var w = toWorld(px, py);
+  var id = hitButton(w.x, w.y);
+  if (id){ act(id); return; }
+  if (helpOpen){ helpOpen = false; return; }
+  if (mode === 'menu' || mode === 'stand') return;
+  if (paused) return;
+  pull();
+}
+canvas.addEventListener('pointerdown', function(e){
+  e.preventDefault();
+  pointerDown(e.clientX, e.clientY);
+}, { passive: false });
+
+window.addEventListener('keydown', function(e){
+  if (e.repeat) return;
+  var k = e.key;
+  if (k === ' ' || k === 'Spacebar'){
+    e.preventDefault();
+    audioInit(); audioResume();
+    if (helpOpen){ helpOpen = false; return; }
+    if (mode === 'menu'){ act('play'); return; }
+    if (mode === 'stand'){ act('restart'); return; }
+    if (paused){ paused = false; return; }
+    pull();
+  } else if (k === 'p' || k === 'P'){
+    if (mode === 'ring' && !helpOpen) paused = !paused;
+  } else if (k === 'r' || k === 'R'){
+    audioInit(); audioResume();
+    if (mode === 'ring' || mode === 'stand') act('restart');
+  } else if (k === 'm' || k === 'M'){
+    muted = !muted;
+  } else if (k === 'h' || k === 'H' || k === '?'){
+    helpOpen = !helpOpen;
+  } else if (k === 'Enter'){
+    audioInit(); audioResume();
+    if (helpOpen){ helpOpen = false; return; }
+    if (mode === 'menu') act('play');
+    else if (mode === 'stand') act('restart');
+  } else if (k === 'Escape'){
+    if (helpOpen) helpOpen = false;
+    else if (mode === 'ring') paused = !paused;
+  }
+});
+
+window.addEventListener('blur', function(){
+  if (mode === 'ring' && G && !G.over) paused = true;
+});
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden && mode === 'ring' && G && !G.over) paused = true;
+});
+
+// ---------- debug/test hook ----------
+window.__sally = {
+  get mode(){ return mode; },
+  get G(){ return G; },
+  get paused(){ return paused; },
+  pull: pull,
+  act: act,
+  nextPlayerT: function(){
+    if (!G) return null;
+    var s = nextPlayerStrike();
+    return s ? { t: s.t, now: G.time } : null;
+  },
+  applyNotation: applyNotation,
+  roundsFn: rounds,
+  jumpStage: function(idx){ if (G && mode === 'ring') startStage(idx, 0.2); }
+};
+
+})();
+</script>
+</body>
+</html>
