@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>GRIDIRON</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0d1b24;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-user-select:none;user-select:none;touch-action:none}
+  #c{position:fixed;inset:0;display:block}
+  .panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,16,22,.82);z-index:10}
+  .card{background:#122430;border:1px solid #2e4c5e;border-radius:10px;padding:24px 28px;
+    max-width:min(500px,88vw);max-height:88vh;overflow-y:auto;color:#d7e6ee;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+  .card h1{margin:0 0 2px;font-size:36px;letter-spacing:.3em;color:#ffd98c;font-weight:700}
+  .card h2{margin:0 0 10px;font-size:22px;letter-spacing:.1em;color:#ffd98c}
+  .card p{margin:8px 0;font-size:14px;line-height:1.5;color:#c2d5e0}
+  .card .sub{color:#7f9aab;font-size:13px}
+  .ctl{margin:10px 0;padding:0;list-style:none;font-size:13px;line-height:1.8;color:#aec4d1}
+  .ctl b{color:#eaf2f6;font-weight:600;display:inline-block;min-width:120px}
+  button{background:#ffd98c;color:#122430;border:0;border-radius:7px;padding:11px 26px;
+    font-size:16px;font-weight:700;cursor:pointer;margin:12px 8px 0 0;letter-spacing:.04em}
+  button.ghost{background:transparent;color:#d7e6ee;border:1px solid #2e4c5e}
+  button:active{transform:translateY(1px)}
+  .score-line{font-size:28px;color:#ffd98c;margin:6px 0;font-weight:700}
+  .board{margin:10px 0 0;padding:0;list-style:none;font-size:13px;color:#aec4d1;line-height:1.7}
+  .board li b{color:#eaf2f6}
+  #toast{position:fixed;left:50%;top:16%;transform:translateX(-50%);color:#ffd98c;
+    font-size:21px;font-weight:700;letter-spacing:.1em;text-shadow:0 2px 8px rgba(0,0,0,.9);
+    z-index:5;pointer-events:none;opacity:0;transition:opacity .5s;text-align:center;max-width:92vw}
+  #toast small{display:block;font-size:13px;font-weight:400;color:#d7e6ee;letter-spacing:.03em;margin-top:4px}
+  #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:92px;color:#f2f8fb;
+    font-size:15px;text-shadow:0 1px 4px rgba(0,0,0,.85);z-index:5;pointer-events:none;
+    opacity:0;transition:opacity .4s;text-align:center;max-width:90vw}
+  #btnBreak{position:fixed;right:16px;bottom:78px;width:74px;height:74px;border-radius:50%;z-index:6;
+    background:rgba(255,217,140,.9);border:1px solid #ffd98c;color:#122430;
+    font-size:13px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0;margin:0}
+  #btnJump{position:fixed;right:100px;bottom:20px;width:64px;height:64px;border-radius:50%;z-index:6;
+    background:rgba(18,36,48,.6);border:1px solid rgba(255,217,140,.4);color:#ffd98c;
+    font-size:13px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0;margin:0}
+  #btnPause{position:fixed;top:10px;right:10px;width:40px;height:40px;border-radius:8px;
+    background:rgba(18,36,48,.55);border:1px solid rgba(255,217,140,.35);color:#ffd98c;
+    font-size:16px;z-index:6;padding:0;margin:0}
+  #cold{position:fixed;bottom:16px;left:16px;width:130px;height:12px;border-radius:6px;
+    background:rgba(18,36,48,.7);border:1px solid rgba(255,217,140,.3);z-index:6;overflow:hidden}
+  #coldFill{height:100%;width:100%;background:#7fc4e8;border-radius:5px;transition:width .2s,background .3s}
+  #coldLab{position:fixed;bottom:31px;left:16px;font-size:10px;color:#9fb8c6;z-index:6;letter-spacing:.08em}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="toast"></div>
+<div id="hint"></div>
+<button id="btnBreak" aria-label="Break ice">BREAK</button>
+<button id="btnJump" aria-label="Jump">JUMP</button>
+<button id="btnPause" aria-label="Pause">II</button>
+<div id="coldLab">WARMTH</div><div id="cold"><div id="coldFill"></div></div>
+
+<div class="panel" id="startPanel">
+  <div class="card">
+    <h1>GRIDIRON</h1>
+    <p class="sub">Ice harvest on a frozen pond, January 1895.</p>
+    <p>The pond is scored into a grid of cakes and the ice house stands empty. Walk the sheet and break cakes loose with your bar. A cake breaks only where it meets open water, so you work from the channel and the shore inward. The current carries every loose cake to the hoist at the east end and counts it.</p>
+    <p>The ice is also your floor. You cannot break the cake under your own feet, and every cake you free leaves open water behind it. Harvest your way back toward the bank and keep a path home. Fall through and the cold will drive you off the pond. Rain arrives on the third day.</p>
+    <ul class="ctl">
+      <li><b>Move</b> WASD / arrows, or tap a cell</li>
+      <li><b>Break faced cake</b> Space, or tap the cake</li>
+      <li><b>Jump a gap</b> Shift, or the Jump button</li>
+      <li><b>Keys</b> P pause &middot; M mute &middot; R restart</li>
+    </ul>
+    <button id="btnPlay">Play</button>
+  </div>
+</div>
+
+<div class="panel" id="pausePanel" hidden>
+  <div class="card">
+    <h2>PAUSED</h2>
+    <ul class="ctl">
+      <li><b>Move</b> WASD / arrows, or tap a cell</li>
+      <li><b>Break faced cake</b> Space, or tap the cake</li>
+      <li><b>Jump a gap</b> Shift, or the Jump button</li>
+      <li><b>Keys</b> M mute &middot; R restart</li>
+    </ul>
+    <p class="sub">A cake breaks only where it touches open water. The current runs east to the hoist. Clear a full lane from the channel to the north shore for a bonus. Warm up at the shanty on the west bank before the cold takes you.</p>
+    <button id="btnResume">Resume</button>
+    <button id="btnRestart1" class="ghost">Restart</button>
+    <button id="btnMute" class="ghost">Mute</button>
+  </div>
+</div>
+
+<div class="panel" id="overPanel" hidden>
+  <div class="card">
+    <h2>SEASON OVER</h2>
+    <p id="overCause" class="sub"></p>
+    <div class="score-line" id="overScore"></div>
+    <p class="sub" id="overDetail"></p>
+    <ol class="board" id="overBoard"></ol>
+    <button id="btnRestart2">Restart</button>
+  </div>
+</div>
+
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+'use strict';
+/* ============================ RNG / params ============================ */
+let seed=0;
+(function(){ const p=new URLSearchParams(location.search); const s=p.get('seed');
+  seed = s? (parseInt(s,10)>>>0) : (Date.now()>>>0); })();
+let rngS=seed>>>0||1;
+function rnd(){ rngS^=rngS<<13; rngS>>>=0; rngS^=rngS>>17; rngS^=rngS<<5; rngS>>>=0; return rngS/4294967296; }
+function rr(a,b){ return a+rnd()*(b-a); }
+const TESTMODE = new URLSearchParams(location.search).get('test')==='1';
+
+/* ============================ Arcade guard ============================ */
+let arcade=null;
+try{ if(window.Arcade&&Arcade.ready) Arcade.ready().then(a=>{arcade=a;}).catch(()=>{}); }catch(e){}
+const sdkLog=[];
+function aSubmit(score,meta){ if(TESTMODE)sdkLog.push(['score',score]); try{ if(arcade&&arcade.scores) arcade.scores.submit(score,meta||{}); }catch(e){} }
+function aUnlock(slug){ if(TESTMODE)sdkLog.push(['ach',slug]); try{ if(arcade&&arcade.achievements) arcade.achievements.unlock(slug); }catch(e){} }
+function aTop(cb){ try{ if(arcade&&arcade.scores) arcade.scores.top({limit:5,period:'all'}).then(cb).catch(()=>{}); }catch(e){} }
+
+/* ============================ Audio ============================ */
+const AU=(function(){
+  let ctx=null,master=null,muted=false;
+  let windSrc=null,windGain=null,windF=null, fireGain=null, rnTimer=null;
+  function ensure(){
+    if(ctx) return true;
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return false;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=muted?0:0.85; master.connect(ctx.destination);
+      const len=ctx.sampleRate*1.4,b=ctx.createBuffer(1,len,ctx.sampleRate),d=b.getChannelData(0);
+      for(let i=0;i<len;i++)d[i]=Math.random()*2-1;
+      windSrc=ctx.createBufferSource(); windSrc.buffer=b; windSrc.loop=true;
+      windF=ctx.createBiquadFilter(); windF.type='lowpass'; windF.frequency.value=420; windF.Q.value=0.4;
+      windGain=ctx.createGain(); windGain.gain.value=0.05;
+      windSrc.connect(windF); windF.connect(windGain); windGain.connect(master); windSrc.start();
+      const fb=ctx.createBuffer(1,len,ctx.sampleRate),fd=fb.getChannelData(0);
+      for(let i=0;i<len;i++)fd[i]=Math.random()*2-1;
+      const fs=ctx.createBufferSource(); fs.buffer=fb; fs.loop=true;
+      const ff=ctx.createBiquadFilter(); ff.type='lowpass'; ff.frequency.value=900; ff.Q.value=0.6;
+      fireGain=ctx.createGain(); fireGain.gain.value=0; fs.connect(ff); ff.connect(fireGain); fireGain.connect(master); fs.start();
+      return true;
+    }catch(e){ ctx=null; return false; }
+  }
+  function resume(){ if(ensure()&&ctx.state==='suspended') ctx.resume().catch(()=>{}); }
+  function burst(dur,freq,q,vol,type,pan){
+    if(!ensure())return; try{
+      const len=Math.max(64,(ctx.sampleRate*dur)|0),b=ctx.createBuffer(1,len,ctx.sampleRate),d=b.getChannelData(0);
+      for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+      const s=ctx.createBufferSource(); s.buffer=b;
+      const f=ctx.createBiquadFilter(); f.type=type||'bandpass'; f.frequency.value=freq; f.Q.value=q;
+      const g=ctx.createGain(); g.gain.value=vol; let node=g;
+      if(ctx.createStereoPanner&&pan!==undefined){ const p=ctx.createStereoPanner(); p.pan.value=Math.max(-1,Math.min(1,pan)); g.connect(p); node=p; }
+      s.connect(f); f.connect(g); node.connect(master); s.start(); s.stop(ctx.currentTime+dur+0.02);
+    }catch(e){}
+  }
+  function tone(freq,dur,vol,type,slide,pan){
+    if(!ensure())return; try{
+      const o=ctx.createOscillator(); o.type=type||'sine'; o.frequency.value=freq;
+      if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(20,slide),ctx.currentTime+dur);
+      const g=ctx.createGain(); g.gain.setValueAtTime(vol,ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+dur); let node=g;
+      if(ctx.createStereoPanner&&pan!==undefined){ const p=ctx.createStereoPanner(); p.pan.value=Math.max(-1,Math.min(1,pan)); g.connect(p); node=p; }
+      o.connect(g); node.connect(master); o.start(); o.stop(ctx.currentTime+dur+0.02);
+    }catch(e){}
+  }
+  function set(g,v){ if(g&&ctx) g.gain.setTargetAtTime(v,ctx.currentTime,0.15); }
+  return {
+    resume, get muted(){return muted;},
+    toggleMute(){ muted=!muted; if(master) master.gain.value=muted?0:0.85; return muted; },
+    wind(v){ set(windGain,0.03+v*0.09); if(windF&&ctx) windF.frequency.setTargetAtTime(320+v*400,ctx.currentTime,0.4); },
+    fire(v){ set(fireGain,v*0.05); },
+    step(pan){ burst(0.05,320+Math.random()*120,1,0.07,'lowpass',pan); },
+    crack(pan){ tone(150,0.5,0.42,'sine',34,pan); burst(0.14,700,0.8,0.42,'lowpass',pan);
+      setTimeout(()=>{ tone(62,0.6,0.2,'sine',30,pan); burst(0.26,300,0.7,0.2,'lowpass',pan); },120); },
+    freeCake(pan){ burst(0.12,900,0.9,0.22,'lowpass',pan); tone(180,0.14,0.12,'triangle',110,pan); },
+    boom(){ tone(56,2.2,0.16,'sine',30); },
+    splash(){ burst(0.34,900,0.7,0.5,'lowpass'); burst(0.5,2400,0.6,0.2); },
+    scramble(){ burst(0.25,1500,0.8,0.2); },
+    jump(){ tone(300,0.12,0.14,'triangle',480); },
+    land(){ burst(0.08,400,1,0.16,'lowpass'); },
+    deny(){ tone(210,0.14,0.1,'square',150); },
+    tally(bonus){ tone(660,0.32,0.2,'triangle'); if(bonus) setTimeout(()=>tone(990,0.4,0.2,'triangle'),130); },
+    lane(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,0.4,0.14,'triangle'),i*110)); },
+    chimeDay(){ [392,523,659].forEach((f,i)=>setTimeout(()=>tone(f,0.5,0.14,'sine'),i*150)); },
+    crow(){ [1,1,1].forEach((_,i)=>setTimeout(()=>tone(700,0.13,0.05,'sawtooth',420),i*180)); },
+    warmHum(){ tone(220,0.4,0.08,'sine'); },
+    rain(on){ if(on&&!rnTimer){ rnTimer=setInterval(()=>burst(0.05,4000+Math.random()*3000,2,0.03),70); }
+      else if(!on&&rnTimer){ clearInterval(rnTimer); rnTimer=null; } },
+    ui(){ tone(600,0.05,0.07,'triangle'); },
+    stopAll(){ this.rain(false); this.fire(0); }
+  };
+})();
+
+/* ============================ Grid / world ============================ */
+const GW=34, GH=22;
+const CHAN=3;                 // south rows are channel water
+const CHAN_Y=GH-CHAN;         // first channel row
+const HOIST_X=GW-1;           // hoist column (east end of channel)
+const SOLID=1, OPEN=0;
+const cell=new Uint8Array(GW*GH);   // SOLID / OPEN
+const flowDist=new Int16Array(GW*GH); // BFS distance to hoist through open water
+const weak=new Uint8Array(GW*GH);   // spring holes: break under weight
+const snow=new Uint8Array(GW*GH);   // snow-ice cake (lighter, worth less)
+const tintv=new Uint8Array(GW*GH);
+const idx=(x,y)=>y*GW+x;
+const inb=(x,y)=>x>=0&&x<GW&&y>=0&&y<GH;
+const isSolid=(x,y)=>inb(x,y)&&cell[idx(x,y)]===SOLID;
+const isWater=(x,y)=>inb(x,y)&&cell[idx(x,y)]===OPEN;
+// shore: north row -1, west col -1, and the two side banks; walkable
+function isBank(x,y){
+  if(y<0&&y>=-1&&x>=-1&&x<GW) return true;         // north shore
+  if(x<0&&x>=-1&&y>=-1&&y<CHAN_Y) return true;     // west bank (not along channel)
+  return false;
+}
+const walkable=(x,y)=>isSolid(x,y)||isBank(x,y);
+// a solid cake is breakable if it touches open water on a side
+function breakable(x,y){
+  if(!isSolid(x,y)) return false;
+  return isWater(x-1,y)||isWater(x+1,y)||isWater(x,y-1)||isWater(x,y+1);
+}
+
+const SHANTY={cx:1.5,cy:-1};   // on north-west shore
+const DAYS=[
+  {temp:-13, wind:0.09, wx:1, name:'DAY 1', wtxt:'still and cold'},
+  {temp:-5,  wind:0.20, wx:1, name:'DAY 2', wtxt:'a west wind'},
+  {temp:2,   wind:0.30, wx:1, name:'DAY 3', wtxt:'grey and thawing'},
+];
+const DAY_LEN=95, SEASON=DAY_LEN*3;
+
+/* ============================ State ============================ */
+let G=null, cakes=[], parts=[], sheetDirty=true, cakeSeq=1;
+function newGame(){
+  rngS=seed>>>0||1;
+  cell.fill(SOLID); weak.fill(0); snow.fill(0);
+  for(let i=0;i<GW*GH;i++) tintv[i]=(rnd()*256)|0;
+  // channel water
+  for(let y=CHAN_Y;y<GH;y++) for(let x=0;x<GW;x++) cell[idx(x,y)]=OPEN;
+  // snow-ice patches
+  for(let p=0;p<3;p++){
+    const cx=rr(5,GW-5), cy=rr(2,CHAN_Y-4), r=rr(2.4,4);
+    for(let y=0;y<CHAN_Y;y++)for(let x=0;x<GW;x++){ const dx=x-cx,dy=y-cy;
+      if(dx*dx+dy*dy<r*r*(0.7+rnd()*0.5)) snow[idx(x,y)]=1; }
+  }
+  // spring holes: short random walks
+  for(let p=0;p<3;p++){
+    let x=Math.round(rr(5,GW-6)), y=Math.round(rr(3,CHAN_Y-4));
+    const n=2+((rnd()*3)|0);
+    for(let i=0;i<=n;i++){ if(inb(x,y)&&y<CHAN_Y) weak[idx(x,y)]=1; x+=(rnd()*3|0)-1; y+=(rnd()*3|0)-1; }
+  }
+  cakes.length=0; parts.length=0;
+  G={
+    mode:'menu', t:0, day:0, rainT: TESTMODE?SEASON-14:SEASON-26+rr(0,16), rainWarned:false, raining:false,
+    housed:0, tons:0, falls:0, lanes:0, gotFirst:false, gotLane:false, gotDay3:false,
+    player:{x:2,y:CHAN_Y-1, tx:2,ty:CHAN_Y-1, fx:0,fy:-1, moving:false, mvT:0,
+      swim:false, swimT:0, cold:100, chilled:false, jump:null, breakT:0, breakCd:0, breakWarn:false, breakCell:-1},
+    mv:{x:0,y:0}, held:{}, target:null, boomT:rr(10,20), crowT:rr(16,30),
+    shake:0, endCause:'', toastT:0, hintT:0, lastHint:'', anyDeliverT:0,
+    combo:1, streak:0, comboT:0, bestCombo:1, breakBuf:0,
+  };
+  // guard: ensure start cell solid
+  cell[idx(2,CHAN_Y-1)]=SOLID; weak[idx(2,CHAN_Y-1)]=0;
+  computeFlow();
+  sheetDirty=true;
+  drawBG();
+}
+
+/* ============================ Cakes (floating) ============================ */
+function freeCake(x,y){
+  const isSnow=snow[idx(x,y)]===1, isWk=weak[idx(x,y)]===1;
+  cell[idx(x,y)]=OPEN; computeFlow(); sheetDirty=true;
+  const ck={ id:cakeSeq++, x:x, y:y, vx:0, vy:0, snow:isSnow, weak:isWk,
+    tons: isWk?0.5:(isSnow?1:1.5), mult:G?G.combo:1, settle:0, tint:tintv[idx(x,y)] };
+  cakes.push(ck);
+  const pan=Math.max(-1,Math.min(1,(x/GW*2-1)));
+  AU.freeCake(pan);
+  for(let k=0;k<6;k++) parts.push({x:x+rnd(),y:y+rnd(),vx:rr(-0.8,0.8),vy:rr(-1.4,-0.2),t:rr(0.3,0.6),kind:'chip'});
+  return ck;
+}
+function computeFlow(){
+  flowDist.fill(-1);
+  const q=[]; let head=0;
+  for(let y=CHAN_Y;y<GH;y++){ const i=idx(HOIST_X,y); if(cell[i]===OPEN){ flowDist[i]=0; q.push(i); } }
+  while(head<q.length){
+    const i=q[head++], x=i%GW, y=(i/GW)|0, d=flowDist[i];
+    const ns=[[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+    for(const [nx,ny] of ns){ if(!inb(nx,ny))continue; const j=idx(nx,ny);
+      if(cell[j]===OPEN && flowDist[j]<0){ flowDist[j]=d+1; q.push(j); } }
+  }
+}
+function cakeAt(gx,gy){ for(const c of cakes){ if(Math.round(c.x)===gx&&Math.round(c.y)===gy) return c; } return null; }
+function cellFree(gx,gy){ // open water and no floating cake occupying it
+  return isWater(gx,gy) && !cakeAt(gx,gy);
+}
+
+/* ============================ Break action ============================ */
+function tryBreak(){
+  const P=G.player;
+  if(P.swim||P.jump) return false;
+  if(P.moving){ G.breakBuf=0.18; return false; }  // buffer: fire when the step lands
+  if(P.breakCd>0) return false;
+  const bx=Math.round(P.x)+P.fx, by=Math.round(P.y)+P.fy;
+  if(!inb(bx,by)){ AU.deny(); return false; }
+  if(bx===Math.round(P.x)&&by===Math.round(P.y)){ AU.deny(); return false; }
+  if(!isSolid(bx,by)){ hint('Face a cake to break it.'); AU.deny(); return false; }
+  if(!breakable(bx,by)){ hint('This cake holds. Break where the ice meets open water.'); AU.deny(); return false; }
+  // break combo: consecutive breaks in quick succession raise the multiplier
+  G.streak++; G.comboT=1.5;
+  G.combo=Math.min(3, 1+G.streak*0.1);
+  if(G.combo>G.bestCombo) G.bestCombo=G.combo;
+  freeCake(bx,by);
+  P.breakCd=0.16; G.shake=Math.min(0.4,0.16);
+  const pan=Math.max(-1,Math.min(1,(bx/GW*2-1)));
+  AU.crack(pan);
+  if(!G.gotFirst){ G.gotFirst=true; aUnlock('first-cake'); }
+  if(G.combo>=3) aUnlock('in-the-rhythm');
+  checkLane(bx);
+  return true;
+}
+function checkLane(x){
+  // a lane is clear if every cell in column x (rows 0..CHAN_Y-1) is open water
+  for(let y=0;y<CHAN_Y;y++) if(isSolid(x,y)) return;
+  G.lanes++; AU.lane();
+  G.tons=Math.round((G.tons+5)*2)/2;
+  G.combo=Math.min(3,G.combo+0.3); if(G.combo>G.bestCombo)G.bestCombo=G.combo;
+  parts.push({x:x+0.5,y:1,vx:0,vy:-1.1,t:1.3,kind:'text',txt:'LANE +5 t'});
+  toast('LANE CLEAR','column '+(x+1)+' cut through to the shore, +5 tons');
+  if(!G.gotLane){ G.gotLane=true; aUnlock('clean-lane'); }
+}
+
+/* ============================ Movement ============================ */
+function stepTo(nx,ny){
+  const P=G.player;
+  if(P.moving||P.jump||P.swim) return false;
+  P.fx=Math.sign(nx-Math.round(P.x))||P.fx; P.fy=Math.sign(ny-Math.round(P.y))||P.fy;
+  if(P.fx&&P.fy){ P.fy=0; } // 4-dir facing
+  if(walkable(nx,ny)){
+    P.tx=nx; P.ty=ny; P.moving=true; P.mvT=0; return true;
+  }
+  return false;
+}
+function tryJump(){
+  const P=G.player;
+  if(P.moving||P.jump||P.swim) return false;
+  const cx=Math.round(P.x),cy=Math.round(P.y);
+  const gx=cx+P.fx, gy=cy+P.fy;          // gap cell (must be water)
+  const lx=cx+P.fx*2, ly=cy+P.fy*2;      // landing
+  if(!(P.fx||P.fy)) return false;
+  if(walkable(gx,gy)){ // no gap; just step
+    return stepTo(gx,gy);
+  }
+  if(!walkable(lx,ly)){ hint('No footing across the gap.'); AU.deny(); return false; }
+  P.jump={x0:P.x,y0:P.y,x1:lx,y1:ly,t:0,dur:0.34}; AU.jump();
+  return true;
+}
+
+/* ============================ Update ============================ */
+function dayOf(t){ return Math.min(2,(t/DAY_LEN)|0); }
+function tempAt(t){ const d=dayOf(t), f=(t-d*DAY_LEN)/DAY_LEN;
+  const a=DAYS[d].temp, b=DAYS[Math.min(2,d+1)].temp; return a+(b-a)*f*0.5; }
+function hint(s){ if(G.lastHint===s&&G.hintT>0)return; G.lastHint=s; G.hintT=3;
+  const el=document.getElementById('hint'); el.textContent=s; el.style.opacity=1; }
+function toast(big,small){ const el=document.getElementById('toast'); el.innerHTML='';
+  const b=document.createElement('div'); b.textContent=big; el.appendChild(b);
+  if(small){ const s=document.createElement('small'); s.textContent=small; el.appendChild(s); }
+  el.style.opacity=1; G.toastT=3.6; }
+
+function update(dt){
+  if(G.mode!=='play') return;
+  const P=G.player;
+  G.t+=dt;
+  const d=dayOf(G.t);
+  if(d!==G.day){ G.day=d; const D=DAYS[d]; AU.chimeDay();
+    toast(D.name+' · '+(D.temp>0?'+':'')+D.temp+'°', D.wtxt); }
+  const D=DAYS[G.day];
+  AU.wind(Math.min(1,D.wind*2+(G.raining?0.4:0)));
+  G.boomT-=dt; if(G.boomT<=0){ G.boomT=rr(14,28); AU.boom(); }
+  G.crowT-=dt; if(G.crowT<=0){ G.crowT=rr(22,44); AU.crow(); }
+  P.breakCd=Math.max(0,P.breakCd-dt);
+  if(G.breakBuf>0) G.breakBuf-=dt;
+  if(G.comboT>0){ G.comboT-=dt; if(G.comboT<=0){ G.streak=0; G.combo=1; } }
+  // rain
+  if(!G.rainWarned&&G.t>=G.rainT-16){ G.rainWarned=true; toast('RAIN ON THE WIND','the harvest ends when it reaches the pond'); }
+  if(!G.raining&&G.t>=G.rainT){ G.raining=true; AU.rain(true); }
+  if(G.raining&&G.t>=G.rainT+5){ endSeason('rain'); return; }
+
+  /* ---- player ---- */
+  if(P.swim){
+    P.swimT+=dt;
+    P.cold-=(6+Math.max(0,-tempAt(G.t))*0.3)*dt;
+    // drift toward nearest walkable, plus input
+    let mvx=G.mv.x,mvy=G.mv.y;
+    const m=Math.hypot(mvx,mvy); if(m>1){mvx/=m;mvy/=m;}
+    if(m<0.05){ const t=nearestWalkable(P.x,P.y); if(t){ mvx=Math.sign(t[0]-P.x); mvy=Math.sign(t[1]-P.y);} }
+    P.x+=mvx*1.4*dt; P.y+=mvy*1.4*dt;
+    P.x=Math.max(-1,Math.min(GW-1,P.x)); P.y=Math.max(-1,Math.min(GH-1,P.y));
+    const rx=Math.round(P.x), ry=Math.round(P.y);
+    if(walkable(rx,ry)&&Math.hypot(P.x-rx,P.y-ry)<0.4){
+      P.swim=false; P.x=rx; P.y=ry; P.tx=rx; P.ty=ry; AU.scramble();
+      if(P.cold<40){ P.chilled=true; hint('You are chilled. Warm up at the shanty.'); }
+    }
+    if(P.cold<=0){ endSeason('cold'); return; }
+  }else if(P.jump){
+    P.jump.t+=dt; const j=P.jump, f=Math.min(1,j.t/j.dur);
+    P.x=j.x0+(j.x1-j.x0)*f; P.y=j.y0+(j.y1-j.y0)*f;
+    if(f>=1){ P.x=j.x1; P.y=j.y1; P.tx=j.x1; P.ty=j.y1; P.jump=null; AU.land();
+      if(!walkable(Math.round(P.x),Math.round(P.y))) fallIn(); }
+  }else{
+    // input -> discrete steps
+    if(!P.moving){
+      let sx=0,sy=0; const H=G.held;
+      if(H['a']||H['arrowleft'])sx=-1; else if(H['d']||H['arrowright'])sx=1;
+      else if(H['w']||H['arrowup'])sy=-1; else if(H['s']||H['arrowdown'])sy=1;
+      if(sx||sy){ G.target=null; stepTo(Math.round(P.x)+sx,Math.round(P.y)+sy); }
+      else if(G.target){
+        const cx=Math.round(P.x),cy=Math.round(P.y);
+        if(cx===G.target.x&&cy===G.target.y) G.target=null;
+        else{
+          const dx=G.target.x-cx, dy=G.target.y-cy;
+          let nx=cx,ny=cy;
+          if(Math.abs(dx)>=Math.abs(dy)) nx+=Math.sign(dx); else ny+=Math.sign(dy);
+          if(!stepTo(nx,ny)){ // try other axis
+            nx=cx;ny=cy; if(Math.abs(dx)>=Math.abs(dy)) ny+=Math.sign(dy); else nx+=Math.sign(dx);
+            if(!(nx===cx&&ny===cy)) stepTo(nx,ny); else G.target=null;
+          }
+        }
+      }
+    }
+    if(P.moving){
+      P.mvT+=dt; const spd=P.chilled?3.6:6.2; const f=Math.min(1,P.mvT*spd);
+      const ox=Math.round(P.x - (P.tx-Math.round(P.x))); // not used; simple lerp below
+      P.x = P.x + (P.tx-P.x)*Math.min(1,spd*dt);
+      P.y = P.y + (P.ty-P.y)*Math.min(1,spd*dt);
+      if(Math.hypot(P.tx-P.x,P.ty-P.y)<0.06){ P.x=P.tx; P.y=P.ty; P.moving=false;
+        AU.step(Math.max(-1,Math.min(1,P.x/GW*2-1)));
+        // step onto weak / water?
+        const rx=Math.round(P.x),ry=Math.round(P.y);
+        if(isWater(rx,ry)&&!isBank(rx,ry)) fallIn();
+        else if(G.breakBuf>0){ G.breakBuf=0; tryBreak(); }
+      }
+    }
+    // weak ice under foot
+    if(!P.moving&&!P.swim){
+      const rx=Math.round(P.x),ry=Math.round(P.y), ci=idx(rx,ry);
+      if(isSolid(rx,ry)&&weak[ci]){
+        if(P.breakCell!==ci){ P.breakCell=ci; P.breakT=0; P.breakWarn=false; }
+        P.breakT+=dt;
+        if(P.breakT>0.4&&!P.breakWarn){ P.breakWarn=true; AU.crack(0); hint('The ice is working under you.'); }
+        if(P.breakT>=0.85){ P.breakCell=-1; P.breakWarn=false; freeCakeUnderfoot(rx,ry); }
+      }else{ P.breakCell=-1; P.breakT=0; P.breakWarn=false; }
+    }
+    // cold: warm at the fire, drain out on the ice (colder days bite harder)
+    const nearFire=Math.hypot(P.x-SHANTY.cx,P.y-SHANTY.cy)<2.4;
+    AU.fire(nearFire?1:0);
+    if(nearFire){ if(P.cold<100&&rnd()<0.02)AU.warmHum(); P.cold=Math.min(100,P.cold+24*dt); }
+    else { P.cold-=(0.7+Math.max(0,-tempAt(G.t))*0.03)*dt; }
+    if(P.cold<=0){ P.cold=0; endSeason('cold'); return; }
+    if(P.chilled&&P.cold>55){ P.chilled=false; }
+    else if(!P.chilled&&P.cold<28){ P.chilled=true; hint('You are chilled to the bone. Warm up at the shanty.'); }
+  }
+
+  /* ---- cakes drift ---- */
+  let delivered=false;
+  for(let i=cakes.length-1;i>=0;i--){
+    const ck=cakes[i];
+    // drift down the flow field toward the hoist; wind adds a small push
+    let ax=D.wind*D.wx*0.25, ay=0.0;
+    const cxi=Math.round(ck.x), cyi=Math.round(ck.y);
+    let dir=null, bestD=1e9;
+    for(const [nx,ny] of [[cxi-1,cyi],[cxi+1,cyi],[cxi,cyi-1],[cxi,cyi+1]]){
+      if(!inb(nx,ny))continue; const fd=flowDist[idx(nx,ny)];
+      if(fd>=0 && fd<bestD){ bestD=fd; dir=[nx-cxi,ny-cyi]; } }
+    const here=flowDist[idx(cxi,cyi)];
+    if(dir&&(here<0||bestD<here)){ ax+=dir[0]*4.4; ay+=dir[1]*4.4; }
+    else { ay+=1.0; }   // no gradient yet: nudge toward channel
+    ck.vx+=ax*dt; ck.vy+=ay*dt;
+    ck.vx*=Math.exp(-2.0*dt); ck.vy*=Math.exp(-2.0*dt);
+    // integrate with blocking by sheet and other cakes
+    let nx=ck.x+ck.vx*dt, ny=ck.y+ck.vy*dt;
+    if(cakeBlocked(ck,nx,ck.y)){ nx=ck.x; ck.vx*=-0.2; }
+    ck.x=nx;
+    if(cakeBlocked(ck,ck.x,ny)){ ny=ck.y; ck.vy*=-0.2; }
+    ck.y=ny;
+    ck.x=Math.max(0,Math.min(GW-1,ck.x)); ck.y=Math.max(0,Math.min(GH-1,ck.y));
+    // housed at hoist
+    if(ck.x>=HOIST_X-0.4 && ck.y>=CHAN_Y-0.5){
+      houseCake(ck); cakes.splice(i,1); delivered=true; continue;
+    }
+    // player falls if a cake drifts onto them? no; player only on solid. skip.
+  }
+  if(delivered) G.anyDeliverT=0.3;
+
+  /* ---- particles ---- */
+  for(let i=parts.length-1;i>=0;i--){ const p=parts[i]; p.t-=dt;
+    if(p.t<=0){parts.splice(i,1);continue;} p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=2.2*dt; }
+  G.shake=Math.max(0,G.shake-dt*1.8);
+  if(G.hintT>0){ G.hintT-=dt; if(G.hintT<=0) document.getElementById('hint').style.opacity=0; }
+  if(G.toastT>0){ G.toastT-=dt; if(G.toastT<=0) document.getElementById('toast').style.opacity=0; }
+  const cf=document.getElementById('coldFill');
+  cf.style.width=Math.max(0,P.cold)+'%';
+  cf.style.background=P.cold>50?'#7fc4e8':(P.cold>25?'#ffd98c':'#e86a4a');
+}
+function cakeBlocked(ck,x,y){
+  const gx=Math.round(x),gy=Math.round(y);
+  if(!inb(gx,gy)) return true;
+  if(isSolid(gx,gy)) return true;   // cakes cannot float over the standing sheet
+  return false;                     // loose cakes slide past each other in open water
+}
+function nearestWalkable(x,y){
+  let bx=null,by=null,bd=1e9;
+  for(let yy=-1;yy<CHAN_Y;yy++)for(let xx=-1;xx<GW;xx++){ if(walkable(xx,yy)){
+    const dd=Math.hypot(xx-x,yy-y); if(dd<bd){bd=dd;bx=xx;by=yy;} } }
+  return bx===null?null:[bx,by];
+}
+function fallIn(){
+  const P=G.player; if(P.swim)return;
+  P.swim=true; P.swimT=0; P.moving=false; P.jump=null; G.falls++;
+  AU.splash();
+  for(let k=0;k<10;k++)parts.push({x:P.x+rr(-0.3,0.3),y:P.y+rr(-0.3,0.3),vx:rr(-1.4,1.4),vy:rr(-1.8,0),t:rr(0.3,0.7),kind:'drop'});
+  if(P.cold<40){ P.chilled=true; hint('You are chilled. Warm up at the shanty.'); }
+}
+function freeCakeUnderfoot(x,y){
+  // ice gives way under the player: they fall, and the cake floats
+  freeCake(x,y);
+  fallIn();
+}
+function houseCake(ck){
+  G.housed++;
+  const got=Math.round(ck.tons*ck.mult*2)/2;
+  G.tons=Math.round((G.tons+got)*2)/2;
+  AU.tally(ck.mult>=2);
+  parts.push({x:HOIST_X-0.5,y:CHAN_Y+CHAN/2,vx:0,vy:-1.1,t:1.1,kind:'text',txt:'+'+got+' t'});
+  if(G.tons>=200) aUnlock('full-house');
+}
+function endSeason(cause){
+  if(G.mode!=='play')return;
+  G.mode='over'; G.endCause=cause; AU.stopAll();
+  aSubmit(Math.round(G.tons),{cakes:G.housed,lanes:G.lanes,falls:G.falls});
+  if(G.tons>=80&&G.falls===0) aUnlock('dry-boots');
+  document.getElementById('overCause').textContent =
+    cause==='rain'? 'Rain reached the pond and ended the harvest.' : 'The cold drove you off the ice.';
+  document.getElementById('overScore').textContent = G.tons+' tons housed';
+  document.getElementById('overDetail').textContent =
+    G.housed+' cakes · '+G.lanes+(G.lanes===1?' lane':' lanes')+' cleared · '+
+    (G.falls===0?'dry boots':(G.falls+(G.falls===1?' fall':' falls')+' through'));
+  const board=document.getElementById('overBoard'); board.innerHTML='';
+  aTop(rows=>{ try{ (rows||[]).slice(0,5).forEach(r=>{ const li=document.createElement('li');
+    const b=document.createElement('b'); b.textContent=(r.name||r.username||'player'); li.appendChild(b);
+    li.appendChild(document.createTextNode(' — '+r.score+' t')); board.appendChild(li); }); }catch(e){} });
+  document.getElementById('overPanel').hidden=false;
+}
+
+/* ============================ Rendering ============================ */
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+let vw=0,vh=0,dpr=1,camS=26,camX=0,camY=0,fitMode=true;
+const RES=34;
+const WLD={x0:-1.5,y0:-1.5,w:GW+2.5,h:GH+2.5};
+const bgCv=document.createElement('canvas'); bgCv.width=Math.ceil(WLD.w*RES); bgCv.height=Math.ceil(WLD.h*RES);
+const sheetCv=document.createElement('canvas'); sheetCv.width=GW*RES; sheetCv.height=GH*RES;
+
+function resize(){
+  dpr=Math.min(3,window.devicePixelRatio||1);
+  vw=window.innerWidth; vh=window.innerHeight;
+  cv.width=Math.round(vw*dpr); cv.height=Math.round(vh*dpr);
+  cv.style.width=vw+'px'; cv.style.height=vh+'px';
+  const fitW=vw/WLD.w, fitH=vh/WLD.h, fit=Math.min(fitW,fitH);
+  if(fit>=15){ fitMode=true; camS=fit; }      // whole pond fits
+  else{ fitMode=false; camS=Math.max(fitW,fitH); }  // fill the tight axis, follow the other
+}
+window.addEventListener('resize',resize);
+
+function drawBG(){
+  const g=bgCv.getContext('2d'), S=RES, W=bgCv.width, H=bgCv.height;
+  g.clearRect(0,0,W,H);
+  g.fillStyle='#e2eaf0'; g.fillRect(0,0,W,H);
+  for(let i=0;i<700;i++){ g.fillStyle=rnd()<0.5?'rgba(255,255,255,0.5)':'rgba(160,185,200,0.22)';
+    g.fillRect(rnd()*W,rnd()*H,2.2,2.2); }
+  const ox=1.5*S, oy=1.5*S;
+  // pond water base under the whole grid
+  g.fillStyle='#0e2a37'; g.fillRect(ox,oy,GW*S,GH*S);
+  // bank rim
+  g.strokeStyle='#9fb4c0'; g.lineWidth=5; g.strokeRect(ox-2,oy-2,GW*S+4,GH*S+4);
+  // north tree line
+  for(let i=0;i<30;i++){ const tx=rnd()*W, ty=rnd()*(1.1*S);
+    g.fillStyle='#2f4d47'; g.beginPath(); g.moveTo(tx,ty+18); g.lineTo(tx+7,ty+18); g.lineTo(tx+3.5,ty); g.closePath(); g.fill();
+    g.fillStyle='rgba(255,255,255,0.5)'; g.fillRect(tx+1,ty+6,4,2); }
+  // shanty NW
+  const shx=(SHANTY.cx+1.5)*S, shy=(SHANTY.cy+1.5)*S;
+  g.fillStyle='#5b4a38'; g.fillRect(shx-S*1.0,shy-S*0.8,S*2.0,S*1.5);
+  g.fillStyle='#3c3227'; g.fillRect(shx-S*1.2,shy-S*1.05,S*2.4,S*0.4);
+  g.fillStyle='#20272e'; g.fillRect(shx+S*0.55,shy-S*1.4,S*0.3,S*0.6);
+  g.fillStyle='#6b5843'; g.fillRect(shx+S*1.2,shy-S*0.1,S*0.8,S*0.5);
+  // ice house + hoist SE
+  const ihx=(HOIST_X+1.5)*S, ihy=(CHAN_Y+1.5)*S;
+  g.fillStyle='#8a97a4'; g.fillRect(ihx+S*0.15,ihy-S*1.6,S*2.4,S*(CHAN+1.6));
+  g.fillStyle='#6f7d8b'; g.fillRect(ihx-S*0.1,ihy-S*1.9,S*2.8,S*0.5);
+  g.fillStyle='#4c5a68'; g.fillRect(ihx+S*0.15,ihy-S*0.2,S*0.5,S*1.4);
+  // ramp
+  g.fillStyle='#7d6a52'; g.beginPath(); g.moveTo(ihx-S*1.2,ihy+S*(CHAN-0.4)); g.lineTo(ihx+S*0.35,ihy-S*0.2); g.lineTo(ihx+S*0.35,ihy+S*(CHAN-0.2)); g.closePath(); g.fill();
+}
+function drawSheet(){
+  const g=sheetCv.getContext('2d'), S=RES;
+  g.clearRect(0,0,sheetCv.width,sheetCv.height);
+  for(let y=0;y<CHAN_Y;y++)for(let x=0;x<GW;x++){
+    if(cell[idx(x,y)]!==SOLID)continue;
+    drawCakeCell(g,x*S,y*S,S, snow[idx(x,y)]===1, weak[idx(x,y)]===1, tintv[idx(x,y)], true);
+  }
+}
+function drawCakeCell(g,px,py,S,isSnow,isWeak,tint,scored){
+  g.fillStyle= isSnow? '#dbe6eb' : '#a6c6d3';
+  g.fillRect(px,py,S,S);
+  if(!isSnow){ g.fillStyle='rgba(28,58,72,0.5)'; g.fillRect(px+2,py+2,S-4,S-4);
+    g.fillStyle='rgba(165,215,230,0.28)'; g.fillRect(px+3+(tint%6),py+3+(tint%9),S*0.32,2); }
+  else { g.fillStyle='rgba(255,255,255,0.5)'; g.fillRect(px+(tint%9),py+(tint%11),3,3); }
+  if(isWeak){ g.fillStyle='rgba(12,32,40,0.5)'; g.beginPath(); g.arc(px+S/2,py+S/2,S*0.3,0,7); g.fill();
+    g.strokeStyle='rgba(10,26,34,0.55)'; g.lineWidth=1;
+    for(let k=0;k<3;k++){ g.beginPath(); g.moveTo(px+S/2,py+S/2);
+      g.lineTo(px+S/2+Math.cos(tint+k*2.1)*S*0.42,py+S/2+Math.sin(tint+k*2.1)*S*0.42); g.stroke(); } }
+  if(scored){ g.strokeStyle='rgba(70,100,116,0.6)'; g.lineWidth=1.5; g.strokeRect(px+0.75,py+0.75,S-1.5,S-1.5); }
+}
+let sparkles=[]; for(let i=0;i<40;i++) sparkles.push({x:Math.random()*GW,y:Math.random()*GH,p:Math.random()*7});
+
+function render(){
+  if(sheetDirty){ drawSheet(); sheetDirty=false; }
+  const P=G.player;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle='#e2eaf0'; ctx.fillRect(0,0,vw,vh);
+  let cx,cyy;
+  const halfW=vw/camS/2, halfH=vh/camS/2;
+  if(fitMode){ cx=WLD.x0+WLD.w/2; cyy=WLD.y0+WLD.h/2; }
+  else{
+    cx = WLD.w<=halfW*2 ? WLD.x0+WLD.w/2 : Math.max(WLD.x0+halfW,Math.min(WLD.x0+WLD.w-halfW,P.x));
+    cyy= WLD.h<=halfH*2 ? WLD.y0+WLD.h/2 : Math.max(WLD.y0+halfH,Math.min(WLD.y0+WLD.h-halfH,P.y));
+  }
+  camX+=(cx-camX)*0.14; camY+=(cyy-camY)*0.14;
+  const shx=G.shake>0?(Math.random()-0.5)*G.shake*camS*0.5:0;
+  const shy=G.shake>0?(Math.random()-0.5)*G.shake*camS*0.5:0;
+  ctx.save();
+  ctx.translate(vw/2+shx,vh/2+shy); ctx.scale(camS,camS); ctx.translate(-camX,-camY);
+  ctx.drawImage(bgCv,WLD.x0,WLD.y0,WLD.w,WLD.h);
+  // water sparkles on open cells
+  const tNow=performance.now()/1000;
+  ctx.fillStyle='rgba(150,210,230,0.3)';
+  for(const s of sparkles){ const gx=Math.floor(s.x),gy=Math.floor(s.y);
+    if(!isWater(gx,gy))continue;
+    const o=(Math.sin(tNow*1.5+s.p)+1)/2; ctx.globalAlpha=0.12+o*0.24;
+    ctx.fillRect(s.x+Math.sin(tNow*0.4+s.p)*0.15,s.y,0.18,0.05); }
+  ctx.globalAlpha=1;
+  // sheet
+  ctx.drawImage(sheetCv,0,0,GW,GH);
+  // hoist chain glimmer + chute marker
+  // cakes
+  for(const ck of cakes){
+    const bob=Math.sin(tNow*1.4+ck.id)*0.03;
+    const g=ctx;
+    g.save(); g.translate(ck.x, ck.y+bob);
+    drawFloatCake(g, ck);
+    g.restore();
+  }
+  // break reticle
+  if(G.mode==='play'&&!P.swim&&!P.jump){
+    const bx=Math.round(P.x)+P.fx, by=Math.round(P.y)+P.fy;
+    if(inb(bx,by)){
+      const ok=isSolid(bx,by)&&breakable(bx,by);
+      ctx.strokeStyle= ok? 'rgba(255,217,140,0.95)' : 'rgba(150,180,196,0.5)';
+      ctx.lineWidth=0.09; ctx.strokeRect(bx+0.1,by+0.1,0.8,0.8);
+      if(ok){ ctx.strokeStyle='rgba(255,217,140,0.5)'; ctx.lineWidth=0.05;
+        ctx.strokeRect(bx+0.24,by+0.24,0.52,0.52); }
+    }
+  }
+  // shanty fire glow
+  const fg=(Math.sin(tNow*7)+1)/2; ctx.fillStyle='rgba(255,160,60,'+(0.22+fg*0.14)+')';
+  ctx.beginPath(); ctx.arc(SHANTY.cx+0.7,SHANTY.cy+0.1,0.5+fg*0.1,0,7); ctx.fill();
+  // player
+  drawPlayer(ctx,tNow);
+  // particles
+  for(const p of parts){ if(p.kind==='text'){ ctx.fillStyle='rgba(255,217,140,'+Math.min(1,p.t)+')';
+      ctx.font='0.8px sans-serif'; ctx.textAlign='center'; ctx.fillText(p.txt,p.x,p.y); }
+    else{ ctx.fillStyle= p.kind==='drop'?'rgba(120,190,215,'+Math.min(1,p.t*2)+')':'rgba(240,250,255,'+Math.min(1,p.t*2)+')';
+      ctx.fillRect(p.x,p.y,0.1,0.1); } }
+  // rain
+  if(G.rainWarned){ const dn=G.raining?90:24; ctx.strokeStyle='rgba(160,200,220,0.35)'; ctx.lineWidth=0.04;
+    for(let i=0;i<dn;i++){ const rx=camX+((i*7.1+tNow*9+i*i*0.37)%(vw/camS))-vw/camS/2;
+      const ry=camY+((i*3.7+tNow*22)%(vh/camS))-vh/camS/2;
+      ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx-0.12,ry+0.5); ctx.stroke(); } }
+  ctx.restore();
+  // HUD
+  if(G.mode==='play'||G.mode==='pause'){
+    const D=DAYS[G.day], tt=Math.round(tempAt(G.t));
+    ctx.font='600 14px sans-serif'; ctx.textAlign='left';
+    ctx.fillStyle='rgba(10,22,30,0.55)'; ctx.fillRect(8,8,214,44);
+    ctx.fillStyle='#eaf2f6'; const dayT=Math.floor(G.t-G.day*DAY_LEN);
+    ctx.fillText(D.name+' · '+(tt>0?'+':'')+tt+'° · '+fmtT(DAY_LEN-dayT),16,26);
+    ctx.fillStyle='#ffd98c'; ctx.fillText(G.tons+' t housed · '+G.housed+' cakes',16,44);
+    if(G.combo>1.02){
+      const c=G.combo.toFixed(1);
+      ctx.font='700 15px sans-serif'; ctx.textAlign='left';
+      const glow=Math.min(1,G.comboT/1.5);
+      ctx.fillStyle='rgba(255,'+(180+Math.round(glow*40))+',100,'+(0.5+glow*0.5)+')';
+      ctx.fillText('×'+c,16,66);
+    }
+  }
+}
+function fmtT(s){ s=Math.max(0,Math.ceil(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+function drawFloatCake(g,ck){
+  const s=1;
+  g.fillStyle='rgba(8,22,30,0.35)'; g.fillRect(0.06,0.1,0.92,0.92);
+  g.fillStyle= ck.snow? '#dbe6eb' : '#a6c6d3'; g.fillRect(0.03,0.03,0.9,0.9);
+  if(!ck.snow){ g.fillStyle='rgba(28,58,72,0.45)'; g.fillRect(0.1,0.1,0.72,0.72); }
+  g.strokeStyle='rgba(235,248,252,0.85)'; g.lineWidth=0.05; g.strokeRect(0.05,0.05,0.86,0.86);
+}
+function drawPlayer(g,tNow){
+  const P=G.player;
+  g.save(); g.translate(P.x+0.5,P.y+0.5);
+  if(P.swim){
+    g.fillStyle='rgba(150,210,230,0.5)'; g.beginPath(); g.arc(0,0,0.42+Math.sin(tNow*6)*0.05,0,7); g.fill();
+    g.fillStyle='#8a2f22'; g.beginPath(); g.arc(0,0,0.2,0,7); g.fill();
+    g.fillStyle='#e8c9a0'; g.beginPath(); g.arc(0,-0.08,0.12,0,7); g.fill();
+  }else{
+    let sc=1; if(P.jump){ const f=P.jump.t/P.jump.dur; sc=1+Math.sin(f*Math.PI)*0.3; }
+    g.scale(sc,sc);
+    g.fillStyle='rgba(10,20,26,0.3)'; g.beginPath(); g.ellipse(0.05,0.12,0.26,0.15,0,0,7); g.fill();
+    g.fillStyle='#39536b'; g.beginPath(); g.ellipse(0,0,0.22,0.28,0,0,7); g.fill();
+    g.fillStyle='#8a2f22'; g.beginPath(); g.arc(0,-0.2,0.14,0,7); g.fill();
+    g.fillStyle='#e8c9a0'; g.beginPath(); g.arc(0,-0.13,0.09,0,7); g.fill();
+    // bar
+    g.strokeStyle='#5e4c39'; g.lineWidth=0.06;
+    g.beginPath(); g.moveTo(P.fx*0.16-P.fy*0.12,P.fy*0.16+P.fx*0.12);
+    g.lineTo(P.fx*0.5-P.fy*0.12,P.fy*0.5+P.fx*0.12); g.stroke();
+    if(Math.sin(tNow*1.4)>0.6){ g.fillStyle='rgba(240,250,255,0.35)';
+      g.beginPath(); g.arc(P.fx*0.2,-0.14+P.fy*0.18,0.07,0,7); g.fill(); }
+  }
+  g.restore();
+}
+
+/* ============================ Input ============================ */
+document.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(G&&G.mode==='menu'&&(k==='enter'||k===' ')){ AU.resume(); startRun(); e.preventDefault(); return; }
+  if(G&&G.mode==='over'&&(k==='r'||k==='enter')){ restart(); return; }
+  if(k==='p'||k==='escape'){ if(G&&(G.mode==='play'||G.mode==='pause')) togglePause(); return; }
+  if(k==='m'){ document.getElementById('btnMute').textContent=AU.toggleMute()?'Unmute':'Mute'; return; }
+  if(k==='r'){ if(G&&(G.mode==='play'||G.mode==='pause')) restart(); return; }
+  if(!G||G.mode!=='play') return;
+  if(k===' '){ e.preventDefault(); if(!e.repeat) tryBreak(); return; }
+  if(k==='shift'){ if(!e.repeat) tryJump(); return; }
+  if(['a','d','w','s','arrowleft','arrowright','arrowup','arrowdown'].includes(k)){
+    e.preventDefault(); G.held[k]=true; G.target=null;
+    if(!e.repeat) pumpStep();   // immediate response to a tap
+  }
+});
+function pumpStep(){
+  const P=G.player; if(P.moving||P.jump||P.swim) return;
+  const H=G.held; let sx=0,sy=0;
+  if(H['a']||H['arrowleft'])sx=-1; else if(H['d']||H['arrowright'])sx=1;
+  else if(H['w']||H['arrowup'])sy=-1; else if(H['s']||H['arrowdown'])sy=1;
+  if(sx||sy) stepTo(Math.round(P.x)+sx,Math.round(P.y)+sy);
+}
+document.addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); if(G) G.held[k]=false; });
+
+function screenToWorld(sx,sy){ return { x:camX+(sx-vw/2)/camS, y:camY+(sy-vh/2)/camS }; }
+let touchSeen=false;
+cv.addEventListener('pointerdown',e=>{
+  AU.resume();
+  if(e.pointerType==='touch'&&!touchSeen){ touchSeen=true;
+    document.getElementById('btnBreak').style.display='flex';
+    document.getElementById('btnJump').style.display='flex'; }
+  if(!G||G.mode!=='play') return;
+  const w=screenToWorld(e.clientX,e.clientY);
+  const gx=Math.floor(w.x), gy=Math.floor(w.y);
+  const P=G.player, cx=Math.round(P.x), cy=Math.round(P.y);
+  // tap a breakable adjacent cake -> face and break
+  if(isSolid(gx,gy)&&breakable(gx,gy)&&Math.abs(gx-cx)+Math.abs(gy-cy)===1){
+    P.fx=gx-cx; P.fy=gy-cy; tryBreak(); return;
+  }
+  // tap adjacent gap with landing -> jump
+  const dx=gx-cx, dy=gy-cy;
+  if(Math.abs(dx)+Math.abs(dy)===1 && isWater(gx,gy) && walkable(cx+dx*2,cy+dy*2)){
+    P.fx=dx; P.fy=dy; tryJump(); return;
+  }
+  // else walk toward tapped cell
+  G.target={x:Math.max(-1,Math.min(GW-1,gx)),y:Math.max(-1,Math.min(GH-1,gy))};
+});
+document.getElementById('btnBreak').addEventListener('pointerdown',e=>{ e.stopPropagation(); if(G&&G.mode==='play') tryBreak(); });
+document.getElementById('btnJump').addEventListener('pointerdown',e=>{ e.stopPropagation(); if(G&&G.mode==='play') tryJump(); });
+document.getElementById('btnPause').addEventListener('click',()=>{ if(G&&(G.mode==='play'||G.mode==='pause')) togglePause(); });
+document.getElementById('btnPlay').addEventListener('click',()=>{ AU.resume(); startRun(); });
+document.getElementById('btnResume').addEventListener('click',()=>togglePause());
+document.getElementById('btnRestart1').addEventListener('click',()=>restart());
+document.getElementById('btnRestart2').addEventListener('click',()=>restart());
+document.getElementById('btnMute').addEventListener('click',function(){ this.textContent=AU.toggleMute()?'Unmute':'Mute'; });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&G&&G.mode==='play') togglePause(); });
+
+function togglePause(){
+  if(G.mode==='play'){ G.mode='pause'; AU.stopAll(); document.getElementById('pausePanel').hidden=false; }
+  else if(G.mode==='pause'){ G.mode='play'; document.getElementById('pausePanel').hidden=true; }
+}
+function startRun(){
+  document.getElementById('startPanel').hidden=true;
+  G.mode='play';
+  toast(DAYS[0].name+' · −13°','break the cakes along the channel');
+  hint('Break the cakes touching the channel. The current takes them east.');
+}
+function restart(){
+  seed=TESTMODE?seed:(Date.now()>>>0);
+  AU.stopAll();
+  document.getElementById('pausePanel').hidden=true;
+  document.getElementById('overPanel').hidden=true;
+  document.getElementById('startPanel').hidden=true;
+  document.getElementById('hint').style.opacity=0; document.getElementById('toast').style.opacity=0;
+  newGame(); G.mode='play';
+  toast(DAYS[0].name+' · −13°','break the cakes along the channel');
+  hint('Break the cakes touching the channel. The current takes them east.');
+}
+
+/* ============================ Main loop ============================ */
+let last=0,fpsAcc=0,fpsN=0,fpsVal=60,TESTPAUSED=false;
+function frame(ts){
+  requestAnimationFrame(frame);
+  if(!last)last=ts; let dt=(ts-last)/1000; last=ts; if(dt>0.1)dt=0.1;
+  fpsAcc+=dt;fpsN++; if(fpsAcc>1){fpsVal=fpsN/fpsAcc;fpsAcc=0;fpsN=0;}
+  if(!TESTPAUSED){ const steps=Math.max(1,Math.round(dt/(1/60))); const sdt=dt/steps;
+    for(let i=0;i<steps;i++)update(sdt); }
+  render();
+}
+newGame(); resize(); requestAnimationFrame(frame);
+
+/* ============================ Test hooks ============================ */
+window.__T={
+  get G(){return G;}, get cakes(){return cakes;}, get fps(){return fpsVal;}, get sdkLog(){return sdkLog;},
+  GW,GH,CHAN_Y,HOIST_X, cell,weak,snow,idx, isSolid,isWater,walkable,breakable,cakeAt,
+  start(){ startRun(); }, restart(){ restart(); },
+  pos(x,y){ const P=G.player; P.x=x;P.y=y;P.tx=x;P.ty=y;P.moving=false;P.swim=false;P.jump=null; },
+  face(fx,fy){ G.player.fx=fx; G.player.fy=fy; },
+  brk(){ return tryBreak(); },
+  jump(){ return tryJump(); },
+  face_break(fx,fy){ G.player.fx=fx; G.player.fy=fy; return tryBreak(); },
+  hold(k,v){ G.held[k.toLowerCase()]=v; },
+  tapTarget(x,y){ G.target={x,y}; },
+  setTime(t){ G.t=t; }, forceRain(){ G.rainT=G.t+0.1; },
+  setCold(v){ G.player.cold=v; },
+  setWeak(x,y,v){ weak[idx(x,y)]=v; sheetDirty=true; },
+  step(n){ TESTPAUSED=true; for(let i=0;i<n;i++)update(1/60); },
+  live(v){ TESTPAUSED=!v; },
+  tons(){ return G.tons; }, housed(){ return G.housed; },
+  clearBreakCd(){ G.player.breakCd=0; },
+};
+</script>
+</body>
+</html>
