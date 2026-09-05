@@ -1,0 +1,1304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>PARAVANE</title>
+<style>
+  :root{
+    --ink:#e8e2d0; --dim:#9aa89f; --brass:#d8a94e; --panel:#0d1b22ee; --line:#2a4450;
+    --danger:#e2604a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#081720;
+    font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink);}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+  .panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:22px 26px;max-width:min(460px,92vw);max-height:88vh;overflow-y:auto;
+    box-shadow:0 12px 40px #000a; z-index:20;}
+  h1{font-size:34px;letter-spacing:.28em;margin:0 0 2px;color:var(--brass);font-weight:700;}
+  h2{font-size:17px;letter-spacing:.12em;margin:0 0 10px;color:var(--brass);font-weight:600;}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 14px;}
+  p{font-size:14px;line-height:1.5;margin:8px 0;}
+  .keys{font-size:13px;line-height:1.9;color:var(--ink);margin:6px 0 12px;}
+  .keys b{display:inline-block;min-width:118px;color:var(--brass);font-weight:600;}
+  kbd{background:#16303c;border:1px solid var(--line);border-radius:4px;padding:1px 6px;
+    font-size:12px;font-family:inherit;}
+  button.big{display:block;width:100%;margin:14px 0 0;padding:12px;font-size:16px;
+    letter-spacing:.08em;background:var(--brass);color:#14200f;border:0;border-radius:7px;
+    cursor:pointer;font-weight:700;font-family:inherit;}
+  button.big:active{transform:translateY(1px);}
+  button.ghost{display:block;width:100%;margin:10px 0 0;padding:9px;font-size:14px;
+    background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:7px;
+    cursor:pointer;font-family:inherit;}
+  .stat{display:flex;justify-content:space-between;font-size:14px;padding:3px 0;}
+  .stat span:last-child{color:var(--brass);font-variant-numeric:tabular-nums;}
+  #boardList{list-style:none;margin:6px 0 0;padding:0;font-size:13px;color:var(--dim);}
+  #boardList li{display:flex;justify-content:space-between;padding:2px 0;}
+  #boardList li.me{color:var(--brass);}
+  .hidden{display:none!important;}
+  /* touch controls */
+  .tbtn{position:fixed;z-index:10;width:64px;height:64px;border-radius:50%;
+    background:#10242ecc;border:1px solid var(--line);color:var(--ink);font-size:24px;
+    display:none;align-items:center;justify-content:center;user-select:none;touch-action:none;}
+  body.touch .tbtn{display:flex;}
+  #btnPort{left:14px;bottom:16px;} #btnStbd{left:92px;bottom:16px;}
+  #btnSlow{right:92px;bottom:16px;font-size:20px;} #btnFast{right:14px;bottom:16px;font-size:20px;}
+  #btnPause{position:fixed;top:10px;right:10px;z-index:10;width:38px;height:38px;
+    border-radius:8px;background:#10242ecc;border:1px solid var(--line);color:var(--ink);
+    font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;}
+  #toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:15;
+    background:var(--panel);border:1px solid var(--brass);border-radius:7px;color:var(--brass);
+    padding:8px 16px;font-size:14px;pointer-events:none;transition:opacity .4s;opacity:0;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="btnPause" class="hidden" title="Pause">II</div>
+<div id="btnPort"  class="tbtn">&#8678;</div>
+<div id="btnStbd"  class="tbtn">&#8680;</div>
+<div id="btnSlow"  class="tbtn">&minus;</div>
+<div id="btnFast"  class="tbtn">+</div>
+<div id="toast"></div>
+
+<div id="menu" class="panel">
+  <h1>PARAVANE</h1>
+  <p class="sub">Sweep the channel ahead of the convoy.</p>
+  <p>You tow a serrated sweep wire between two paravanes. The wire runs seventy metres
+     astern and follows your wake, so it covers where you steamed ten seconds ago.
+     Cut the moored mines inside the buoyed channel, then shoot the cut mines afloat
+     before the current carries them back in. The convoy is coming up behind you and
+     it cannot stop.</p>
+  <div class="keys">
+    <b>Steer</b><kbd>A</kbd> <kbd>D</kbd> or <kbd>&larr;</kbd> <kbd>&rarr;</kbd><br>
+    <b>Engine</b><kbd>W</kbd> <kbd>S</kbd> or <kbd>&uarr;</kbd> <kbd>&darr;</kbd><br>
+    <b>Rifle</b>click or tap the sea, <kbd>Space</kbd> auto-aims<br>
+    <b>Pause</b><kbd>P</kbd> or <kbd>Esc</kbd> &nbsp; <b>Mute</b><kbd>M</kbd>
+  </div>
+  <div id="careerRow" class="stat hidden"><span>Best score</span><span id="bestScore">0</span></div>
+  <button class="big" id="btnPlay">Play</button>
+</div>
+
+<div id="pausePanel" class="panel hidden">
+  <h2>PAUSED</h2>
+  <div class="keys">
+    <b>Steer</b><kbd>A</kbd> <kbd>D</kbd> or <kbd>&larr;</kbd> <kbd>&rarr;</kbd><br>
+    <b>Engine</b><kbd>W</kbd> <kbd>S</kbd> or <kbd>&uarr;</kbd> <kbd>&darr;</kbd><br>
+    <b>Rifle</b>click or tap the sea, <kbd>Space</kbd> auto-aims<br>
+    <b>Mute</b><kbd>M</kbd>
+  </div>
+  <p>Slow ahead turns tight but the sweep sags narrow. Full ahead spreads the wire wide
+     and steadies the ship, at the cost of a long turning circle and a rougher rifle rest.
+     Mines you pass over cannot hurt your shallow hull. Floating mines can.</p>
+  <button class="big" id="btnResume">Resume</button>
+  <button class="ghost" id="btnQuit">Abandon run</button>
+</div>
+
+<div id="overPanel" class="panel hidden">
+  <h2 id="overTitle">RUN OVER</h2>
+  <p id="overCause" class="sub"></p>
+  <div class="stat"><span>Score</span><span id="ovScore">0</span></div>
+  <div class="stat"><span>Channel swept</span><span id="ovMiles">0.0 nm</span></div>
+  <div class="stat"><span>Mines cut</span><span id="ovCut">0</span></div>
+  <div class="stat"><span>Mines shot</span><span id="ovShot">0</span></div>
+  <div class="stat"><span>Ships through</span><span id="ovShips">4 of 4</span></div>
+  <div id="boardWrap" class="hidden">
+    <h2 style="margin-top:14px">TOP SWEEPS</h2>
+    <ol id="boardList"></ol>
+  </div>
+  <button class="big" id="btnAgain">Restart</button>
+</div>
+
+<script src="https://aimade.games/arcade.js"></script>
+<script>
+'use strict';
+/* ============================== ARCADE GUARD ============================== */
+let arcade = null;
+const arcadeReady = (window.Arcade && window.Arcade.ready)
+  ? Arcade.ready().then(a => { arcade = a; return a; }).catch(() => null)
+  : Promise.resolve(null);
+function sdk(fn){ // every SDK touch goes through here; never throws
+  if (!arcade) return Promise.resolve(null);
+  try { const r = fn(arcade); return (r && r.then) ? r.catch(()=>null) : Promise.resolve(r); }
+  catch(e){ return Promise.resolve(null); }
+}
+
+/* ============================== CANVAS ============================== */
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1, SCALE = 3; // px per metre
+let gradCanvas = null;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  SCALE = Math.max(W / 460, H / 660);
+  // cache the sea gradient at device resolution; blitting it beats per-pixel fills
+  gradCanvas = document.createElement('canvas');
+  gradCanvas.width = cv.width; gradCanvas.height = cv.height;
+  const g = gradCanvas.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, gradCanvas.height);
+  grad.addColorStop(0, '#0d2433'); grad.addColorStop(0.55, '#0a1d2a'); grad.addColorStop(1, '#081824');
+  g.fillStyle = grad; g.fillRect(0, 0, gradCanvas.width, gradCanvas.height);
+  // soft dawn sheen, screen-fixed like low sun glare
+  const cw = gradCanvas.width, ch = gradCanvas.height;
+  for (const [fx, fy, fr, al] of [[0.24, 0.2, 0.5, 0.05], [0.78, 0.62, 0.6, 0.035], [0.5, 0.9, 0.55, 0.03]]){
+    const rg = g.createRadialGradient(cw*fx, ch*fy, 0, cw*fx, ch*fy, cw*fr);
+    rg.addColorStop(0, 'rgba(140,190,200,' + al + ')');
+    rg.addColorStop(1, 'rgba(140,190,200,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, cw, ch);
+  }
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 60));
+
+/* deterministic water speckle, fixed in world space, one batched stroke */
+function drawSpeckle(){
+  const wrap = (v, m) => ((v % m) + m) % m;
+  cx.strokeStyle = 'rgba(255,255,255,0.06)';
+  cx.lineWidth = 1;
+  cx.beginPath();
+  const mw = W + 60, mh = H + 60;
+  const ox = G.camX * SCALE, oy = -G.boat.y * SCALE;
+  for (let i = 0; i < 190; i++){
+    const sx = wrap(i * 379.7 - ox, mw) - 30;
+    const sy = wrap(i * 811.3 - oy, mh) - 30;
+    const l = 3 + (i * 7 % 9);
+    cx.moveTo(sx, sy); cx.lineTo(sx + l, sy + l * 0.15);
+  }
+  cx.stroke();
+}
+
+/* ============================== AUDIO ============================== */
+const AU = {
+  ctx: null, master: null, muted: false, seaGain: null, engGain: null, engOsc: null,
+  ensure(){
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{}); return; }
+    try {
+      const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+      this.ctx = new C();
+      this.master = this.ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.9;
+      this.master.connect(this.ctx.destination);
+      // sea ambience
+      const buf = this.noiseBuf(2.0);
+      const src = this.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+      const lp = this.ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = 420;
+      this.seaGain = this.ctx.createGain(); this.seaGain.gain.value = 0.05;
+      src.connect(lp).connect(this.seaGain).connect(this.master); src.start();
+      // engine
+      this.engOsc = this.ctx.createOscillator(); this.engOsc.type='triangle'; this.engOsc.frequency.value = 42;
+      const lfo = this.ctx.createOscillator(); lfo.type='square'; lfo.frequency.value = 4.5;
+      const lg = this.ctx.createGain(); lg.gain.value = 12; lfo.connect(lg).connect(this.engOsc.frequency);
+      const el = this.ctx.createBiquadFilter(); el.type='lowpass'; el.frequency.value = 180;
+      this.engGain = this.ctx.createGain(); this.engGain.gain.value = 0;
+      this.engOsc.connect(el).connect(this.engGain).connect(this.master);
+      this.engOsc.start(); lfo.start();
+      this.engLfo = lfo;
+    } catch(e){ this.ctx = null; }
+  },
+  noiseBuf(sec){
+    const n = Math.floor(this.ctx.sampleRate * sec);
+    const b = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random()*2 - 1;
+    return b;
+  },
+  engine(speed, on){
+    if (!this.ctx || !this.engGain) return;
+    const t = this.ctx.currentTime;
+    this.engGain.gain.setTargetAtTime(on ? 0.05 + speed*0.016 : 0, t, 0.2);
+    if (this.engLfo) this.engLfo.frequency.setTargetAtTime(2.5 + speed*1.1, t, 0.3);
+    if (this.engOsc) this.engOsc.frequency.setTargetAtTime(36 + speed*3, t, 0.3);
+  },
+  blip(type, f0, f1, dur, gain, bp){
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(1,f1), t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let node = o.connect(g);
+    if (bp){ const f = this.ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value = bp; node = g.connect(f); node = f; }
+    (bp ? node : g).connect(this.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  noise(dur, gain, filt, f0, f1){
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf(dur);
+    const f = this.ctx.createBiquadFilter(); f.type = filt; f.frequency.setValueAtTime(f0, t);
+    if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t);
+  },
+  cut(att){ this.blip('sawtooth', 1900, 260, 0.16, 0.10*att, 1200); this.noise(0.12, 0.06*att, 'highpass', 2500, 0); },
+  surface(att){ this.blip('sine', 150, 420, 0.28, 0.14*att); this.noise(0.2, 0.05*att, 'bandpass', 700, 300); },
+  rifle(){ this.noise(0.07, 0.30, 'highpass', 1800, 0); this.blip('square', 320, 90, 0.05, 0.10); },
+  splash(att){ this.noise(0.25, 0.12*att, 'bandpass', 900, 350); },
+  boom(att){
+    this.blip('sine', 90, 26, 0.8, 0.55*att);
+    this.noise(0.7, 0.4*att, 'lowpass', 900, 90);
+  },
+  horn(){ this.blip('square', 98, 96, 1.0, 0.06, 400); this.blip('square', 124, 122, 1.0, 0.05, 500); },
+  alarm(){ this.blip('triangle', 880, 870, 0.12, 0.09); },
+  chime(){ this.blip('sine', 660, 658, 0.25, 0.10); setTimeout(()=>this.blip('sine', 880, 878, 0.35, 0.10), 130); },
+  sink(){ this.noise(1.6, 0.3, 'lowpass', 500, 60); this.blip('sine', 120, 32, 1.4, 0.25); },
+  toggleMute(){
+    this.muted = !this.muted;
+    if (this.master) this.master.gain.value = this.muted ? 0 : 0.9;
+    return this.muted;
+  }
+};
+
+/* ============================== CONSTANTS ============================== */
+const NM = 1852;                 // metres per nautical mile
+const CH_HALF = 78;              // channel half width (m)
+const CABLE_LEN = 68;            // tow cable length (m)
+const CABLE_N = 12;              // nodes per cable
+const CUT_R = 7;                 // sweep wire bite radius (m)
+let KITE = 10;                   // paravane outward pull (tuned for ~85 m spread at cruise)
+const BOAT_LEN = 24;
+const CONVOY_SPEED = 2.15;       // m/s
+const CONVOY_GAP0 = 500;         // starting gap (m)
+const SHIP_SPACING = 95;
+const QUARTER = NM / 4;
+
+/* ============================== STATE ============================== */
+const Input = { rudder:0, throttle:0, keys:{}, fire:false };
+let state = 'menu';              // menu | play | pause | over
+let paused = false;
+let G = null;                    // game run state
+let career = { bestScore:0, bestMiles:0, cuts:0, runs:0 };
+let unlockedLocal = {};
+let toastTimer = 0;
+
+function newRun(){
+  const boat = {
+    x: 0, y: 0, heading: Math.PI/2, // heading in world: +y is north/up-channel
+    speed: 3.8, targetSpeed: 4.2, rudder: 0, sunk: false, sinkT: 0
+  };
+  // two tow cables, spawned already streamed to their working spread
+  function mkCable(side){
+    const arr = [];
+    const tipX = side * 40, tipY = -54;
+    for (let i = 0; i < CABLE_N; i++){
+      const f = (i + 1) / CABLE_N;
+      const x = boat.x + tipX * f, y = boat.y + tipY * f - 6 * f * (1 - f);
+      arr.push({ x, y, px: x, py: y });
+    }
+    return arr;
+  }
+  const ships = [];
+  for (let i = 0; i < 4; i++){
+    const y = -CONVOY_GAP0 - i * SHIP_SPACING;
+    ships.push({ y, x: convoyTrackX(y), alive: true, sinkT: 0, len: 68 });
+  }
+  const starterMines = [
+    { x: -16, y: 42 }, { x: 22, y: 82 }, { x: -30, y: 126 }, { x: 12, y: 170 }
+  ].map(p => ({ x: p.x, y: p.y, state: 'moored', bob: Math.random()*7, vx: 0, vy: 0, warnT: 0 }));
+  return {
+    t: 0, boat,
+    cableP: mkCable(1), cableS: mkCable(-1),
+    mines: starterMines, genY: 210, // mines generated up to genY
+    minSpawnY: 210,
+    wake: [], sweptTrail: [], lastTrailT: 0,
+    particles: [], rings: [], foam: [],
+    current: { a: 0.2, mag: 0.32, ta: 0.2, tmag: 0.32, next: 8 },
+    ships, shipsLost: 0,
+    score: 0, cut: 0, shot: 0, wireDet: 0,
+    maxY: 0, quarterPaid: 0,
+    rifleCd: 0, hitStreak: 0, lastCutT: -99,
+    shake: 0, hornCd: 0, alarmCd: 0, camX: 0,
+    over: false, cause: '', anchorF: 0.62,
+    flags: { firstCut:false, doubleCut:false, marksman:false, bows:false, longSweep:false },
+    crosshair: null
+  };
+}
+
+/* convoy zigzags across the channel on a fixed track; every ship follows it */
+function convoyTrackX(y){
+  return Math.sin(y * 0.009) * (CH_HALF - 26) + Math.sin(y * 0.0023 + 1.7) * 10;
+}
+
+/* ============================== MINE FIELD ============================== */
+function genMines(dt){
+  // keep field generated 900 m ahead of the boat
+  while (G.genY < G.boat.y + 900){
+    const depthY = G.genY;
+    const spacing = Math.max(15, 34 - depthY * 0.005);  // densifies with distance
+    G.genY += spacing * (0.7 + Math.random()*0.6);
+    if (G.genY < G.minSpawnY) continue;
+    const inChannel = Math.random() < 0.72;
+    const x = inChannel
+      ? (Math.random()*2 - 1) * (CH_HALF - 6)
+      : (CH_HALF + 12 + Math.random()*70) * (Math.random() < 0.5 ? -1 : 1);
+    G.mines.push({ x, y: G.genY, state: 'moored', bob: Math.random()*7,
+                   vx: 0, vy: 0, warnT: 0 });
+    // clusters later in the run
+    if (depthY > 1400 && Math.random() < 0.22){
+      const n = 1 + Math.floor(Math.random()*2);
+      for (let i = 0; i < n; i++){
+        G.mines.push({ x: x + (Math.random()*2-1)*26, y: G.genY + (Math.random()*2-1)*14,
+          state: 'moored', bob: Math.random()*7, vx: 0, vy: 0, warnT: 0 });
+      }
+    }
+  }
+  // drifters ride down-current across the field after the first half mile
+  if (dt && G.boat.y > 900 && Math.random() < 0.035 * dt){
+    const side = Math.cos(G.current.a) > 0 ? -1 : 1; // spawn up-current
+    G.mines.push({ x: side * (CH_HALF + 130), y: G.boat.y + 240 + Math.random()*260,
+      state: 'float', bob: Math.random()*7, vx: 0, vy: 0, warnT: 0, drifter: true });
+  }
+}
+
+/* ============================== PHYSICS ============================== */
+function stepCable(cable, side, dt){
+  const b = G.boat;
+  // attachment: stern
+  const sx = b.x - Math.cos(b.heading) * BOAT_LEN * 0.5;
+  const sy = b.y - Math.sin(b.heading) * BOAT_LEN * 0.5;
+  const seg = CABLE_LEN / CABLE_N;
+  // verlet integrate with water drag
+  for (let i = 0; i < cable.length; i++){
+    const n = cable[i];
+    let vx = (n.x - n.px), vy = (n.y - n.py);
+    const drag = (i === cable.length - 1) ? 0.86 : 0.90;   // paravane drags harder
+    vx *= drag; vy *= drag;
+    n.px = n.x; n.py = n.y;
+    n.x += vx; n.y += vy;
+    // paravane lift: perpendicular to its velocity through the water,
+    // toward its own side (port cable kites to port), like a kite's wing
+    if (i === cable.length - 1){
+      const vpx = vx / dt, vpy = vy / dt;
+      const sp = Math.hypot(vpx, vpy);
+      if (sp > 0.05){
+        const ux = vpx / sp, uy = vpy / sp;
+        const nx = side * -uy, ny = side * ux;
+        const acc = Math.min(160, KITE * sp * sp);
+        n.x += nx * acc * dt * dt; n.y += ny * acc * dt * dt;
+      }
+    }
+  }
+  // constraints
+  for (let it = 0; it < 5; it++){
+    // pin first node to stern
+    let a = cable[0];
+    let dx = a.x - sx, dy = a.y - sy, L = Math.hypot(dx, dy) || 1;
+    const diff0 = (L - seg) / L;
+    a.x -= dx * diff0; a.y -= dy * diff0;
+    for (let i = 0; i < cable.length - 1; i++){
+      const p = cable[i], q = cable[i+1];
+      dx = q.x - p.x; dy = q.y - p.y; L = Math.hypot(dx, dy) || 1;
+      const diff = (L - seg) / L * 0.5;
+      p.x += dx * diff; p.y += dy * diff;
+      q.x -= dx * diff; q.y -= dy * diff;
+    }
+  }
+}
+
+function segDist(px, py, x1, y1, x2, y2){
+  const dx = x2 - x1, dy = y2 - y1;
+  const l2 = dx*dx + dy*dy;
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t*dx), py - (y1 + t*dy));
+}
+
+function update(dt){
+  const b = G.boat;
+  G.t += dt;
+
+  /* --- boat --- */
+  if (!b.sunk){
+    b.targetSpeed = Math.max(1.0, Math.min(4.6, b.targetSpeed + Input.throttle * 1.6 * dt));
+    b.speed += (b.targetSpeed - b.speed) * Math.min(1, 0.5 * dt);
+    b.rudder += (Input.rudder - b.rudder) * Math.min(1, 5 * dt);
+    const turnRate = b.rudder * (0.46 - b.speed * 0.055);
+    b.heading += turnRate * dt;
+    b.x += Math.cos(b.heading) * b.speed * dt;
+    b.y += Math.sin(b.heading) * b.speed * dt;
+    b.x = Math.max(-CH_HALF - 195, Math.min(CH_HALF + 195, b.x));
+    G.maxY = Math.max(G.maxY, b.y);
+  } else {
+    b.sinkT += dt;
+  }
+  AU.engine(b.speed, state === 'play' && !b.sunk);
+
+  /* --- wake --- */
+  if (!b.sunk && (G.wake.length === 0 || G.t - G.wake[G.wake.length-1].t > 0.12)){
+    G.wake.push({ x: b.x - Math.cos(b.heading)*BOAT_LEN*0.5, y: b.y - Math.sin(b.heading)*BOAT_LEN*0.5, t: G.t });
+    if (G.wake.length > 90) G.wake.shift();
+  }
+
+  /* --- cables + sweep --- */
+  if (!b.sunk){
+    stepCable(G.cableP, 1, dt);
+    stepCable(G.cableS, -1, dt);
+  }
+  const pv1 = G.cableP[CABLE_N-1], pv2 = G.cableS[CABLE_N-1];
+  const sagX = (pv1.x + pv2.x)/2 - Math.cos(b.heading) * 6;
+  const sagY = (pv1.y + pv2.y)/2 - Math.sin(b.heading) * 6;
+  const wireDist = (x, y) => Math.min(
+    segDist(x, y, pv1.x, pv1.y, sagX, sagY),
+    segDist(x, y, sagX, sagY, pv2.x, pv2.y));
+
+  /* swept trail record */
+  if (!b.sunk && G.t - G.lastTrailT > 0.14){
+    G.lastTrailT = G.t;
+    G.sweptTrail.push({ x1: pv1.x, y1: pv1.y, x2: pv2.x, y2: pv2.y, t: G.t });
+    if (G.sweptTrail.length > 170) G.sweptTrail.shift();
+  }
+
+  /* --- current wander --- */
+  const cur = G.current;
+  cur.next -= dt;
+  if (cur.next <= 0){
+    cur.next = 7 + Math.random()*8;
+    cur.ta = (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random()*2 - 1) * 0.7;
+    cur.tmag = 0.15 + Math.random() * (0.3 + Math.min(0.45, G.maxY/6000));
+  }
+  let da = ((cur.ta - cur.a + Math.PI*3) % (Math.PI*2)) - Math.PI;
+  cur.a += da * Math.min(1, 0.08 * dt * 4);
+  cur.mag += (cur.tmag - cur.mag) * Math.min(1, 0.1 * dt * 4);
+  const curX = Math.cos(cur.a) * cur.mag, curY = Math.sin(cur.a) * cur.mag * 0.35;
+
+  /* --- mines --- */
+  genMines(dt);
+  const leadShip = G.ships.find(s => s.alive);
+  const aliveShips = G.ships.filter(s => s.alive);
+  for (let i = G.mines.length - 1; i >= 0; i--){
+    const m = G.mines[i];
+    if (m.y < (leadShip ? leadShip.y : b.y) - 420 && m.state !== 'gone'){ G.mines.splice(i,1); continue; }
+    if (m.state === 'moored'){
+      // sweep wire bite
+      if (!b.sunk && wireDist(m.x, m.y) < CUT_R){
+        m.state = 'float';
+        m.vx = 0; m.vy = 0;
+        m.armT = G.t + 2.5;      // freshly cut: surfaces astern of the wire
+        G.cut++; G.score += 10;
+        addRings(m.x, m.y, 2);
+        const att = attFor(m.x, m.y);
+        AU.cut(att); setTimeout(()=>AU.surface(att), 160);
+        if (!G.flags.firstCut){ G.flags.firstCut = true; unlock('first-cut'); }
+        if (G.t - G.lastCutT < 3 && !G.flags.doubleCut){ G.flags.doubleCut = true; unlock('two-on-the-wire'); }
+        G.lastCutT = G.t;
+      }
+    } else if (m.state === 'float'){
+      m.vx += (curX - m.vx) * 0.4 * dt; m.vy += (curY - m.vy) * 0.4 * dt;
+      m.x += m.vx * dt; m.y += m.vy * dt;
+      // wire detonates floaters it touches (not the one it just cut)
+      if (!b.sunk && (!m.armT || G.t > m.armT) && wireDist(m.x, m.y) < CUT_R){
+        detonate(m, 'wire'); continue;
+      }
+      // hull contact sinks the trawler
+      if (!b.sunk){
+        const hx = b.x + Math.cos(b.heading)*4, hy = b.y + Math.sin(b.heading)*4;
+        if (Math.hypot(m.x - hx, m.y - hy) < 11 || Math.hypot(m.x - b.x, m.y - b.y) < 9){
+          detonate(m, 'hull');
+          sinkTrawler(); continue;
+        }
+      }
+      // convoy contact
+      let struck = false;
+      for (const s of aliveShips){
+        if (Math.abs(m.x - s.x) < 12 && Math.abs(m.y - s.y) < s.len*0.5){
+          detonate(m, 'ship'); hitShip(s); struck = true; break;
+        }
+      }
+      if (struck) continue;
+      // proximity alarm
+      if (leadShip && m.y > leadShip.y && m.y - leadShip.y < 150 && Math.abs(m.x) < CH_HALF + 15){
+        m.warnT += dt;
+        if (G.alarmCd <= 0){ AU.alarm(); G.alarmCd = 1.6; }
+      } else m.warnT = 0;
+    }
+    if (m.state === 'moored'){
+      // the deep-draft convoy strikes moored mines still on its track
+      for (const s of aliveShips){
+        if (Math.abs(m.x - s.x) < 13 && Math.abs(m.y - s.y) < s.len*0.45){
+          detonate(m, 'ship'); hitShip(s); break;
+        }
+      }
+    }
+  }
+  G.alarmCd -= dt;
+
+  /* --- convoy --- */
+  let prevY = b.y - 90;
+  let isLead = true;
+  for (const s of G.ships){
+    if (!s.alive){ s.sinkT += dt; continue; }
+    const gap = prevY - s.y;
+    // the lead ship presses on when the sweeper pulls far ahead
+    const base = (isLead && gap > 480) ? 2.75 : CONVOY_SPEED;
+    const spd = gap < 70 ? Math.max(0.6, base * (gap / 70)) : base;
+    s.y += spd * dt;
+    s.x = convoyTrackX(s.y);
+    prevY = s.y;
+    isLead = false;
+  }
+  // camera: show the water astern when the convoy crowds in
+  {
+    const lead0 = G.ships.find(s => s.alive);
+    const gapB = lead0 ? (b.y - lead0.y) : 999;
+    const targetF = 0.62 - 0.17 * Math.max(0, Math.min(1, (260 - gapB) / 260));
+    G.anchorF += (targetF - G.anchorF) * Math.min(1, 1.5 * dt);
+  }
+  if (leadShip){
+    const gap = b.y - leadShip.y;
+    if (gap < 110 && G.hornCd <= 0){ AU.horn(); G.hornCd = 6; }
+    G.hornCd -= dt;
+    // quarter-mile pay-out as the convoy makes ground
+    const q = Math.floor((leadShip.y + CONVOY_GAP0) / QUARTER);
+    if (q > G.quarterPaid){
+      G.quarterPaid = q;
+      const alive = G.ships.filter(s => s.alive).length;
+      const pts = Math.round(150 * alive / 4);
+      G.score += pts;
+      AU.chime();
+      showToast('Quarter mile made good. +' + pts);
+    }
+  }
+
+  /* --- rifle --- */
+  G.rifleCd -= dt;
+  if (Input.fire){ Input.fire = false; fireRifle(); }
+
+  /* --- particles --- */
+  for (let i = G.particles.length-1; i >= 0; i--){
+    const p = G.particles[i];
+    p.t += dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 0.97; p.vy *= 0.97; p.vy -= p.g*dt;
+    if (p.t > p.life) G.particles.splice(i,1);
+  }
+  for (let i = G.rings.length-1; i >= 0; i--){ G.rings[i].t += dt; if (G.rings[i].t > G.rings[i].life) G.rings.splice(i,1); }
+  for (let i = G.foam.length-1; i >= 0; i--){ G.foam[i].t += dt; if (G.foam[i].t > G.foam[i].life) G.foam.splice(i,1); }
+  G.shake = Math.max(0, G.shake - dt * 2.2);
+
+  /* --- achievements from distance --- */
+  if (!G.flags.longSweep && G.maxY >= 1.5 * NM){ G.flags.longSweep = true; unlock('long-sweep'); }
+
+  /* --- end states --- */
+  if (b.sunk && b.sinkT > 2.2 && !G.over) endRun('Your trawler struck a floating mine.');
+  if (!G.ships.some(s => s.alive) && !G.over) endRun('Every ship of the convoy was lost.');
+
+  /* camera */
+  G.camX += (b.x - G.camX) * Math.min(1, 2.2 * dt);
+}
+
+function attFor(x, y){
+  const d = Math.hypot(x - G.boat.x, y - G.boat.y);
+  return Math.max(0.15, 1 - d / 700);
+}
+
+function detonate(m, how){
+  m.state = 'gone';
+  const att = attFor(m.x, m.y);
+  AU.boom(att);
+  addBoom(m.x, m.y);
+  if (how === 'wire'){ G.wireDet++; G.score += 10; }
+  G.shake = Math.max(G.shake, 0.5 + att * 0.6);
+}
+
+function sinkTrawler(){
+  const b = G.boat;
+  b.sunk = true; b.sinkT = 0;
+  AU.sink();
+  G.shake = 1.4;
+}
+
+function hitShip(s){
+  s.alive = false; s.sinkT = 0;
+  G.shipsLost++;
+  AU.boom(0.7); AU.sink();
+  addBoom(s.x, s.y);
+  showToast('A ship of the convoy is hit.');
+  G.shake = Math.max(G.shake, 0.8);
+}
+
+function fireRifle(){
+  if (G.rifleCd > 0 || G.boat.sunk || state !== 'play') return;
+  const b = G.boat;
+  let aim = G.crosshair;
+  if (!aim){ // keyboard auto-aim: nearest floater
+    let best = null, bd = 310;
+    for (const m of G.mines){
+      if (m.state !== 'float') continue;
+      const d = Math.hypot(m.x - b.x, m.y - b.y);
+      if (d < bd){ bd = d; best = m; }
+    }
+    if (!best) { showToast('No mine afloat in rifle range.'); return; }
+    aim = { x: best.x, y: best.y };
+  } else {
+    // snap a near-miss aim onto the mine
+    for (const m of G.mines){
+      if (m.state === 'float' && Math.hypot(m.x - aim.x, m.y - aim.y) < 8){ aim = { x: m.x, y: m.y }; break; }
+    }
+  }
+  G.rifleCd = 0.75;
+  AU.rifle();
+  const range = Math.hypot(aim.x - b.x, aim.y - b.y);
+  if (range > 420){ // beyond rifle reach: splash short
+    const t = 400 / range;
+    splashAt(b.x + (aim.x-b.x)*t, b.y + (aim.y-b.y)*t);
+    G.hitStreak = 0;
+    return;
+  }
+  const err = (range / 340) * 5 + b.speed * 0.75;
+  const ea = Math.random() * Math.PI * 2, em = Math.random() * err;
+  const lx = aim.x + Math.cos(ea) * em, ly = aim.y + Math.sin(ea) * em;
+  // did it land on a floater?
+  let hit = null;
+  for (const m of G.mines){
+    if (m.state === 'float' && Math.hypot(m.x - lx, m.y - ly) < 4.2){ hit = m; break; }
+  }
+  if (hit){
+    G.shot++; G.score += 25;
+    G.hitStreak++;
+    const lead = G.ships.find(s => s.alive);
+    if (lead && Math.hypot(hit.x - lead.x, hit.y - lead.y) < 70 && !G.flags.bows){
+      G.flags.bows = true; unlock('under-their-bows');
+    }
+    if (G.hitStreak >= 5 && !G.flags.marksman){ G.flags.marksman = true; unlock('marksman'); }
+    detonate(hit, 'rifle');
+  } else {
+    G.hitStreak = 0;
+    splashAt(lx, ly);
+  }
+}
+
+function splashAt(x, y){
+  AU.splash(attFor(x, y));
+  addRings(x, y, 1);
+  for (let i = 0; i < 6; i++){
+    G.particles.push({ x, y, vx: (Math.random()*2-1)*4, vy: (Math.random()*2-1)*4 + 5,
+      g: 12, t: 0, life: 0.5, r: 0.5 + Math.random(), c: '#cfe4ea' });
+  }
+}
+function addRings(x, y, n){
+  for (let i = 0; i < n; i++) G.rings.push({ x, y, t: -i*0.15, life: 1.3, max: 14 + i*8 });
+}
+function addBoom(x, y){
+  addRings(x, y, 3);
+  G.foam.push({ x, y, t: 0, life: 6, r: 11 });
+  for (let i = 0; i < 26; i++){
+    const a = Math.random()*Math.PI*2, sp = 4 + Math.random()*16;
+    G.particles.push({ x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp + 14,
+      g: 26, t: 0, life: 0.7 + Math.random()*0.6, r: 0.8 + Math.random()*1.6,
+      c: Math.random() < 0.3 ? '#f0d9a0' : '#dcebf0' });
+  }
+}
+
+/* ============================== ACHIEVEMENTS / SCORE ============================== */
+const ACH_NAMES = {
+  'first-cut': 'First Cut', 'two-on-the-wire': 'Two on the Wire',
+  'marksman': 'Marksman', 'under-their-bows': 'Under Their Bows', 'long-sweep': 'Long Sweep'
+};
+function unlock(slug){
+  if (unlockedLocal[slug]) return;
+  unlockedLocal[slug] = true;
+  sdk(a => a.achievements.unlock(slug)).then(r => {
+    const name = (r && r.ok && r.achievement) ? r.achievement.name : ACH_NAMES[slug] || slug;
+    showToast('Unlocked: ' + name);
+  });
+}
+
+function endRun(cause){
+  G.over = true; G.cause = cause;
+  state = 'over';
+  AU.engine(0, false);
+  document.getElementById('btnPause').classList.add('hidden');
+  const miles = G.maxY / NM;
+  const shipsAlive = G.ships.filter(s => s.alive).length;
+  document.getElementById('overTitle').textContent = 'RUN OVER';
+  document.getElementById('overCause').textContent = cause;
+  document.getElementById('ovScore').textContent = G.score;
+  document.getElementById('ovMiles').textContent = miles.toFixed(2) + ' nm';
+  document.getElementById('ovCut').textContent = G.cut + (G.wireDet ? ' (+' + G.wireDet + ' on the wire)' : '');
+  document.getElementById('ovShot').textContent = G.shot;
+  document.getElementById('ovShips').textContent = shipsAlive + ' of 4';
+  document.getElementById('overPanel').classList.remove('hidden');
+  // career
+  career.runs++; career.cuts += G.cut;
+  career.bestScore = Math.max(career.bestScore, G.score);
+  career.bestMiles = Math.max(career.bestMiles, miles);
+  sdk(a => a.saves.set('career', career));
+  // score + board
+  sdk(a => a.scores.submit(G.score, { nm: +miles.toFixed(2), cut: G.cut, shot: G.shot, ships: shipsAlive }))
+    .then(() => sdk(a => a.scores.top({ limit: 5, period: 'all' })))
+    .then(r => {
+      const wrap = document.getElementById('boardWrap');
+      const ol = document.getElementById('boardList');
+      ol.innerHTML = '';
+      if (r && r.ok && r.entries && r.entries.length){
+        for (const e of r.entries){
+          const li = document.createElement('li');
+          if (e.isYou) li.className = 'me';
+          const nm = document.createElement('span'); nm.textContent = e.rank + '. ' + (e.player && e.player.username || 'anon');
+          const sc = document.createElement('span'); sc.textContent = e.score;
+          li.append(nm, sc); ol.append(li);
+        }
+        wrap.classList.remove('hidden');
+      } else wrap.classList.add('hidden');
+    });
+}
+
+/* ============================== RENDER ============================== */
+function w2sX(x){ return W/2 + (x - G.camX) * SCALE; }
+function w2sY(y){ return H * (G ? G.anchorF : 0.62) - (y - G.boat.y) * SCALE; }
+function screen2world(cxp, cyp){
+  return { x: G.camX + (cxp - W/2) / SCALE, y: G.boat.y + (H * G.anchorF - cyp) / SCALE };
+}
+
+function render(){
+  const b = G.boat;
+  // sea background: cached gradient blit, unshaken
+  cx.setTransform(1, 0, 0, 1, 0, 0);
+  cx.drawImage(gradCanvas, 0, 0);
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // shake
+  if (G.shake > 0){
+    cx.translate((Math.random()*2-1) * G.shake * 6, (Math.random()*2-1) * G.shake * 6);
+  }
+  drawSpeckle();
+  // current streaks
+  drawCurrent();
+  // channel band + buoys
+  drawChannel();
+  // swept trail
+  drawSweptTrail();
+  // foam patches
+  for (const f of G.foam){
+    const a = Math.max(0, 1 - f.t / f.life);
+    cx.fillStyle = 'rgba(210,228,232,' + (0.10*a).toFixed(3) + ')';
+    cx.beginPath(); cx.arc(w2sX(f.x), w2sY(f.y), (f.r + f.t*0.8) * SCALE, 0, 7); cx.fill();
+  }
+  // wake
+  drawWake();
+  // mines
+  drawMines();
+  // convoy
+  drawConvoy();
+  // cables + paravanes + wire
+  if (!b.sunk || b.sinkT < 1.5) drawSweep();
+  // trawler
+  drawBoat();
+  // rings/particles
+  for (const r of G.rings){
+    if (r.t < 0) continue;
+    const k = r.t / r.life;
+    cx.strokeStyle = 'rgba(214,232,238,' + (0.5*(1-k)).toFixed(3) + ')';
+    cx.lineWidth = Math.max(1, 2 * SCALE * (1-k));
+    cx.beginPath(); cx.arc(w2sX(r.x), w2sY(r.y), r.max * k * SCALE, 0, 7); cx.stroke();
+  }
+  for (const p of G.particles){
+    const a = 1 - p.t / p.life;
+    cx.fillStyle = p.c;
+    cx.globalAlpha = a * 0.9;
+    cx.beginPath(); cx.arc(w2sX(p.x), w2sY(p.y), p.r * SCALE * 0.5, 0, 7); cx.fill();
+  }
+  cx.globalAlpha = 1;
+  // HUD
+  if (state === 'play' || state === 'pause') drawHUD();
+}
+
+function drawCurrent(){
+  const cur = G.current;
+  cx.strokeStyle = 'rgba(150,190,200,0.06)';
+  cx.lineWidth = 1;
+  const dx = Math.cos(cur.a), dy = Math.sin(cur.a) * 0.35;
+  const t = G.t * cur.mag * 8;
+  const wrap = (v, m) => ((v % m) + m) % m;
+  cx.beginPath();
+  for (let i = 0; i < 26; i++){
+    const seed = i * 137.5;
+    const px = wrap(seed * 7.3 + t * dx * 6, W + 80) - 40;
+    const py = wrap(seed * 13.7 - t * dy * 6, H + 80) - 40;
+    cx.moveTo(px, py);
+    cx.lineTo(px + dx * 26, py - dy * 26);
+  }
+  cx.stroke();
+}
+
+function drawChannel(){
+  const xL = w2sX(-CH_HALF), xR = w2sX(CH_HALF);
+  cx.fillStyle = 'rgba(120,180,190,0.045)';
+  cx.fillRect(xL, -12, xR - xL, H + 24);
+  cx.strokeStyle = 'rgba(160,200,205,0.12)';
+  cx.setLineDash([6, 10]); cx.lineWidth = 1;
+  cx.beginPath(); cx.moveTo(xL, -12); cx.lineTo(xL, H+24); cx.moveTo(xR, -12); cx.lineTo(xR, H+24); cx.stroke();
+  cx.setLineDash([]);
+  // dan buoys every 130 m
+  const y0 = Math.floor((G.boat.y - 300) / 130) * 130;
+  for (let y = y0; y < G.boat.y + 500; y += 130){
+    for (const side of [-CH_HALF, CH_HALF]){
+      const sx = w2sX(side), sy = w2sY(y + Math.sin(G.t*1.3 + y)*0.6);
+      if (sy < -20 || sy > H + 20) continue;
+      cx.fillStyle = '#c8503c';
+      cx.beginPath(); cx.arc(sx, sy, 2.2 * SCALE * 0.6, 0, 7); cx.fill();
+      cx.strokeStyle = '#c8503c'; cx.lineWidth = 1;
+      cx.beginPath(); cx.moveTo(sx, sy); cx.lineTo(sx + 2, sy - 4.5 * SCALE * 0.6); cx.stroke();
+      cx.fillStyle = '#e0b04e';
+      cx.fillRect(sx + 2, sy - 4.5 * SCALE * 0.6, 3.4, 2.4);
+    }
+  }
+}
+
+function drawSweptTrail(){
+  // batched into three age buckets to keep stroke calls cheap
+  const buckets = [[7, 0.024], [15, 0.013], [23, 0.006]];
+  cx.lineWidth = 5 * SCALE;
+  let prev = 0;
+  for (const [maxAge, alpha] of buckets){
+    cx.strokeStyle = 'rgba(120,205,200,' + alpha + ')';
+    cx.beginPath();
+    let any = false;
+    for (let i = 0; i < G.sweptTrail.length; i++){
+      const s = G.sweptTrail[i];
+      const age = G.t - s.t;
+      if (age < prev || age >= maxAge) continue;
+      cx.moveTo(w2sX(s.x1), w2sY(s.y1));
+      cx.lineTo(w2sX(s.x2), w2sY(s.y2));
+      any = true;
+    }
+    if (any) cx.stroke();
+    prev = maxAge;
+  }
+}
+
+function drawWake(){
+  if (G.wake.length < 2) return;
+  cx.lineCap = 'round';
+  // broad old wash
+  cx.strokeStyle = 'rgba(200,225,232,0.05)';
+  cx.lineWidth = 3.6 * SCALE * 0.7;
+  cx.beginPath();
+  cx.moveTo(w2sX(G.wake[0].x), w2sY(G.wake[0].y));
+  for (let i = 1; i < G.wake.length; i++) cx.lineTo(w2sX(G.wake[i].x), w2sY(G.wake[i].y));
+  cx.stroke();
+  // bright fresh wake
+  const n0 = Math.max(0, G.wake.length - 22);
+  cx.strokeStyle = 'rgba(200,225,232,0.14)';
+  cx.lineWidth = 1.5 * SCALE * 0.7;
+  cx.beginPath();
+  cx.moveTo(w2sX(G.wake[n0].x), w2sY(G.wake[n0].y));
+  for (let i = n0 + 1; i < G.wake.length; i++) cx.lineTo(w2sX(G.wake[i].x), w2sY(G.wake[i].y));
+  cx.stroke();
+}
+
+function drawMines(){
+  for (const m of G.mines){
+    const sx = w2sX(m.x), sy = w2sY(m.y);
+    if (sy < -30 || sy > H + 30 || sx < -30 || sx > W + 30) continue;
+    const bob = Math.sin(G.t * 1.7 + m.bob) * 0.5;
+    if (m.state === 'moored'){
+      // dark shape under the surface with a faint glassy rim
+      const r = 3.4 * SCALE * 0.75;
+      cx.strokeStyle = 'rgba(110,160,165,0.30)';
+      cx.lineWidth = 1;
+      cx.beginPath(); cx.arc(sx, sy + bob, r + 1.5, 0, 7); cx.stroke();
+      cx.fillStyle = 'rgba(8,22,26,0.9)';
+      cx.beginPath(); cx.arc(sx, sy + bob, r, 0, 7); cx.fill();
+      cx.fillStyle = 'rgba(120,170,175,0.55)';
+      cx.beginPath(); cx.arc(sx - r*0.3, sy + bob - r*0.3, r*0.28, 0, 7); cx.fill();
+    } else if (m.state === 'float'){
+      // surfaced: bright, horned, with ripples
+      const r = 3.2 * SCALE * 0.8;
+      cx.strokeStyle = 'rgba(200,225,230,0.4)';
+      cx.lineWidth = 1;
+      cx.beginPath(); cx.arc(sx, sy, r + 3 + Math.sin(G.t*2.4 + m.bob)*1.5, 0, 7); cx.stroke();
+      cx.fillStyle = m.warnT > 0 && Math.floor(G.t*4) % 2 === 0 ? '#a1402c' : '#2b4147';
+      cx.beginPath(); cx.arc(sx, sy + bob, r, 0, 7); cx.fill();
+      cx.strokeStyle = '#5d7f84'; cx.lineWidth = Math.max(1, SCALE*0.35);
+      for (let k = 0; k < 5; k++){
+        const a = k / 5 * Math.PI * 2 + 0.4;
+        cx.beginPath();
+        cx.moveTo(sx + Math.cos(a) * r * 0.8, sy + bob + Math.sin(a) * r * 0.8);
+        cx.lineTo(sx + Math.cos(a) * r * 1.45, sy + bob + Math.sin(a) * r * 1.45);
+        cx.stroke();
+      }
+      cx.fillStyle = 'rgba(220,235,238,0.6)';
+      cx.beginPath(); cx.arc(sx - r*0.35, sy + bob - r*0.35, r*0.22, 0, 7); cx.fill();
+    }
+  }
+}
+
+function drawConvoy(){
+  for (const s of G.ships){
+    const sx = w2sX(s.x), sy = w2sY(s.y);
+    if (sy < -120 || sy > H + 160) continue;
+    cx.save();
+    cx.translate(sx, sy);
+    if (!s.alive){
+      const k = Math.min(1, s.sinkT / 5);
+      cx.globalAlpha = Math.max(0, 1 - k);
+      cx.rotate(k * 0.5);
+      cx.scale(1 - k*0.3, 1 - k*0.3);
+    }
+    const L = s.len * SCALE, Wd = 14 * SCALE;
+    // hull (pointing up)
+    cx.fillStyle = '#39454b';
+    cx.beginPath();
+    cx.moveTo(0, -L/2);
+    cx.quadraticCurveTo(Wd/2, -L/2 + L*0.22, Wd/2, L*0.12);
+    cx.quadraticCurveTo(Wd/2, L/2, Wd*0.28, L/2);
+    cx.lineTo(-Wd*0.28, L/2);
+    cx.quadraticCurveTo(-Wd/2, L/2, -Wd/2, L*0.12);
+    cx.quadraticCurveTo(-Wd/2, -L/2 + L*0.22, 0, -L/2);
+    cx.fill();
+    cx.fillStyle = '#546067';
+    cx.fillRect(-Wd*0.28, -L*0.18, Wd*0.56, L*0.34);
+    cx.fillStyle = '#20292d';
+    cx.beginPath(); cx.arc(0, -L*0.06, Wd*0.14, 0, 7); cx.fill(); // funnel
+    cx.fillStyle = '#8c959b';
+    cx.fillRect(-Wd*0.06, -L*0.42, Wd*0.12, L*0.1); // fore derrick
+    if (s.alive){
+      // bow wave
+      cx.strokeStyle = 'rgba(210,230,235,0.25)'; cx.lineWidth = 1.4;
+      cx.beginPath(); cx.moveTo(-Wd*0.4, -L/2 + 4); cx.lineTo(-Wd*0.9, -L/2 + 14);
+      cx.moveTo(Wd*0.4, -L/2 + 4); cx.lineTo(Wd*0.9, -L/2 + 14); cx.stroke();
+    }
+    cx.restore();
+    cx.globalAlpha = 1;
+  }
+}
+
+function drawSweep(){
+  const b = G.boat;
+  cx.lineCap = 'round';
+  for (const [cable] of [[G.cableP], [G.cableS]]){
+    cx.strokeStyle = 'rgba(52,74,80,0.95)';
+    cx.lineWidth = Math.max(1, 0.5 * SCALE);
+    cx.beginPath();
+    const sx = b.x - Math.cos(b.heading)*BOAT_LEN*0.5, sy = b.y - Math.sin(b.heading)*BOAT_LEN*0.5;
+    cx.moveTo(w2sX(sx), w2sY(sy));
+    for (const n of cable) cx.lineTo(w2sX(n.x), w2sY(n.y));
+    cx.stroke();
+  }
+  const p1 = G.cableP[CABLE_N-1], p2 = G.cableS[CABLE_N-1];
+  // serrated sweep wire with sag
+  const mx = (p1.x + p2.x)/2 - Math.cos(b.heading) * 6, my = (p1.y + p2.y)/2 - Math.sin(b.heading) * 6;
+  cx.strokeStyle = 'rgba(196,214,220,0.85)';
+  cx.lineWidth = Math.max(1, 0.45 * SCALE);
+  cx.setLineDash([4, 3]);
+  cx.lineDashOffset = -G.t * 22;
+  cx.beginPath();
+  cx.moveTo(w2sX(p1.x), w2sY(p1.y));
+  cx.quadraticCurveTo(w2sX(mx), w2sY(my), w2sX(p2.x), w2sY(p2.y));
+  cx.stroke();
+  cx.setLineDash([]);
+  // paravanes: little kites with splash
+  for (const pv of [p1, p2]){
+    const sx = w2sX(pv.x), sy = w2sY(pv.y);
+    cx.save();
+    cx.translate(sx, sy);
+    cx.rotate(-Math.atan2(pv.y - pv.py, pv.x - pv.px) + Math.PI/2);
+    cx.fillStyle = '#b8443a';
+    cx.beginPath();
+    cx.moveTo(0, -3.2*SCALE*0.55);
+    cx.lineTo(1.5*SCALE*0.55, 2.4*SCALE*0.55);
+    cx.lineTo(-1.5*SCALE*0.55, 2.4*SCALE*0.55);
+    cx.closePath(); cx.fill();
+    cx.fillStyle = 'rgba(225,238,240,0.5)';
+    cx.beginPath(); cx.arc(0, -3.4*SCALE*0.55, 1.1*SCALE*0.4, 0, 7); cx.fill();
+    cx.restore();
+  }
+}
+
+function drawBoat(){
+  const b = G.boat;
+  const sx = w2sX(b.x), sy = w2sY(b.y);
+  cx.save();
+  cx.translate(sx, sy);
+  cx.rotate(-b.heading + Math.PI/2);
+  if (b.sunk){
+    const k = Math.min(1, b.sinkT / 2.2);
+    cx.globalAlpha = 1 - k;
+    cx.rotate(k * 0.7);
+    cx.scale(1 - k * 0.35, 1 - k * 0.35);
+  }
+  const L = BOAT_LEN * SCALE, Wd = 7.5 * SCALE;
+  cx.fillStyle = '#22333a';
+  cx.beginPath();
+  cx.moveTo(0, -L/2);
+  cx.quadraticCurveTo(Wd/2, -L/2 + L*0.3, Wd/2, L*0.18);
+  cx.quadraticCurveTo(Wd/2, L/2, Wd*0.3, L/2);
+  cx.lineTo(-Wd*0.3, L/2);
+  cx.quadraticCurveTo(-Wd/2, L/2, -Wd/2, L*0.18);
+  cx.quadraticCurveTo(-Wd/2, -L/2 + L*0.3, 0, -L/2);
+  cx.fill();
+  cx.strokeStyle = '#101b20'; cx.lineWidth = 1; cx.stroke();
+  // deck
+  cx.fillStyle = '#31454d';
+  cx.beginPath();
+  cx.moveTo(0, -L*0.42);
+  cx.quadraticCurveTo(Wd*0.36, -L*0.2, Wd*0.36, L*0.2);
+  cx.lineTo(-Wd*0.36, L*0.2);
+  cx.quadraticCurveTo(-Wd*0.36, -L*0.2, 0, -L*0.42);
+  cx.fill();
+  // wheelhouse
+  cx.fillStyle = '#c9c4ae';
+  cx.fillRect(-Wd*0.24, -L*0.12, Wd*0.48, L*0.2);
+  cx.fillStyle = '#7c4a32';
+  cx.fillRect(-Wd*0.2, L*0.1, Wd*0.4, L*0.14); // hatch
+  // funnel + smoke
+  cx.fillStyle = '#1a2226';
+  cx.beginPath(); cx.arc(0, L*0.02, Wd*0.13, 0, 7); cx.fill();
+  cx.restore();
+  if (!b.sunk){
+    const smokeN = Math.floor(2 + b.speed);
+    for (let i = 0; i < smokeN; i++){
+      const t = (G.t * 0.7 + i / smokeN) % 1;
+      const dx = -Math.cos(b.heading) * t * 22 + Math.sin(G.t * 1.4 + i * 2.1) * (1 + t * 4);
+      const dy = -Math.sin(b.heading) * t * 22;
+      cx.fillStyle = 'rgba(180,190,192,' + (0.11 * (1 - t)).toFixed(3) + ')';
+      cx.beginPath();
+      cx.arc(w2sX(b.x + dx), w2sY(b.y + dy) - t * 6, (0.8 + t * 3.2) * SCALE * 0.6, 0, 7);
+      cx.fill();
+    }
+  }
+  // crosshair
+  if (G.crosshair && state === 'play' && !('ontouchstart' in window && !G.crosshair.mouse)){
+    const chx = w2sX(G.crosshair.x), chy = w2sY(G.crosshair.y);
+    const ready = G.rifleCd <= 0;
+    cx.strokeStyle = ready ? 'rgba(226,214,170,0.8)' : 'rgba(160,160,160,0.4)';
+    cx.lineWidth = 1.2;
+    cx.beginPath(); cx.arc(chx, chy, 9, 0, 7); cx.stroke();
+    cx.beginPath();
+    cx.moveTo(chx - 14, chy); cx.lineTo(chx - 5, chy);
+    cx.moveTo(chx + 5, chy); cx.lineTo(chx + 14, chy);
+    cx.moveTo(chx, chy - 14); cx.lineTo(chx, chy - 5);
+    cx.moveTo(chx, chy + 5); cx.lineTo(chx, chy + 14);
+    cx.stroke();
+  }
+}
+
+function drawHUD(){
+  const b = G.boat;
+  const pad = 12, lh = 19;
+  cx.font = '600 14px "Avenir Next","Segoe UI",system-ui,sans-serif';
+  cx.textBaseline = 'top';
+  // left block
+  cx.fillStyle = 'rgba(8,20,26,0.55)';
+  roundRect(pad - 6, pad - 6, 168, lh * 3 + 14, 8); cx.fill();
+  cx.fillStyle = '#d8a94e';
+  cx.fillText('SCORE ' + G.score, pad, pad);
+  cx.fillStyle = '#e8e2d0';
+  cx.fillText((G.maxY / NM).toFixed(2) + ' nm swept', pad, pad + lh);
+  const lead = G.ships.find(s => s.alive);
+  const gap = lead ? Math.max(0, Math.round(b.y - lead.y)) : 0;
+  cx.fillStyle = gap < 150 ? '#e2604a' : '#9aa89f';
+  cx.fillText('convoy ' + gap + ' m astern', pad, pad + lh * 2);
+  // ships
+  const shipsX = pad + 178;
+  cx.fillStyle = 'rgba(8,20,26,0.55)';
+  roundRect(shipsX - 6, pad - 6, 96, lh + 14, 8); cx.fill();
+  for (let i = 0; i < 4; i++){
+    const s = G.ships[i];
+    cx.fillStyle = s.alive ? '#9fb6ba' : '#4a3230';
+    roundRect(shipsX + i * 22, pad + 2, 15, 9, 2); cx.fill();
+  }
+  // right block: throttle + current (kept clear of pause button)
+  const rx = W - 118, ry = pad + 44;
+  cx.fillStyle = 'rgba(8,20,26,0.55)';
+  roundRect(rx - 8, ry - 6, 112, lh * 2 + 16, 8); cx.fill();
+  cx.fillStyle = '#9aa89f';
+  cx.fillText('engine', rx, ry);
+  for (let i = 0; i < 5; i++){
+    cx.fillStyle = b.targetSpeed > 1.0 + i * 0.72 ? '#d8a94e' : '#2a4450';
+    cx.fillRect(rx + 58 + i * 9, ry + 3, 6, 10);
+  }
+  cx.fillStyle = '#9aa89f';
+  cx.fillText('current', rx, ry + lh);
+  const ca = G.current.a, cm = G.current.mag;
+  const ax = rx + 78, ay = ry + lh + 8;
+  cx.strokeStyle = '#8fb7bb'; cx.lineWidth = 1.5;
+  cx.beginPath();
+  cx.moveTo(ax - Math.cos(ca) * 10, ay + Math.sin(ca) * 4);
+  cx.lineTo(ax + Math.cos(ca) * 10, ay - Math.sin(ca) * 4);
+  cx.stroke();
+  cx.beginPath();
+  cx.arc(ax + Math.cos(ca) * 10, ay - Math.sin(ca) * 4, 2.4 + cm * 2.5, 0, 7);
+  cx.fillStyle = '#8fb7bb'; cx.fill();
+  // rifle state
+  if (G.rifleCd > 0){
+    cx.fillStyle = 'rgba(154,168,159,0.8)';
+    cx.fillText('reloading', W/2 - 30, H - 30);
+  }
+}
+
+function roundRect(x, y, w, h, r){
+  cx.beginPath();
+  cx.moveTo(x + r, y);
+  cx.arcTo(x + w, y, x + w, y + h, r);
+  cx.arcTo(x + w, y + h, x, y + h, r);
+  cx.arcTo(x, y + h, x, y, r);
+  cx.arcTo(x, y, x + w, y, r);
+  cx.closePath();
+}
+
+/* ============================== TOAST ============================== */
+function showToast(text){
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.style.opacity = 1;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.opacity = 0; }, 2600);
+}
+
+/* ============================== INPUT ============================== */
+const keyMap = {
+  'a': 'port', 'arrowleft': 'port', 'd': 'stbd', 'arrowright': 'stbd',
+  'w': 'fast', 'arrowup': 'fast', 's': 'slow', 'arrowdown': 'slow'
+};
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key === ' ' ? ' ' : k)) e.preventDefault();
+  if (k === 'p' || k === 'escape'){ togglePause(); return; }
+  if (k === 'm'){ const m = AU.toggleMute(); showToast(m ? 'Muted' : 'Sound on'); return; }
+  if (k === 'r' && state === 'over'){ startRun(); return; }
+  if (k === ' '){ if (state === 'play'){ G.crosshair = null; Input.fire = true; } return; }
+  if (k === 'enter' && state === 'menu'){ startRun(); return; }
+  Input.keys[keyMap[k] || k] = true;
+  syncKeys();
+});
+window.addEventListener('keyup', e => {
+  const k = e.key.toLowerCase();
+  Input.keys[keyMap[k] || k] = false;
+  syncKeys();
+});
+function syncKeys(){
+  // +y is up-channel; heading increase turns to port (screen left when heading up)
+  Input.rudder = (Input.keys.port ? 1 : 0) + (Input.keys.stbd ? -1 : 0);
+  Input.throttle = (Input.keys.fast ? 1 : 0) + (Input.keys.slow ? -1 : 0);
+}
+
+cv.addEventListener('mousemove', e => {
+  if (!G) return;
+  G.crosshair = { ...screen2world(e.clientX, e.clientY), mouse: true };
+});
+cv.addEventListener('mousedown', e => {
+  AU.ensure();
+  if (state !== 'play' || !G) return;
+  G.crosshair = { ...screen2world(e.clientX, e.clientY), mouse: true };
+  Input.fire = true;
+});
+// touch
+function bindHold(id, on, off){
+  const el = document.getElementById(id);
+  const start = e => { e.preventDefault(); AU.ensure(); on(); };
+  const end = e => { e.preventDefault(); off(); };
+  el.addEventListener('touchstart', start, { passive: false });
+  el.addEventListener('touchend', end, { passive: false });
+  el.addEventListener('touchcancel', end, { passive: false });
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', end);
+  el.addEventListener('mouseleave', off);
+}
+bindHold('btnPort', () => { Input.keys.port = true; syncKeys(); }, () => { Input.keys.port = false; syncKeys(); });
+bindHold('btnStbd', () => { Input.keys.stbd = true; syncKeys(); }, () => { Input.keys.stbd = false; syncKeys(); });
+bindHold('btnFast', () => { Input.keys.fast = true; syncKeys(); }, () => { Input.keys.fast = false; syncKeys(); });
+bindHold('btnSlow', () => { Input.keys.slow = true; syncKeys(); }, () => { Input.keys.slow = false; syncKeys(); });
+cv.addEventListener('touchstart', e => {
+  AU.ensure();
+  document.body.classList.add('touch');
+  if (state !== 'play' || !G) return;
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  G.crosshair = screen2world(t.clientX, t.clientY);
+  Input.fire = true;
+}, { passive: false });
+window.addEventListener('touchstart', () => document.body.classList.add('touch'), { once: true, passive: true });
+
+document.getElementById('btnPlay').addEventListener('click', () => { AU.ensure(); startRun(); });
+document.getElementById('btnAgain').addEventListener('click', () => { AU.ensure(); startRun(); });
+document.getElementById('btnResume').addEventListener('click', () => togglePause());
+document.getElementById('btnQuit').addEventListener('click', () => {
+  document.getElementById('pausePanel').classList.add('hidden');
+  paused = false;
+  endRun('Run abandoned.');
+});
+document.getElementById('btnPause').addEventListener('click', () => togglePause());
+
+function togglePause(){
+  if (state === 'play'){
+    state = 'pause'; paused = true;
+    document.getElementById('pausePanel').classList.remove('hidden');
+    AU.engine(0, false);
+  } else if (state === 'pause'){
+    state = 'play'; paused = false;
+    document.getElementById('pausePanel').classList.add('hidden');
+    lastT = performance.now();
+  }
+}
+window.addEventListener('blur', () => { if (state === 'play') togglePause(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state === 'play') togglePause();
+});
+
+/* ============================== FLOW ============================== */
+function startRun(){
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('overPanel').classList.add('hidden');
+  document.getElementById('pausePanel').classList.add('hidden');
+  document.getElementById('btnPause').classList.remove('hidden');
+  G = newRun();
+  genMines();
+  state = 'play'; paused = false;
+  lastT = performance.now();
+}
+
+/* ============================== MAIN LOOP ============================== */
+let lastT = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  if (dt > 0.1) dt = 0.1;
+  if (G && (state === 'play')){
+    // fixed-ish substeps for stable rope
+    const steps = Math.max(1, Math.round(dt / 0.0167));
+    const h = dt / steps;
+    for (let i = 0; i < steps; i++) update(h);
+  }
+  if (G) render();
+  else if (gradCanvas){
+    cx.setTransform(1, 0, 0, 1, 0, 0);
+    cx.drawImage(gradCanvas, 0, 0);
+  }
+}
+
+/* debug/test handle */
+window.__PV = {
+  get G(){ return G; }, get state(){ return state; }, set state(v){ state = v; },
+  get career(){ return career; },
+  startRun, update, fireRifle, togglePause, Input, AU,
+  get SCALE(){ return SCALE; }, get camX(){ return G ? G.camX : 0; },
+  setKite(v){ KITE = v; }
+};
+
+/* ============================== BOOT ============================== */
+resize();
+requestAnimationFrame(frame);
+arcadeReady.then(() => {
+  sdk(a => a.saves.get('career')).then(r => {
+    if (r && r.ok && r.data){
+      career = Object.assign(career, r.data);
+      if (career.bestScore > 0){
+        document.getElementById('bestScore').textContent = career.bestScore;
+        document.getElementById('careerRow').classList.remove('hidden');
+      }
+    }
+  });
+  sdk(a => a.achievements.mine()).then(r => {
+    if (r && r.ok && r.unlocked) for (const s of r.unlocked) unlockedLocal[s] = true;
+  });
+});
+</script>
+</body>
+</html>
