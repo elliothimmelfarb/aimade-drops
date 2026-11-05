@@ -1,6 +1,6 @@
 # aimade-drops
 
-Ninety-six browser games, each one a real physics simulation, each one built, tuned, and shipped by an autonomous Claude routine that ran every three hours. The routine shipped 96 games; the last drop was 2026-09-10. No human edited the games. A human wrote this README, and that's the last hand-made thing in it.
+One hundred twenty-nine browser games, each one a real physics simulation, each one built, tuned, and shipped by an autonomous Claude routine that ran every three hours. The routine shipped 129 games; the last drop was 2026-09-10. No human edited the games. A human wrote this README, and that's the last hand-made thing in it.
 
 Every game is one self-contained HTML file in [`games/`](games/): no build step, no assets, and no dependencies beyond the vendored three.js some of them share. They're served via GitHub Pages and published to [aimade.games](https://aimade.games), where they pick up identity, leaderboards, achievements, and save states from one script tag.
 
@@ -8,7 +8,7 @@ Every game is one self-contained HTML file in [`games/`](games/): no build step,
 
 A scheduled routine woke every three hours, invented a game concept, built an honest simulation of it, tuned the mechanics against scripted pilot archetypes across multiple seeds, verified it in a real browser at several resolutions and viewports, wrote a technical drop note, and committed. The commit log is the making-of documentary: 173 of the 196 commits through the last drop are authored by Claude, and each one describes the simulation it shipped in 300–500 words. [Read a few](../../commits/main); they're the best part of the repo.
 
-The routine followed house rules that held across all 96 games: a fixed physics timestep decoupled from render, WebAudio-only sound (no audio files), DPR-pinned canvas verified at multiple pixel ratios, full keyboard and touch parity, a pause/controls panel on `H`, and zero console errors across a full scripted playthrough. The mechanic had to *emerge* from the simulated system: if the physics was faked, the game didn't ship.
+The routine followed house rules that held across all 129 games: a fixed physics timestep decoupled from render, WebAudio-only sound (no audio files), DPR-pinned canvas verified at multiple pixel ratios, full keyboard and touch parity, a pause/controls panel on `H`, and zero console errors across a full scripted playthrough. The mechanic had to *emerge* from the simulated system: if the physics was faked, the game didn't ship.
 
 ## Eight worth your time
 
@@ -19,7 +19,7 @@ The routine followed house rules that held across all 96 games: a fixed physics 
 | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/2bbd4ba8-cbf2-48fe-8fed-3f8b1a6f2742/screenshot-woje05x8qx.png" width="400" alt="ROTOVATOR — the tether tip catching a capsule at 39.6 m/s relative">](https://aimade.games/g/rotovator)<br>**[ROTOVATOR](https://aimade.games/g/rotovator)** · A momentum-exchange tether where conservation of momentum is the economy. Every catch drags your orbit down; throwing trash downward is literally your engine. Angular momentum conserved to 3.2e-14. | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/aeb4ecde-2f71-46c0-9424-7320fbb08da0/screenshot-dutlv99dq3.png" width="400" alt="STOKE — 120.5 mph downhill with the big-end bearing in the amber">](https://aimade.games/g/stoke)<br>**[STOKE](https://aimade.games/g/stoke)** · Driver and fireman on a 1938 record attempt. Wheelslip emerges from torque ripple against an adhesion limit, and the big-end bearing warns you it's dying with the period-correct aniseed stink capsule. |
 | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/9b9bb305-aabc-4ef1-8bcc-16eec2860419/screenshot-tx55eka4tr.png" width="400" alt="PITPROP — the chimney mid-fall at 45 degrees, hinging over the cut">](https://aimade.games/g/pitprop)<br>**[PITPROP](https://aimade.games/g/pitprop)** · Chimney-felling by fire, 1965, no dynamite. A limit-analysis solve decides if she sits down on you early; falling shafts snap mid-air straight out of the bending stress — measured, not authored. | [<img src="https://tduzad0jpfeeoonr.public.blob.vercel-storage.com/games/c530dddc-c483-4cc8-b079-cfe746c20440/screenshot-n4z8ug2jgy.png" width="400" alt="BAFFLES — sixteen bearings converging on a submarine plot">](https://aimade.games/g/baffles)<br>**[BAFFLES](https://aimade.games/g/baffles)** · Cold War submarine tracking. The contact is never painted on your map: 720 particle-filter hypotheses, constrained by passive bearings, separated only by the parallax of your own course changes. |
 
-The other 88 are on [aimade.games](https://aimade.games): steam records, avalanche control, curling, orbital mechanics, slime-mold logistics, and a Sydney-to-Hobart yacht race.
+The other 121 are on [aimade.games](https://aimade.games): steam records, avalanche control, curling, orbital mechanics, slime-mold logistics, and a Sydney-to-Hobart yacht race.
 
 ## The pattern
 
